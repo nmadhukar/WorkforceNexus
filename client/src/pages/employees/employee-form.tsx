@@ -7,6 +7,13 @@ import { EmployeePersonalInfo } from "@/components/forms/employee-personal-info"
 import { EmployeeProfessionalInfo } from "@/components/forms/employee-professional-info";
 import { EmployeeCredentials } from "@/components/forms/employee-credentials";
 import { EmployeeAdditionalInfo } from "@/components/forms/employee-additional-info";
+import { EmployeeEducationEmployment } from "@/components/forms/employee-education-employment";
+import { EmployeeLicenses } from "@/components/forms/employee-licenses";
+import { EmployeeCertifications } from "@/components/forms/employee-certifications";
+import { EmployeeReferencesContacts } from "@/components/forms/employee-references-contacts";
+import { EmployeeTaxDocumentation } from "@/components/forms/employee-tax-documentation";
+import { EmployeeTrainingPayer } from "@/components/forms/employee-training-payer";
+import { EmployeeIncidents } from "@/components/forms/employee-incidents";
 import { EmployeeReview } from "@/components/forms/employee-review";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -59,6 +66,19 @@ interface EmployeeFormData {
   nppesPassword?: string;
   
   status?: string;
+  
+  // Related entities (for form state management)
+  educations?: any[];
+  employments?: any[];
+  stateLicenses?: any[];
+  deaLicenses?: any[];
+  boardCertifications?: any[];
+  peerReferences?: any[];
+  emergencyContacts?: any[];
+  taxForms?: any[];
+  trainings?: any[];
+  payerEnrollments?: any[];
+  incidentLogs?: any[];
 }
 
 export default function EmployeeForm() {
@@ -70,7 +90,18 @@ export default function EmployeeForm() {
     firstName: "",
     lastName: "",
     workEmail: "",
-    status: "active"
+    status: "active",
+    educations: [],
+    employments: [],
+    stateLicenses: [],
+    deaLicenses: [],
+    boardCertifications: [],
+    peerReferences: [],
+    emergencyContacts: [],
+    taxForms: [],
+    trainings: [],
+    payerEnrollments: [],
+    incidentLogs: []
   });
 
   const isEdit = params.id !== undefined;
@@ -100,11 +131,131 @@ export default function EmployeeForm() {
   }, [employee]);
 
   const createMutation = useMutation({
-    mutationFn: (data: EmployeeFormData) => apiRequest("POST", "/api/employees", data),
+    mutationFn: async (data: EmployeeFormData) => {
+      // Extract entity data from form
+      const {
+        educations, employments, stateLicenses, deaLicenses,
+        boardCertifications, peerReferences, emergencyContacts,
+        taxForms, trainings, payerEnrollments, incidentLogs,
+        ...employeeData
+      } = data;
+      
+      // Create employee first
+      const response = await apiRequest("POST", "/api/employees", employeeData);
+      const newEmployee = await response.json();
+      const employeeId = newEmployee.id;
+      
+      // Create related entities
+      const promises = [];
+      
+      // Add educations
+      if (educations && educations.length > 0) {
+        for (const education of educations) {
+          promises.push(
+            apiRequest("POST", `/api/employees/${employeeId}/educations`, education)
+          );
+        }
+      }
+      
+      // Add employments
+      if (employments && employments.length > 0) {
+        for (const employment of employments) {
+          promises.push(
+            apiRequest("POST", `/api/employees/${employeeId}/employments`, employment)
+          );
+        }
+      }
+      
+      // Add state licenses
+      if (stateLicenses && stateLicenses.length > 0) {
+        for (const license of stateLicenses) {
+          promises.push(
+            apiRequest("POST", `/api/employees/${employeeId}/state-licenses`, license)
+          );
+        }
+      }
+      
+      // Add DEA licenses
+      if (deaLicenses && deaLicenses.length > 0) {
+        for (const license of deaLicenses) {
+          promises.push(
+            apiRequest("POST", `/api/employees/${employeeId}/dea-licenses`, license)
+          );
+        }
+      }
+      
+      // Add board certifications
+      if (boardCertifications && boardCertifications.length > 0) {
+        for (const cert of boardCertifications) {
+          promises.push(
+            apiRequest("POST", `/api/employees/${employeeId}/board-certifications`, cert)
+          );
+        }
+      }
+      
+      // Add peer references
+      if (peerReferences && peerReferences.length > 0) {
+        for (const ref of peerReferences) {
+          promises.push(
+            apiRequest("POST", `/api/employees/${employeeId}/peer-references`, ref)
+          );
+        }
+      }
+      
+      // Add emergency contacts
+      if (emergencyContacts && emergencyContacts.length > 0) {
+        for (const contact of emergencyContacts) {
+          promises.push(
+            apiRequest("POST", `/api/employees/${employeeId}/emergency-contacts`, contact)
+          );
+        }
+      }
+      
+      // Add tax forms
+      if (taxForms && taxForms.length > 0) {
+        for (const form of taxForms) {
+          promises.push(
+            apiRequest("POST", `/api/employees/${employeeId}/tax-forms`, form)
+          );
+        }
+      }
+      
+      // Add trainings
+      if (trainings && trainings.length > 0) {
+        for (const training of trainings) {
+          promises.push(
+            apiRequest("POST", `/api/employees/${employeeId}/trainings`, training)
+          );
+        }
+      }
+      
+      // Add payer enrollments
+      if (payerEnrollments && payerEnrollments.length > 0) {
+        for (const enrollment of payerEnrollments) {
+          promises.push(
+            apiRequest("POST", `/api/employees/${employeeId}/payer-enrollments`, enrollment)
+          );
+        }
+      }
+      
+      // Add incident logs
+      if (incidentLogs && incidentLogs.length > 0) {
+        for (const incident of incidentLogs) {
+          promises.push(
+            apiRequest("POST", `/api/employees/${employeeId}/incident-logs`, incident)
+          );
+        }
+      }
+      
+      // Wait for all entities to be created
+      await Promise.all(promises);
+      
+      return newEmployee;
+    },
     onSuccess: () => {
       toast({
         title: "Success",
-        description: "Employee created successfully"
+        description: "Employee and related entities created successfully"
       });
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
       navigate("/employees");
@@ -146,7 +297,7 @@ export default function EmployeeForm() {
   };
 
   const handleNext = () => {
-    if (currentStep < 5) {
+    if (currentStep < 12) {
       setCurrentStep(currentStep + 1);
     }
   };
@@ -199,6 +350,83 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           data-testid="step-additional-info"
+        />
+      )
+    },
+    {
+      title: "Education & Employment",
+      component: (
+        <EmployeeEducationEmployment
+          data={formData}
+          onChange={updateFormData}
+          employeeId={isEdit ? parseInt(params.id!) : undefined}
+          data-testid="step-education-employment"
+        />
+      )
+    },
+    {
+      title: "Licenses",
+      component: (
+        <EmployeeLicenses
+          data={formData}
+          onChange={updateFormData}
+          employeeId={isEdit ? parseInt(params.id!) : undefined}
+          data-testid="step-licenses"
+        />
+      )
+    },
+    {
+      title: "Certifications",
+      component: (
+        <EmployeeCertifications
+          data={formData}
+          onChange={updateFormData}
+          employeeId={isEdit ? parseInt(params.id!) : undefined}
+          data-testid="step-certifications"
+        />
+      )
+    },
+    {
+      title: "References & Contacts",
+      component: (
+        <EmployeeReferencesContacts
+          data={formData}
+          onChange={updateFormData}
+          employeeId={isEdit ? parseInt(params.id!) : undefined}
+          data-testid="step-references-contacts"
+        />
+      )
+    },
+    {
+      title: "Tax & Documentation",
+      component: (
+        <EmployeeTaxDocumentation
+          data={formData}
+          onChange={updateFormData}
+          employeeId={isEdit ? parseInt(params.id!) : undefined}
+          data-testid="step-tax-documentation"
+        />
+      )
+    },
+    {
+      title: "Training & Payer",
+      component: (
+        <EmployeeTrainingPayer
+          data={formData}
+          onChange={updateFormData}
+          employeeId={isEdit ? parseInt(params.id!) : undefined}
+          data-testid="step-training-payer"
+        />
+      )
+    },
+    {
+      title: "Incidents",
+      component: (
+        <EmployeeIncidents
+          data={formData}
+          onChange={updateFormData}
+          employeeId={isEdit ? parseInt(params.id!) : undefined}
+          data-testid="step-incidents"
         />
       )
     },

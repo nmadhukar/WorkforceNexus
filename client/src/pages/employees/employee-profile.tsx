@@ -26,7 +26,7 @@ export default function EmployeeProfile() {
   const employeeId = parseInt(params.id || "0");
 
   const { data: employee, isLoading, error } = useQuery<Employee>({
-    queryKey: ["/api/employees", employeeId],
+    queryKey: [`/api/employees/${employeeId}`],
     enabled: !!employeeId
   });
 
