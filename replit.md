@@ -29,6 +29,10 @@ Preferred communication style: Simple, everyday language.
 - Added key rotation with automatic expiration and 24-hour grace period
 - Created API key management UI with permissions system
 - Enabled dual authentication (session-based for web, API keys for external apps)
+- Integrated Amazon S3 storage for document uploads with automatic fallback to local storage
+- Added secure S3 configuration with masked credentials in UI
+- Implemented document migration utility from local to S3 storage
+- Added presigned URLs for secure S3 document downloads
 
 ## System Architecture
 
