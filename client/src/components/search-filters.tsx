@@ -47,15 +47,15 @@ export function SearchFilters({ filters, onFilterChange, filterOptions = {} }: S
           
           {filterOptions.departments && (
             <Select 
-              value={filters.department || ""} 
-              onValueChange={(value) => onFilterChange("department", value)}
+              value={filters.department || "all"} 
+              onValueChange={(value) => onFilterChange("department", value === "all" ? "" : value)}
             >
               <SelectTrigger data-testid="select-department">
                 <SelectValue placeholder="All Departments" />
               </SelectTrigger>
               <SelectContent>
                 {filterOptions.departments.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
+                  <SelectItem key={option.value || "all"} value={option.value || "all"}>
                     {option.label}
                   </SelectItem>
                 ))}
@@ -65,15 +65,15 @@ export function SearchFilters({ filters, onFilterChange, filterOptions = {} }: S
           
           {filterOptions.statuses && (
             <Select 
-              value={filters.status || ""} 
-              onValueChange={(value) => onFilterChange("status", value)}
+              value={filters.status || "all"} 
+              onValueChange={(value) => onFilterChange("status", value === "all" ? "" : value)}
             >
               <SelectTrigger data-testid="select-status">
                 <SelectValue placeholder="All Statuses" />
               </SelectTrigger>
               <SelectContent>
                 {filterOptions.statuses.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
+                  <SelectItem key={option.value || "all"} value={option.value || "all"}>
                     {option.label}
                   </SelectItem>
                 ))}
@@ -83,15 +83,15 @@ export function SearchFilters({ filters, onFilterChange, filterOptions = {} }: S
           
           {filterOptions.locations && (
             <Select 
-              value={filters.location || ""} 
-              onValueChange={(value) => onFilterChange("location", value)}
+              value={filters.location || "all"} 
+              onValueChange={(value) => onFilterChange("location", value === "all" ? "" : value)}
             >
               <SelectTrigger data-testid="select-location">
                 <SelectValue placeholder="All Locations" />
               </SelectTrigger>
               <SelectContent>
                 {filterOptions.locations.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
+                  <SelectItem key={option.value || "all"} value={option.value || "all"}>
                     {option.label}
                   </SelectItem>
                 ))}
@@ -101,15 +101,15 @@ export function SearchFilters({ filters, onFilterChange, filterOptions = {} }: S
           
           {filterOptions.types && (
             <Select 
-              value={filters.type || ""} 
-              onValueChange={(value) => onFilterChange("type", value)}
+              value={filters.type || "all"} 
+              onValueChange={(value) => onFilterChange("type", value === "all" ? "" : value)}
             >
               <SelectTrigger data-testid="select-type">
                 <SelectValue placeholder="All Types" />
               </SelectTrigger>
               <SelectContent>
                 {filterOptions.types.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
+                  <SelectItem key={option.value || "all"} value={option.value || "all"}>
                     {option.label}
                   </SelectItem>
                 ))}
@@ -119,15 +119,15 @@ export function SearchFilters({ filters, onFilterChange, filterOptions = {} }: S
           
           {filterOptions.actions && (
             <Select 
-              value={filters.action || ""} 
-              onValueChange={(value) => onFilterChange("action", value)}
+              value={filters.action || "all"} 
+              onValueChange={(value) => onFilterChange("action", value === "all" ? "" : value)}
             >
               <SelectTrigger data-testid="select-action">
                 <SelectValue placeholder="All Actions" />
               </SelectTrigger>
               <SelectContent>
                 {filterOptions.actions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
+                  <SelectItem key={option.value || "all"} value={option.value || "all"}>
                     {option.label}
                   </SelectItem>
                 ))}
@@ -137,15 +137,15 @@ export function SearchFilters({ filters, onFilterChange, filterOptions = {} }: S
           
           {filterOptions.tableNames && (
             <Select 
-              value={filters.tableName || ""} 
-              onValueChange={(value) => onFilterChange("tableName", value)}
+              value={filters.tableName || "all"} 
+              onValueChange={(value) => onFilterChange("tableName", value === "all" ? "" : value)}
             >
               <SelectTrigger data-testid="select-table-name">
                 <SelectValue placeholder="All Tables" />
               </SelectTrigger>
               <SelectContent>
                 {filterOptions.tableNames.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
+                  <SelectItem key={option.value || "all"} value={option.value || "all"}>
                     {option.label}
                   </SelectItem>
                 ))}
