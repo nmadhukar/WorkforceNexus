@@ -1,3 +1,19 @@
+/**
+ * HR Management System Database Schema
+ * 
+ * This file defines the complete database schema for a comprehensive HR management system
+ * specifically designed for medical staff and healthcare professionals. The schema includes
+ * employee management, credential tracking, compliance monitoring, and audit logging.
+ * 
+ * Key Features:
+ * - Comprehensive employee profiles with medical licensing
+ * - Educational background and employment history tracking
+ * - Regulatory compliance monitoring (CAQH, DEA, state licenses)
+ * - Document management with file upload support
+ * - Full audit logging for compliance
+ * - Role-based access control (RBAC) for HR security
+ */
+
 import { sql } from "drizzle-orm";
 import { 
   pgTable, 
@@ -16,219 +32,343 @@ import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Users table for HR authentication and RBAC
+/**
+ * USERS TABLE
+ * 
+ * Manages authentication and authorization for the HR system.
+ * Implements role-based access control with secure password hashing.
+ * 
+ * Roles:
+ * - 'hr': Standard HR staff with full employee management access
+ * - 'admin': System administrators with elevated privileges
+ * - 'viewer': Read-only access for reporting and viewing
+ */
 export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  username: varchar("username", { length: 50 }).unique().notNull(),
-  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
-  role: varchar("role", { length: 20 }).notNull().default("hr"),
-  createdAt: timestamp("created_at").defaultNow()
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  username: varchar("username", { length: 50 }).unique().notNull(), // Unique login identifier
+  passwordHash: varchar("password_hash", { length: 255 }).notNull(), // Scrypt-hashed password with salt
+  role: varchar("role", { length: 20 }).notNull().default("hr"), // User role for RBAC
+  createdAt: timestamp("created_at").defaultNow() // Account creation timestamp
 });
 
-// Core Employees table
+/**
+ * EMPLOYEES TABLE - Core Entity
+ * 
+ * Central table storing comprehensive employee profiles for medical/healthcare professionals.
+ * Designed to meet regulatory compliance requirements and support credential management.
+ * Includes personal information, professional credentials, and regulatory system integrations.
+ */
 export const employees = pgTable("employees", {
-  id: serial("id").primaryKey(),
-  firstName: varchar("first_name", { length: 50 }).notNull(),
-  middleName: varchar("middle_name", { length: 50 }),
-  lastName: varchar("last_name", { length: 50 }).notNull(),
-  dateOfBirth: date("date_of_birth"),
-  personalEmail: varchar("personal_email", { length: 100 }).unique(),
-  workEmail: varchar("work_email", { length: 100 }).unique().notNull(),
-  cellPhone: varchar("cell_phone", { length: 20 }),
-  workPhone: varchar("work_phone", { length: 20 }),
-  homeAddress1: varchar("home_address1", { length: 100 }),
-  homeAddress2: varchar("home_address2", { length: 100 }),
-  homeCity: varchar("home_city", { length: 50 }),
-  homeState: varchar("home_state", { length: 50 }),
-  homeZip: varchar("home_zip", { length: 10 }),
-  gender: varchar("gender", { length: 20 }),
-  birthCity: varchar("birth_city", { length: 50 }),
-  birthState: varchar("birth_state", { length: 50 }),
-  birthCountry: varchar("birth_country", { length: 50 }),
-  driversLicenseNumber: varchar("drivers_license_number", { length: 50 }),
-  dlStateIssued: varchar("dl_state_issued", { length: 50 }),
-  dlIssueDate: date("dl_issue_date"),
-  dlExpirationDate: date("dl_expiration_date"),
-  ssn: varchar("ssn", { length: 20 }), // Will be encrypted
-  npiNumber: varchar("npi_number", { length: 20 }).unique(),
-  enumerationDate: date("enumeration_date"),
-  jobTitle: varchar("job_title", { length: 100 }),
-  workLocation: varchar("work_location", { length: 100 }),
-  qualification: text("qualification"),
-  medicalLicenseNumber: varchar("medical_license_number", { length: 50 }),
-  substanceUseLicenseNumber: varchar("substance_use_license_number", { length: 50 }),
-  substanceUseQualification: text("substance_use_qualification"),
-  mentalHealthLicenseNumber: varchar("mental_health_license_number", { length: 50 }),
-  mentalHealthQualification: text("mental_health_qualification"),
-  medicaidNumber: varchar("medicaid_number", { length: 50 }),
-  medicarePtanNumber: varchar("medicare_ptan_number", { length: 50 }),
-  caqhProviderId: varchar("caqh_provider_id", { length: 50 }),
-  caqhIssueDate: date("caqh_issue_date"),
-  caqhLastAttestationDate: date("caqh_last_attestation_date"),
-  caqhEnabled: boolean("caqh_enabled").default(false),
-  caqhReattestationDueDate: date("caqh_reattestation_due_date"),
-  caqhLoginId: varchar("caqh_login_id", { length: 50 }),
-  caqhPassword: varchar("caqh_password", { length: 100 }), // Will be encrypted
-  nppesLoginId: varchar("nppes_login_id", { length: 50 }),
-  nppesPassword: varchar("nppes_password", { length: 100 }), // Will be encrypted
-  status: varchar("status", { length: 20 }).default("active"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow()
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  
+  // BASIC PERSONAL INFORMATION
+  firstName: varchar("first_name", { length: 50 }).notNull(), // Legal first name
+  middleName: varchar("middle_name", { length: 50 }), // Optional middle name
+  lastName: varchar("last_name", { length: 50 }).notNull(), // Legal last name
+  dateOfBirth: date("date_of_birth"), // Birth date for age verification and compliance
+  
+  // CONTACT INFORMATION
+  personalEmail: varchar("personal_email", { length: 100 }).unique(), // Personal email (optional)
+  workEmail: varchar("work_email", { length: 100 }).unique().notNull(), // Primary work email (required)
+  cellPhone: varchar("cell_phone", { length: 20 }), // Mobile phone number
+  workPhone: varchar("work_phone", { length: 20 }), // Work/office phone number
+  
+  // HOME ADDRESS INFORMATION
+  homeAddress1: varchar("home_address1", { length: 100 }), // Primary address line
+  homeAddress2: varchar("home_address2", { length: 100 }), // Secondary address line (apt, suite, etc.)
+  homeCity: varchar("home_city", { length: 50 }), // City of residence
+  homeState: varchar("home_state", { length: 50 }), // State/province of residence
+  homeZip: varchar("home_zip", { length: 10 }), // ZIP/postal code
+  
+  // DEMOGRAPHIC INFORMATION
+  gender: varchar("gender", { length: 20 }), // Gender identity for HR records
+  birthCity: varchar("birth_city", { length: 50 }), // Birth city (for background checks)
+  birthState: varchar("birth_state", { length: 50 }), // Birth state (for background checks)
+  birthCountry: varchar("birth_country", { length: 50 }), // Birth country (for citizenship verification)
+  
+  // DRIVER'S LICENSE INFORMATION (Required for many medical positions)
+  driversLicenseNumber: varchar("drivers_license_number", { length: 50 }), // DL number
+  dlStateIssued: varchar("dl_state_issued", { length: 50 }), // Issuing state
+  dlIssueDate: date("dl_issue_date"), // Issue date
+  dlExpirationDate: date("dl_expiration_date"), // Expiration date (tracked for compliance)
+  
+  // SENSITIVE IDENTIFICATION (Encrypted fields)
+  ssn: varchar("ssn", { length: 20 }), // Social Security Number (AES-256 encrypted)
+  
+  // NATIONAL PROVIDER IDENTIFIER (NPI) - CMS requirement for healthcare providers
+  npiNumber: varchar("npi_number", { length: 20 }).unique(), // Unique NPI from NPPES
+  enumerationDate: date("enumeration_date"), // Date NPI was issued
+  
+  // EMPLOYMENT INFORMATION
+  jobTitle: varchar("job_title", { length: 100 }), // Current position/title
+  workLocation: varchar("work_location", { length: 100 }), // Primary work location/facility
+  qualification: text("qualification"), // Professional qualifications and specialties
+  
+  // MEDICAL LICENSING INFORMATION
+  medicalLicenseNumber: varchar("medical_license_number", { length: 50 }), // State medical license
+  substanceUseLicenseNumber: varchar("substance_use_license_number", { length: 50 }), // Substance abuse counseling license
+  substanceUseQualification: text("substance_use_qualification"), // Substance abuse treatment qualifications
+  mentalHealthLicenseNumber: varchar("mental_health_license_number", { length: 50 }), // Mental health license
+  mentalHealthQualification: text("mental_health_qualification"), // Mental health specializations
+  
+  // PAYER/BILLING IDENTIFIERS
+  medicaidNumber: varchar("medicaid_number", { length: 50 }), // State Medicaid provider number
+  medicarePtanNumber: varchar("medicare_ptan_number", { length: 50 }), // Medicare PTAN number
+  
+  // CAQH (Council for Affordable Quality Healthcare) INTEGRATION
+  // CAQH ProView is used for provider credentialing and enrollment
+  caqhProviderId: varchar("caqh_provider_id", { length: 50 }), // CAQH Provider ID
+  caqhIssueDate: date("caqh_issue_date"), // Date CAQH profile was created
+  caqhLastAttestationDate: date("caqh_last_attestation_date"), // Last attestation date
+  caqhEnabled: boolean("caqh_enabled").default(false), // Whether CAQH profile is active
+  caqhReattestationDueDate: date("caqh_reattestation_due_date"), // Next attestation due date
+  caqhLoginId: varchar("caqh_login_id", { length: 50 }), // CAQH login username
+  caqhPassword: varchar("caqh_password", { length: 100 }), // CAQH password (AES-256 encrypted)
+  
+  // NPPES (National Plan and Provider Enumeration System) INTEGRATION
+  // Used for NPI management and provider directory updates
+  nppesLoginId: varchar("nppes_login_id", { length: 50 }), // NPPES login username
+  nppesPassword: varchar("nppes_password", { length: 100 }), // NPPES password (AES-256 encrypted)
+  
+  // RECORD MANAGEMENT
+  status: varchar("status", { length: 20 }).default("active"), // active | inactive | on_leave | terminated
+  createdAt: timestamp("created_at").defaultNow(), // Record creation timestamp
+  updatedAt: timestamp("updated_at").defaultNow() // Last modification timestamp
 }, (table) => ({
-  workEmailIdx: index("idx_employees_work_email").on(table.workEmail),
-  dlExpirationIdx: index("idx_dl_expiration").on(table.dlExpirationDate),
-  caqhReattestationIdx: index("idx_caqh_reattestation").on(table.caqhReattestationDueDate)
+  // Database indexes for performance optimization
+  workEmailIdx: index("idx_employees_work_email").on(table.workEmail), // Fast email lookups
+  dlExpirationIdx: index("idx_dl_expiration").on(table.dlExpirationDate), // Expiration tracking
+  caqhReattestationIdx: index("idx_caqh_reattestation").on(table.caqhReattestationDueDate) // Compliance monitoring
 }));
 
-// Education history
+/**
+ * EDUCATIONS TABLE
+ * 
+ * Tracks educational background and academic credentials for each employee.
+ * Supports multiple education entries per employee to capture diverse academic histories.
+ * Essential for credentialing and professional qualification verification.
+ */
 export const educations = pgTable("educations", {
-  id: serial("id").primaryKey(),
-  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }),
-  educationType: varchar("education_type", { length: 50 }),
-  schoolInstitution: varchar("school_institution", { length: 100 }),
-  degree: varchar("degree", { length: 50 }),
-  specialtyMajor: varchar("specialty_major", { length: 100 }),
-  startDate: date("start_date"),
-  endDate: date("end_date")
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Foreign key to employees
+  educationType: varchar("education_type", { length: 50 }), // Type: undergraduate, graduate, continuing education, etc.
+  schoolInstitution: varchar("school_institution", { length: 100 }), // Name of educational institution
+  degree: varchar("degree", { length: 50 }), // Degree obtained (MD, RN, BSN, PhD, etc.)
+  specialtyMajor: varchar("specialty_major", { length: 100 }), // Field of study or medical specialty
+  startDate: date("start_date"), // Program start date
+  endDate: date("end_date") // Graduation/completion date
 });
 
-// Employment history
+/**
+ * EMPLOYMENTS TABLE
+ * 
+ * Maintains complete employment history for background verification and credentialing.
+ * Tracks previous positions, responsibilities, and employment gaps.
+ * Critical for malpractice insurance and hospital privileging processes.
+ */
 export const employments = pgTable("employments", {
-  id: serial("id").primaryKey(),
-  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }),
-  employer: varchar("employer", { length: 100 }),
-  position: varchar("position", { length: 100 }),
-  startDate: date("start_date"),
-  endDate: date("end_date"),
-  description: text("description")
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Foreign key to employees
+  employer: varchar("employer", { length: 100 }), // Name of employing organization/hospital
+  position: varchar("position", { length: 100 }), // Job title or position held
+  startDate: date("start_date"), // Employment start date
+  endDate: date("end_date"), // Employment end date (null for current position)
+  description: text("description") // Job duties, responsibilities, and achievements
 });
 
-// Peer references
+/**
+ * PEER REFERENCES TABLE
+ * 
+ * Stores professional references from colleagues and supervisors.
+ * Required for credentialing applications and employment verification.
+ * Maintains contact information for reference validation during audits.
+ */
 export const peerReferences = pgTable("peer_references", {
-  id: serial("id").primaryKey(),
-  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }),
-  referenceName: varchar("reference_name", { length: 100 }),
-  contactInfo: varchar("contact_info", { length: 100 }),
-  relationship: varchar("relationship", { length: 100 }),
-  comments: text("comments")
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Foreign key to employees
+  referenceName: varchar("reference_name", { length: 100 }), // Full name of the reference person
+  contactInfo: varchar("contact_info", { length: 100 }), // Phone number, email, or address
+  relationship: varchar("relationship", { length: 100 }), // Professional relationship (supervisor, colleague, etc.)
+  comments: text("comments") // Additional notes about the reference
 });
 
-// State licenses
+/**
+ * STATE LICENSES TABLE
+ * 
+ * Manages state-issued professional licenses (medical, nursing, etc.).
+ * Critical for regulatory compliance and practice authorization.
+ * Monitored for expiration to ensure continuous licensure.
+ */
 export const stateLicenses = pgTable("state_licenses", {
-  id: serial("id").primaryKey(),
-  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }),
-  licenseNumber: varchar("license_number", { length: 50 }).notNull(),
-  state: varchar("state", { length: 50 }).notNull(),
-  issueDate: date("issue_date"),
-  expirationDate: date("expiration_date"),
-  status: varchar("status", { length: 50 })
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Foreign key to employees
+  licenseNumber: varchar("license_number", { length: 50 }).notNull(), // State-issued license number
+  state: varchar("state", { length: 50 }).notNull(), // Issuing state (e.g., "CA", "NY", "TX")
+  issueDate: date("issue_date"), // Date license was first issued
+  expirationDate: date("expiration_date"), // License expiration date (compliance critical)
+  status: varchar("status", { length: 50 }) // active | expired | suspended | pending_renewal
 }, (table) => ({
-  expirationIdx: index("idx_state_licenses_expiration").on(table.expirationDate)
+  expirationIdx: index("idx_state_licenses_expiration").on(table.expirationDate) // Fast expiration queries
 }));
 
-// DEA licenses
+/**
+ * DEA LICENSES TABLE
+ * 
+ * Tracks Drug Enforcement Administration licenses for controlled substance prescribing.
+ * Required for providers who prescribe controlled medications (Schedule II-V).
+ * Subject to strict federal regulations and expiration monitoring.
+ */
 export const deaLicenses = pgTable("dea_licenses", {
-  id: serial("id").primaryKey(),
-  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }),
-  licenseNumber: varchar("license_number", { length: 50 }).notNull(),
-  issueDate: date("issue_date"),
-  expirationDate: date("expiration_date"),
-  status: varchar("status", { length: 50 })
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Foreign key to employees
+  licenseNumber: varchar("license_number", { length: 50 }).notNull(), // DEA registration number (e.g., "AB1234567")
+  issueDate: date("issue_date"), // DEA registration issue date
+  expirationDate: date("expiration_date"), // Registration expiration (typically 3 years)
+  status: varchar("status", { length: 50 }) // active | expired | suspended | surrendered
 }, (table) => ({
-  expirationIdx: index("idx_dea_licenses_expiration").on(table.expirationDate)
+  expirationIdx: index("idx_dea_licenses_expiration").on(table.expirationDate) // Federal compliance tracking
 }));
 
-// Board certifications
+/**
+ * BOARD CERTIFICATIONS TABLE
+ * 
+ * Maintains specialty board certifications and professional credentials.
+ * Demonstrates advanced training and competency in medical specialties.
+ * Important for hospital privileging and insurance credentialing.
+ */
 export const boardCertifications = pgTable("board_certifications", {
-  id: serial("id").primaryKey(),
-  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }),
-  boardName: varchar("board_name", { length: 100 }),
-  certification: varchar("certification", { length: 100 }),
-  issueDate: date("issue_date"),
-  expirationDate: date("expiration_date"),
-  status: varchar("status", { length: 50 })
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Foreign key to employees
+  boardName: varchar("board_name", { length: 100 }), // Certifying board (e.g., "American Board of Internal Medicine")
+  certification: varchar("certification", { length: 100 }), // Specific certification (e.g., "Internal Medicine", "Cardiology")
+  issueDate: date("issue_date"), // Certification award date
+  expirationDate: date("expiration_date"), // Maintenance of certification (MOC) due date
+  status: varchar("status", { length: 50 }) // active | expired | maintenance_required | lapsed
 }, (table) => ({
-  expirationIdx: index("idx_board_certifications_expiration").on(table.expirationDate)
+  expirationIdx: index("idx_board_certifications_expiration").on(table.expirationDate) // MOC compliance tracking
 }));
 
-// Documents
+/**
+ * DOCUMENTS TABLE
+ * 
+ * Manages uploaded documents and file attachments for employees.
+ * Supports various document types (contracts, certifications, forms, etc.).
+ * Integrates with file upload system for secure document storage.
+ */
 export const documents = pgTable("documents", {
-  id: serial("id").primaryKey(),
-  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }),
-  documentType: varchar("document_type", { length: 100 }).notNull(),
-  filePath: varchar("file_path", { length: 255 }),
-  signedDate: date("signed_date"),
-  notes: text("notes"),
-  createdAt: timestamp("created_at").defaultNow()
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Foreign key to employees
+  documentType: varchar("document_type", { length: 100 }).notNull(), // Document category (contract, certificate, form, etc.)
+  filePath: varchar("file_path", { length: 255 }), // Server file path or cloud storage URL
+  signedDate: date("signed_date"), // Date document was signed or executed
+  notes: text("notes"), // Additional notes or comments about the document
+  createdAt: timestamp("created_at").defaultNow() // Upload timestamp
 });
 
-// Emergency contacts
+/**
+ * EMERGENCY CONTACTS TABLE
+ * 
+ * Stores emergency contact information for each employee.
+ * Critical for workplace safety and incident response procedures.
+ * Required by most employment policies and insurance requirements.
+ */
 export const emergencyContacts = pgTable("emergency_contacts", {
-  id: serial("id").primaryKey(),
-  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }),
-  name: varchar("name", { length: 100 }).notNull(),
-  relationship: varchar("relationship", { length: 50 }),
-  phone: varchar("phone", { length: 20 }),
-  email: varchar("email", { length: 100 })
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Foreign key to employees
+  name: varchar("name", { length: 100 }).notNull(), // Full name of emergency contact
+  relationship: varchar("relationship", { length: 50 }), // Relationship to employee (spouse, parent, sibling, etc.)
+  phone: varchar("phone", { length: 20 }), // Primary phone number for emergencies
+  email: varchar("email", { length: 100 }) // Email address for non-urgent communications
 });
 
-// Tax forms
+/**
+ * TAX FORMS TABLE
+ * 
+ * Manages tax-related documents and forms (W-2, W-4, 1099, etc.).
+ * Ensures compliance with tax reporting requirements.
+ * Tracks submission status and maintains audit trail.
+ */
 export const taxForms = pgTable("tax_forms", {
-  id: serial("id").primaryKey(),
-  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }),
-  formType: varchar("form_type", { length: 50 }).notNull(),
-  filePath: varchar("file_path", { length: 255 }),
-  submittedDate: date("submitted_date"),
-  status: varchar("status", { length: 50 })
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Foreign key to employees
+  formType: varchar("form_type", { length: 50 }).notNull(), // Tax form type (W-2, W-4, 1099-MISC, etc.)
+  filePath: varchar("file_path", { length: 255 }), // File storage path or URL
+  submittedDate: date("submitted_date"), // Date form was submitted or completed
+  status: varchar("status", { length: 50 }) // pending | completed | submitted | requires_update
 });
 
-// Trainings/CEUs
+/**
+ * TRAININGS TABLE
+ * 
+ * Tracks continuing education units (CEUs) and professional training.
+ * Essential for maintaining professional licenses and certifications.
+ * Monitors training credits and renewal requirements.
+ */
 export const trainings = pgTable("trainings", {
-  id: serial("id").primaryKey(),
-  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }),
-  trainingType: varchar("training_type", { length: 100 }),
-  provider: varchar("provider", { length: 100 }),
-  completionDate: date("completion_date"),
-  expirationDate: date("expiration_date"),
-  credits: decimal("credits", { precision: 5, scale: 2 }),
-  certificatePath: varchar("certificate_path", { length: 255 })
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Foreign key to employees
+  trainingType: varchar("training_type", { length: 100 }), // Training category (CME, CEU, Safety, Compliance, etc.)
+  provider: varchar("provider", { length: 100 }), // Organization or institution providing training
+  completionDate: date("completion_date"), // Date training was completed
+  expirationDate: date("expiration_date"), // Date when training credit expires
+  credits: decimal("credits", { precision: 5, scale: 2 }), // Number of continuing education credits earned
+  certificatePath: varchar("certificate_path", { length: 255 }) // Path to completion certificate file
 }, (table) => ({
-  expirationIdx: index("idx_trainings_expiration").on(table.expirationDate)
+  expirationIdx: index("idx_trainings_expiration").on(table.expirationDate) // Training renewal monitoring
 }));
 
-// Payer enrollments
+/**
+ * PAYER ENROLLMENTS TABLE
+ * 
+ * Tracks enrollment status with insurance payers and networks.
+ * Manages provider participation in insurance plans and networks.
+ * Critical for billing, reimbursement, and patient coverage verification.
+ */
 export const payerEnrollments = pgTable("payer_enrollments", {
-  id: serial("id").primaryKey(),
-  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }),
-  payerName: varchar("payer_name", { length: 100 }),
-  enrollmentId: varchar("enrollment_id", { length: 50 }),
-  enrollmentDate: date("enrollment_date"),
-  status: varchar("status", { length: 50 })
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Foreign key to employees
+  payerName: varchar("payer_name", { length: 100 }), // Insurance company or payer name (e.g., "Blue Cross", "Aetna")
+  enrollmentId: varchar("enrollment_id", { length: 50 }), // Provider enrollment ID with the payer
+  enrollmentDate: date("enrollment_date"), // Date enrolled with the payer network
+  status: varchar("status", { length: 50 }) // active | pending | terminated | credentialing_required
 });
 
-// Incident logs
+/**
+ * INCIDENT LOGS TABLE
+ * 
+ * Records workplace incidents, safety events, and disciplinary actions.
+ * Maintains detailed incident history for risk management and compliance.
+ * Essential for liability protection and performance management.
+ */
 export const incidentLogs = pgTable("incident_logs", {
-  id: serial("id").primaryKey(),
-  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }),
-  incidentDate: date("incident_date").notNull(),
-  description: text("description"),
-  resolution: text("resolution"),
-  reportedBy: varchar("reported_by", { length: 50 })
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Foreign key to employees
+  incidentDate: date("incident_date").notNull(), // Date when incident occurred
+  description: text("description"), // Detailed incident description and circumstances
+  resolution: text("resolution"), // Actions taken to resolve or address the incident
+  reportedBy: varchar("reported_by", { length: 50 }) // Name/ID of person reporting the incident
 });
 
-// Audits table
+/**
+ * AUDITS TABLE
+ * 
+ * Comprehensive audit logging system for all data changes.
+ * Tracks who made changes, when, and what data was modified.
+ * Essential for compliance, security, and change management.
+ * Supports data recovery and forensic analysis.
+ */
 export const audits = pgTable("audits", {
-  id: serial("id").primaryKey(),
-  tableName: varchar("table_name", { length: 50 }).notNull(),
-  recordId: integer("record_id").notNull(),
-  action: varchar("action", { length: 20 }).notNull(),
-  changedBy: integer("changed_by").references(() => users.id),
-  changedAt: timestamp("changed_at").defaultNow(),
-  oldData: jsonb("old_data"),
-  newData: jsonb("new_data")
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  tableName: varchar("table_name", { length: 50 }).notNull(), // Name of table that was modified
+  recordId: integer("record_id").notNull(), // Primary key of the modified record
+  action: varchar("action", { length: 20 }).notNull(), // CREATE | UPDATE | DELETE
+  changedBy: integer("changed_by").references(() => users.id), // User ID who made the change
+  changedAt: timestamp("changed_at").defaultNow(), // Timestamp of the change
+  oldData: jsonb("old_data"), // Previous values (JSON format for flexible storage)
+  newData: jsonb("new_data") // New values (JSON format for flexible storage)
 }, (table) => ({
-  tableRecordIdx: index("idx_audits_table_record").on(table.tableName, table.recordId),
-  changedAtIdx: index("idx_audits_changed_at").on(table.changedAt)
+  tableRecordIdx: index("idx_audits_table_record").on(table.tableName, table.recordId), // Fast record history lookup
+  changedAtIdx: index("idx_audits_changed_at").on(table.changedAt) // Chronological audit queries
 }));
 
 // Relations
