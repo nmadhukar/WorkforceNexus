@@ -1,3 +1,17 @@
+/**
+ * @fileoverview Database Storage Interface and Implementation
+ * 
+ * This module provides a comprehensive storage layer for the HR management system.
+ * It implements all CRUD operations for employees and their related entities using
+ * Drizzle ORM with PostgreSQL. The interface supports both in-memory storage (for testing)
+ * and production database storage.
+ * 
+ * @module storage
+ * @requires @shared/schema
+ * @requires drizzle-orm
+ * @requires express-session
+ */
+
 import { 
   users, 
   employees, 
@@ -50,12 +64,47 @@ import { eq, desc, asc, like, and, or, lte, sql, count } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 
+/**
+ * PostgreSQL session store for Express sessions
+ * Used to persist user sessions in the database
+ */
 const PostgresSessionStore = connectPg(session);
 
+/**
+ * Storage Interface for HR Management System
+ * 
+ * @interface IStorage
+ * @description Defines the contract for all storage operations in the HR system.
+ * This interface abstracts the database layer and supports multiple implementations
+ * (PostgreSQL via Drizzle ORM for production, in-memory for testing).
+ * 
+ * All methods return Promises and handle data validation internally.
+ * Sensitive data encryption/decryption is handled at the route layer.
+ */
 export interface IStorage {
-  // User operations
+  /**
+   * User Authentication & Management Operations
+   */
+  
+  /**
+   * Retrieve a user by their ID
+   * @param {number} id - User's unique identifier
+   * @returns {Promise<User | undefined>} User object or undefined if not found
+   */
   getUser(id: number): Promise<User | undefined>;
+  
+  /**
+   * Retrieve a user by their username (for authentication)
+   * @param {string} username - User's unique username
+   * @returns {Promise<User | undefined>} User object with hashed password or undefined
+   */
   getUserByUsername(username: string): Promise<User | undefined>;
+  
+  /**
+   * Create a new user account
+   * @param {InsertUser} user - User data including username, passwordHash, and role
+   * @returns {Promise<User>} Newly created user object
+   */
   createUser(user: InsertUser): Promise<User>;
   
   // Employee operations
@@ -165,9 +214,32 @@ export interface IStorage {
   sessionStore: session.SessionStore;
 }
 
+/**
+ * Database Storage Implementation using PostgreSQL
+ * 
+ * @class DatabaseStorage
+ * @implements {IStorage}
+ * @description Production implementation of the storage interface using PostgreSQL
+ * with Drizzle ORM. Handles all database operations for the HR management system.
+ * 
+ * Features:
+ * - Connection pooling for optimal performance
+ * - Transaction support for data consistency
+ * - Automatic session management
+ * - Query optimization with proper indexing
+ * - Full text search capabilities
+ * - Audit logging for compliance
+ */
 export class DatabaseStorage implements IStorage {
+  /**
+   * Express session store for persistent sessions
+   */
   sessionStore: session.SessionStore;
 
+  /**
+   * Initialize database storage with PostgreSQL connection
+   * Creates session table if it doesn't exist
+   */
   constructor() {
     this.sessionStore = new PostgresSessionStore({ 
       conString: process.env.DATABASE_URL,
@@ -175,7 +247,15 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  // User operations
+  /**
+   * User Operations Implementation
+   */
+  
+  /**
+   * Get user by ID for session deserialization
+   * @param {number} id - User ID
+   * @returns {Promise<User | undefined>} User object or undefined
+   */
   async getUser(id: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
@@ -674,7 +754,21 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  // Report operations
+  /**
+   * Report Operations - License Expiration Monitoring
+   */
+  
+  /**
+   * Get all licenses and certifications expiring within specified days
+   * Used by cron jobs for automated notification system
+   * 
+   * @param {number} days - Number of days to look ahead
+   * @returns {Promise<any[]>} Array of expiring items with employee info
+   * 
+   * @example
+   * // Get items expiring in next 30 days
+   * const expiringItems = await storage.getExpiringItems(30);
+   */
   async getExpiringItems(days: number): Promise<any[]> {
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + days);
@@ -730,6 +824,15 @@ export class DatabaseStorage implements IStorage {
     return [...expiringStateLicenses, ...expiringDeaLicenses, ...expiringBoardCerts];
   }
 
+  /**
+   * Get dashboard statistics for HR overview
+   * 
+   * @returns {Promise<Object>} Statistics object containing:
+   * - totalEmployees: Total number of employees in system
+   * - activeEmployees: Number of active employees
+   * - expiringSoon: Count of licenses expiring in 30 days
+   * - pendingDocs: Estimated pending document count
+   */
   async getEmployeeStats(): Promise<{
     totalEmployees: number;
     activeEmployees: number;
@@ -759,4 +862,8 @@ export class DatabaseStorage implements IStorage {
   }
 }
 
+/**
+ * Singleton instance of database storage
+ * @type {DatabaseStorage}
+ */
 export const storage = new DatabaseStorage();

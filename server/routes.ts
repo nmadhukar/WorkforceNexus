@@ -1,3 +1,17 @@
+/**
+ * @fileoverview Express API Routes for HR Management System
+ * 
+ * This module defines all RESTful API endpoints for the healthcare HR management system.
+ * It handles employee management, credential tracking, document management, compliance monitoring,
+ * and comprehensive audit logging.
+ * 
+ * @module routes
+ * @requires express
+ * @requires http
+ * @requires ./storage
+ * @requires ./auth
+ */
+
 import type { Express, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
@@ -32,18 +46,39 @@ import rateLimit from "express-rate-limit";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Rate limiting
+/**
+ * Rate limiter configuration to prevent API abuse
+ * Limits each IP to 100 requests per 15-minute window
+ * Applied globally to all /api routes
+ */
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100 // limit each IP to 100 requests per windowMs
 });
 
-// File upload configuration
+/**
+ * File upload directory configuration
+ * Creates uploads directory if it doesn't exist
+ * Used for storing employee documents, certificates, and other compliance files
+ */
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
+/**
+ * Multer configuration for file uploads
+ * 
+ * @constant {multer.Instance} upload
+ * @description Handles document uploads with the following constraints:
+ * - Maximum file size: 10MB
+ * - Allowed file types: JPEG, JPG, PNG, PDF, DOC, DOCX
+ * - Files are stored in server/uploads directory
+ * 
+ * @example
+ * // Used in document upload endpoint
+ * app.post('/api/documents/upload', upload.single('document'), ...)
+ */
 const upload = multer({
   dest: uploadDir,
   limits: {
@@ -62,7 +97,21 @@ const upload = multer({
   }
 });
 
-// Authentication middleware
+/**
+ * Authentication middleware to protect routes
+ * 
+ * @function requireAuth
+ * @param {AuditRequest} req - Express request object with user authentication
+ * @param {Response} res - Express response object
+ * @param {Function} next - Express next middleware function
+ * @returns {void}
+ * 
+ * @description Ensures user is authenticated before accessing protected resources
+ * @httpcode {401} - Authentication required if user is not logged in
+ * 
+ * @example
+ * app.get('/api/employees', requireAuth, ...)
+ */
 const requireAuth = (req: AuditRequest, res: Response, next: any) => {
   if (!req.isAuthenticated() || !req.user) {
     return res.status(401).json({ error: 'Authentication required' });
@@ -70,6 +119,24 @@ const requireAuth = (req: AuditRequest, res: Response, next: any) => {
   next();
 };
 
+/**
+ * Role-based access control middleware
+ * 
+ * @function requireRole
+ * @param {string[]} roles - Array of allowed roles (e.g., ['admin', 'hr'])
+ * @returns {Function} Express middleware function
+ * 
+ * @description Restricts access to users with specific roles
+ * Roles:
+ * - 'admin': Full system access including deletion and system configuration
+ * - 'hr': Employee management, document upload, and reporting access
+ * - 'viewer': Read-only access for viewing employee data and reports
+ * 
+ * @httpcode {403} - Insufficient permissions if user lacks required role
+ * 
+ * @example
+ * app.post('/api/employees', requireAuth, requireRole(['admin', 'hr']), ...)
+ */
 const requireRole = (roles: string[]) => {
   return (req: AuditRequest, res: Response, next: any) => {
     if (!req.user || !roles.includes(req.user.role)) {
@@ -79,6 +146,29 @@ const requireRole = (roles: string[]) => {
   };
 };
 
+/**
+ * Register all API routes and middleware with the Express application
+ * 
+ * @async
+ * @function registerRoutes
+ * @param {Express} app - Express application instance
+ * @returns {Promise<Server>} HTTP server instance
+ * 
+ * @description
+ * Sets up the complete REST API for the HR management system including:
+ * - Rate limiting (100 requests per 15 minutes per IP)
+ * - Authentication endpoints (login, logout, register)
+ * - Employee CRUD operations
+ * - 11 entity management endpoints (education, employment, licenses, etc.)
+ * - Document management with file upload
+ * - Audit logging for compliance
+ * - Reporting and analytics endpoints
+ * - Automated cron jobs for license expiration monitoring
+ * 
+ * @example
+ * const server = await registerRoutes(app);
+ * server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+ */
 export async function registerRoutes(app: Express): Promise<Server> {
   // Apply rate limiting
   app.use('/api', limiter);
@@ -89,6 +179,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Start cron jobs
   startCronJobs();
 
+  /**
+   * GET /api/employees
+   * 
+   * @route GET /api/employees
+   * @group Employees - Employee management operations
+   * @security Session - Requires session-based cookie authentication
+   * @param {number} query.page.query - Page number (default: 1)
+   * @param {number} query.limit.query - Items per page (default: 10, max: 100)
+   * @param {string} query.search.query - Search term for filtering employees
+   * @param {string} query.department.query - Filter by department
+   * @param {string} query.status.query - Filter by status (active/inactive)
+   * @param {string} query.location.query - Filter by work location
+   * 
+   * @returns {object} 200 - Paginated list of employees with masked sensitive data
+   * @returns {Error} 401 - Authentication required
+   * @returns {Error} 500 - Server error
+   * 
+   * @example response - 200 - Success response
+   * {
+   *   "employees": [
+   *     {
+   *       "id": 1,
+   *       "firstName": "John",
+   *       "lastName": "Doe",
+   *       "workEmail": "john.doe@hospital.com",
+   *       "ssn": "***-**-1234",
+   *       "status": "active"
+   *     }
+   *   ],
+   *   "total": 50,
+   *   "page": 1,
+   *   "totalPages": 5
+   * }
+   */
   // Employee routes
   app.get('/api/employees', 
     requireAuth, 
