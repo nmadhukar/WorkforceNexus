@@ -6,8 +6,19 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Edit, Trash2, Plus } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { ArrowLeft, Edit, Trash2 } from "lucide-react";
 import type { Employee } from "@/lib/types";
+import { EducationsManager } from "@/components/entity-managers/educations-manager";
+import { EmploymentsManager } from "@/components/entity-managers/employments-manager";
+import { LicensesManager } from "@/components/entity-managers/licenses-manager";
+import { PeerReferencesManager } from "@/components/entity-managers/peer-references-manager";
+import { BoardCertificationsManager } from "@/components/entity-managers/board-certifications-manager";
+import { EmergencyContactsManager } from "@/components/entity-managers/emergency-contacts-manager";
+import { TaxFormsManager } from "@/components/entity-managers/tax-forms-manager";
+import { TrainingsManager } from "@/components/entity-managers/trainings-manager";
+import { PayerEnrollmentsManager } from "@/components/entity-managers/payer-enrollments-manager";
+import { IncidentLogsManager } from "@/components/entity-managers/incident-logs-manager";
 
 export default function EmployeeProfile() {
   const params = useParams();
@@ -16,21 +27,6 @@ export default function EmployeeProfile() {
 
   const { data: employee, isLoading, error } = useQuery<Employee>({
     queryKey: ["/api/employees", employeeId],
-    enabled: !!employeeId
-  });
-
-  const { data: educations = [] } = useQuery({
-    queryKey: ["/api/employees", employeeId, "educations"],
-    enabled: !!employeeId
-  });
-
-  const { data: stateLicenses = [] } = useQuery({
-    queryKey: ["/api/employees", employeeId, "state-licenses"],
-    enabled: !!employeeId
-  });
-
-  const { data: deaLicenses = [] } = useQuery({
-    queryKey: ["/api/employees", employeeId, "dea-licenses"],
     enabled: !!employeeId
   });
 
@@ -235,143 +231,64 @@ export default function EmployeeProfile() {
 
         {/* Additional Information Tabs */}
         <Tabs defaultValue="education" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="education">Education</TabsTrigger>
-            <TabsTrigger value="licenses">Licenses</TabsTrigger>
-            <TabsTrigger value="documents">Documents</TabsTrigger>
-            <TabsTrigger value="training">Training</TabsTrigger>
-          </TabsList>
+          <ScrollArea className="w-full">
+            <TabsList className="inline-flex h-10 items-center justify-start rounded-md bg-muted p-1 text-muted-foreground">
+              <TabsTrigger value="education">Education</TabsTrigger>
+              <TabsTrigger value="employment">Employment</TabsTrigger>
+              <TabsTrigger value="state-licenses">State Licenses</TabsTrigger>
+              <TabsTrigger value="dea-licenses">DEA Licenses</TabsTrigger>
+              <TabsTrigger value="certifications">Board Certifications</TabsTrigger>
+              <TabsTrigger value="trainings">Training</TabsTrigger>
+              <TabsTrigger value="references">References</TabsTrigger>
+              <TabsTrigger value="emergency">Emergency Contacts</TabsTrigger>
+              <TabsTrigger value="tax">Tax Forms</TabsTrigger>
+              <TabsTrigger value="payer">Payer Enrollments</TabsTrigger>
+              <TabsTrigger value="incidents">Incident Logs</TabsTrigger>
+            </TabsList>
+          </ScrollArea>
           
           <TabsContent value="education">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Education History</CardTitle>
-                <Button size="sm" data-testid="button-add-education">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Education
-                </Button>
-              </CardHeader>
-              <CardContent>
-                {educations.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-4">
-                    No education records found
-                  </p>
-                ) : (
-                  <div className="space-y-4">
-                    {educations.map((education: any, index: number) => (
-                      <div key={index} className="border border-border rounded-lg p-4">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <h5 className="font-medium text-foreground">
-                              {education.degree || "Degree not specified"}
-                            </h5>
-                            <p className="text-muted-foreground">
-                              {education.schoolInstitution || "Institution not specified"}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {formatDate(education.startDate)} - {formatDate(education.endDate)}
-                            </p>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Button variant="ghost" size="sm">
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm" className="text-destructive">
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <EducationsManager employeeId={employeeId} />
           </TabsContent>
           
-          <TabsContent value="licenses">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Licenses & Certifications</CardTitle>
-                <Button size="sm" data-testid="button-add-license">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add License
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  {/* State Licenses */}
-                  <div>
-                    <h6 className="font-medium text-foreground mb-3">State Licenses</h6>
-                    {stateLicenses.length === 0 ? (
-                      <p className="text-muted-foreground text-sm">No state licenses found</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {stateLicenses.map((license: any, index: number) => (
-                          <div key={index} className="flex items-center justify-between p-3 border border-border rounded">
-                            <div>
-                              <p className="font-medium">{license.licenseNumber}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {license.state} • Expires: {formatDate(license.expirationDate)}
-                              </p>
-                            </div>
-                            <Badge variant={license.status === 'active' ? 'default' : 'secondary'}>
-                              {license.status || 'Active'}
-                            </Badge>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* DEA Licenses */}
-                  <div>
-                    <h6 className="font-medium text-foreground mb-3">DEA Licenses</h6>
-                    {deaLicenses.length === 0 ? (
-                      <p className="text-muted-foreground text-sm">No DEA licenses found</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {deaLicenses.map((license: any, index: number) => (
-                          <div key={index} className="flex items-center justify-between p-3 border border-border rounded">
-                            <div>
-                              <p className="font-medium">{license.licenseNumber}</p>
-                              <p className="text-sm text-muted-foreground">
-                                Expires: {formatDate(license.expirationDate)}
-                              </p>
-                            </div>
-                            <Badge variant={license.status === 'active' ? 'default' : 'secondary'}>
-                              {license.status || 'Active'}
-                            </Badge>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          <TabsContent value="employment">
+            <EmploymentsManager employeeId={employeeId} />
           </TabsContent>
           
-          <TabsContent value="documents">
-            <Card>
-              <CardHeader>
-                <CardTitle>Documents</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">Documents management coming soon...</p>
-              </CardContent>
-            </Card>
+          <TabsContent value="state-licenses">
+            <LicensesManager employeeId={employeeId} type="state" />
           </TabsContent>
           
-          <TabsContent value="training">
-            <Card>
-              <CardHeader>
-                <CardTitle>Training & CEUs</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">Training records coming soon...</p>
-              </CardContent>
-            </Card>
+          <TabsContent value="dea-licenses">
+            <LicensesManager employeeId={employeeId} type="dea" />
+          </TabsContent>
+          
+          <TabsContent value="certifications">
+            <BoardCertificationsManager employeeId={employeeId} />
+          </TabsContent>
+          
+          <TabsContent value="trainings">
+            <TrainingsManager employeeId={employeeId} />
+          </TabsContent>
+          
+          <TabsContent value="references">
+            <PeerReferencesManager employeeId={employeeId} />
+          </TabsContent>
+          
+          <TabsContent value="emergency">
+            <EmergencyContactsManager employeeId={employeeId} />
+          </TabsContent>
+          
+          <TabsContent value="tax">
+            <TaxFormsManager employeeId={employeeId} />
+          </TabsContent>
+          
+          <TabsContent value="payer">
+            <PayerEnrollmentsManager employeeId={employeeId} />
+          </TabsContent>
+          
+          <TabsContent value="incidents">
+            <IncidentLogsManager employeeId={employeeId} />
           </TabsContent>
         </Tabs>
       </div>

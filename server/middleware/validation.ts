@@ -37,6 +37,68 @@ export const validateId = (): ValidationChain[] => [
   param('id').isInt({ min: 1 }).withMessage('ID must be a positive integer')
 ];
 
+// Employment validation
+export const validateEmployment = (): ValidationChain[] => [
+  body('employer').optional().isLength({ min: 1 }).withMessage('Employer cannot be empty'),
+  body('position').optional().isLength({ min: 1 }).withMessage('Position cannot be empty'),
+  body('startDate').optional().isDate().withMessage('Valid start date required'),
+  body('endDate').optional().isDate().withMessage('Valid end date required')
+];
+
+// Peer Reference validation
+export const validatePeerReference = (): ValidationChain[] => [
+  body('referenceName').optional().isLength({ min: 1 }).withMessage('Reference name cannot be empty'),
+  body('contactInfo').optional().isLength({ min: 1 }).withMessage('Contact info cannot be empty'),
+  body('relationship').optional().isLength({ min: 1 }).withMessage('Relationship cannot be empty')
+];
+
+// Board Certification validation
+export const validateBoardCertification = (): ValidationChain[] => [
+  body('boardName').optional().isLength({ min: 1 }).withMessage('Board name cannot be empty'),
+  body('certification').optional().isLength({ min: 1 }).withMessage('Certification cannot be empty'),
+  body('issueDate').optional().isDate().withMessage('Valid issue date required'),
+  body('expirationDate').optional().isDate().withMessage('Valid expiration date required')
+];
+
+// Emergency Contact validation
+export const validateEmergencyContact = (): ValidationChain[] => [
+  body('name').notEmpty().withMessage('Contact name is required'),
+  body('relationship').notEmpty().withMessage('Relationship is required'),
+  body('phone').notEmpty().withMessage('Phone number is required'),
+  body('email').optional().isEmail().withMessage('Valid email required')
+];
+
+// Tax Form validation
+export const validateTaxForm = (): ValidationChain[] => [
+  body('formType').notEmpty().withMessage('Form type is required'),
+  body('year').isInt({ min: 1900, max: 2100 }).withMessage('Valid year required'),
+  body('status').optional().isLength({ min: 1 }).withMessage('Status cannot be empty')
+];
+
+// Training validation
+export const validateTraining = (): ValidationChain[] => [
+  body('trainingName').notEmpty().withMessage('Training name is required'),
+  body('provider').optional().isLength({ min: 1 }).withMessage('Provider cannot be empty'),
+  body('completionDate').optional().isDate().withMessage('Valid completion date required'),
+  body('expirationDate').optional().isDate().withMessage('Valid expiration date required')
+];
+
+// Payer Enrollment validation
+export const validatePayerEnrollment = (): ValidationChain[] => [
+  body('payerName').notEmpty().withMessage('Payer name is required'),
+  body('enrollmentStatus').optional().isLength({ min: 1 }).withMessage('Status cannot be empty'),
+  body('effectiveDate').optional().isDate().withMessage('Valid effective date required'),
+  body('terminationDate').optional().isDate().withMessage('Valid termination date required')
+];
+
+// Incident Log validation
+export const validateIncidentLog = (): ValidationChain[] => [
+  body('incidentDate').notEmpty().isDate().withMessage('Incident date is required'),
+  body('incidentType').notEmpty().withMessage('Incident type is required'),
+  body('description').notEmpty().withMessage('Description is required'),
+  body('severity').optional().isIn(['low', 'medium', 'high', 'critical']).withMessage('Invalid severity level')
+];
+
 export const handleValidationErrors = (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
