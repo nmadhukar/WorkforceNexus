@@ -1,12 +1,9 @@
 import { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
+import { User } from "@shared/schema";
 
 export interface AuditRequest extends Request {
-  user?: {
-    id: number;
-    username: string;
-    role: string;
-  };
+  user?: User;
   auditData?: {
     tableName: string;
     recordId: number;

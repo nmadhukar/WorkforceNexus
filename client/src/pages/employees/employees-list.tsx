@@ -9,16 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmployeesTable } from "@/components/tables/employees-table";
 import { SearchFilters } from "@/components/search-filters";
 import { Plus, Search } from "lucide-react";
-
-interface Employee {
-  id: number;
-  firstName: string;
-  lastName: string;
-  jobTitle?: string;
-  workEmail: string;
-  status: string;
-  npiNumber?: string;
-}
+import { Employee } from "@shared/schema";
 
 interface EmployeesResponse {
   employees: Employee[];
