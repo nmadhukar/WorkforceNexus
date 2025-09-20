@@ -119,13 +119,14 @@ class S3Service {
         credentials: {
           accessKeyId,
           secretAccessKey
-        }
+        },
+        // Force path style to handle bucket endpoint issues
+        forcePathStyle: true
       };
 
       // Add endpoint for S3-compatible services (e.g., MinIO, DigitalOcean Spaces)
       if (endpoint) {
         config.endpoint = endpoint;
-        config.forcePathStyle = true;
       }
 
       this.client = new S3Client(config);
@@ -135,9 +136,14 @@ class S3Service {
       this.checkBucketAccess().then(isAccessible => {
         this.isConfigured = isAccessible;
         if (isAccessible) {
-          console.log(`S3 Service: Initialized successfully with bucket ${bucketName}`);
+          console.log(`S3 Service: ✅ Initialized successfully with bucket ${bucketName}`);
         } else {
-          console.error(`S3 Service: Bucket ${bucketName} is not accessible. Using local storage fallback.`);
+          console.error(`S3 Service: ⚠️ Bucket ${bucketName} is not accessible. Using local storage fallback.`);
+          console.error(`S3 Service: This could be due to:`);
+          console.error(`  1. Incorrect AWS_REGION (should be the region where your bucket is located)`);
+          console.error(`  2. Missing IAM permissions for the bucket`);
+          console.error(`  3. Bucket doesn't exist or wrong bucket name`);
+          console.error(`S3 Service: Please check the logs above for more specific error details.`);
         }
       });
     } catch (error) {
@@ -188,12 +194,138 @@ class S3Service {
       
       await this.client.send(command);
       return true;
-    } catch (error) {
+    } catch (error: any) {
       if (error instanceof S3ServiceException) {
         console.error(`S3 Service: Bucket access check failed - ${error.name}: ${error.message}`);
+        
+        // Handle PermanentRedirect error by trying to parse the correct endpoint
+        if (error.name === 'PermanentRedirect' && error.message) {
+          console.error('S3 Service: Bucket requires specific endpoint. Error details:', {
+            bucket: this.bucketName,
+            currentRegion: process.env.AWS_REGION || 'us-east-1',
+            errorMessage: error.message,
+            errorCode: error.$metadata?.httpStatusCode,
+            responseHeaders: error.$response?.headers
+          });
+          
+          // Check response headers for x-amz-bucket-region
+          const bucketRegion = error.$response?.headers?.['x-amz-bucket-region'] || 
+                              error.$metadata?.headers?.['x-amz-bucket-region'];
+          
+          if (bucketRegion && bucketRegion !== (process.env.AWS_REGION || 'us-east-1')) {
+            console.log(`S3 Service: Bucket '${this.bucketName}' is in region: ${bucketRegion}`);
+            console.log(`S3 Service: Current configured region: ${process.env.AWS_REGION || 'us-east-1'}`);
+            console.log(`S3 Service: Attempting to reinitialize client with correct region: ${bucketRegion}`);
+            return await this.retryWithRegion(bucketRegion);
+          }
+          
+          // Fallback: Try to extract the correct endpoint from the error message
+          const endpointMatch = error.message.match(/endpoint:\s*([\w.-]+\.amazonaws\.com)/i);
+          if (endpointMatch && endpointMatch[1]) {
+            console.log(`S3 Service: Suggested endpoint from error: ${endpointMatch[1]}`);
+            
+            // Try to extract region from endpoint
+            const regionMatch = endpointMatch[1].match(/s3\.([a-z]{2}-[a-z]+-\d+)\.amazonaws\.com/i) ||
+                              endpointMatch[1].match(/([a-z]{2}-[a-z]+-\d+)\.amazonaws\.com/i);
+            if (regionMatch && regionMatch[1]) {
+              const detectedRegion = regionMatch[1];
+              console.log(`S3 Service: Detected region from endpoint: ${detectedRegion}`);
+              if (detectedRegion !== (process.env.AWS_REGION || 'us-east-1')) {
+                console.log(`S3 Service: Attempting to reinitialize client with region ${detectedRegion}`);
+                return await this.retryWithRegion(detectedRegion);
+              }
+            }
+          }
+          
+          // If we can't determine the region, try common regions
+          const commonRegions = ['us-west-2', 'us-west-1', 'eu-west-1', 'ap-southeast-1'];
+          const currentRegion = process.env.AWS_REGION || 'us-east-1';
+          
+          for (const region of commonRegions) {
+            if (region !== currentRegion) {
+              console.log(`S3 Service: Trying common region: ${region}`);
+              const success = await this.retryWithRegion(region);
+              if (success) {
+                return true;
+              }
+            }
+          }
+        } else if (error.name === 'NoSuchBucket') {
+          console.error(`S3 Service: Bucket '${this.bucketName}' does not exist`);
+        } else if (error.name === 'AccessDenied' || error.name === 'Forbidden') {
+          console.error(`S3 Service: Access denied to bucket '${this.bucketName}'. Check IAM permissions.`);
+        }
       } else {
         console.error('S3 Service: Bucket access check failed:', error);
       }
+      return false;
+    }
+  }
+
+  /**
+   * Retry bucket access with a different region
+   * @param {string} region - AWS region to try
+   * @returns {Promise<boolean>} True if bucket is accessible with new region
+   * @private
+   */
+  private async retryWithRegion(region: string): Promise<boolean> {
+    const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+    const endpoint = process.env.AWS_S3_ENDPOINT;
+
+    if (!accessKeyId || !secretAccessKey || !this.bucketName) {
+      return false;
+    }
+
+    // Create a new client with the correct region - moved outside try block
+    const config: any = {
+      region,
+      credentials: {
+        accessKeyId,
+        secretAccessKey
+      },
+      forcePathStyle: true
+    };
+
+    if (endpoint) {
+      config.endpoint = endpoint;
+    }
+
+    const tempClient = new S3Client(config);
+
+    try {
+      // Test with the new client
+      const command = new ListObjectsV2Command({
+        Bucket: this.bucketName,
+        MaxKeys: 1
+      });
+      
+      await tempClient.send(command);
+      
+      // If successful, update the main client
+      this.client = tempClient;
+      console.log(`S3 Service: Successfully connected to bucket '${this.bucketName}' in region ${region}`);
+      console.log(`S3 Service: IMPORTANT: Update AWS_REGION environment variable to '${region}' for optimal performance`);
+      
+      return true;
+    } catch (error: any) {
+      if (error instanceof S3ServiceException) {
+        if (error.name === 'AccessDenied') {
+          console.error(`S3 Service: Access denied to bucket '${this.bucketName}' in region ${region}.`);
+          console.error(`S3 Service: The bucket exists in region '${region}' but your AWS credentials don't have permission to access it.`);
+          console.error(`S3 Service: Please check your IAM permissions for the bucket 'employeedocs'.`);
+          
+          // Even though we have AccessDenied, we now know the correct region
+          // Update the client with correct region for future operations that might work
+          this.client = tempClient;
+          console.log(`S3 Service: Client updated with correct region '${region}', but access is currently denied.`);
+          console.log(`S3 Service: RECOMMENDATION: Update AWS_REGION environment variable to '${region}'`);
+          
+          // Return false since we don't have actual access
+          return false;
+        }
+      }
+      console.error(`S3 Service: Retry with region ${region} failed:`, error);
       return false;
     }
   }
