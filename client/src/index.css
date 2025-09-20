@@ -79,6 +79,25 @@
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }
+  
+  /* Professional scrollbar styles */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: hsl(215.4, 16.3%, 46.9%, 0.3);
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(215.4, 16.3%, 46.9%, 0.5);
+  }
 }
 
 /* Custom HR Management Styles */
@@ -141,4 +160,150 @@
 
 .upload-zone.dragover {
   @apply border-primary bg-primary;
+}
+
+/* Grid Pattern Background */
+.bg-grid-pattern {
+  background-image: 
+    linear-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Enhanced Card Hover Effects */
+@keyframes subtle-glow {
+  0%, 100% {
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  }
+  50% {
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  }
+}
+
+/* Smooth Animations */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-in {
+  animation: fade-in-up 0.3s ease-out;
+}
+
+/* Professional Loading Spinner */
+@keyframes professional-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Print Styles */
+@media print {
+  /* Hide navigation and action buttons */
+  nav,
+  button,
+  .tabs-list,
+  [data-testid="button-edit"],
+  [data-testid="button-print"],
+  [data-testid="button-export"],
+  [data-testid="button-back"],
+  aside {
+    display: none !important;
+  }
+  
+  /* Show all content without scrolling */
+  .scroll-area,
+  [data-radix-scroll-area] {
+    height: auto !important;
+    overflow: visible !important;
+  }
+  
+  /* Adjust card layouts for print */
+  .grid {
+    display: block !important;
+  }
+  
+  .card {
+    page-break-inside: avoid;
+    margin-bottom: 1rem;
+    box-shadow: none !important;
+    border: 1px solid #e5e5e5 !important;
+  }
+  
+  /* Ensure text is black for printing */
+  * {
+    color: black !important;
+    background: white !important;
+  }
+  
+  /* Show tab content without tabs */
+  [role="tabpanel"] {
+    display: block !important;
+    opacity: 1 !important;
+  }
+  
+  /* Professional header for printed pages */
+  @page {
+    margin: 0.75in;
+  }
+  
+  /* Hide gradient backgrounds */
+  .bg-gradient-to-br,
+  .bg-gradient-to-r,
+  .bg-grid-pattern {
+    background: none !important;
+  }
+}
+
+/* Responsive Improvements */
+@media (max-width: 768px) {
+  .hero-section {
+    padding: 1.5rem;
+  }
+  
+  .avatar-large {
+    width: 6rem;
+    height: 6rem;
+  }
+  
+  [role="tablist"] {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Professional Badge Animations */
+@keyframes badge-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+/* Improved Focus States */
+:focus-visible {
+  outline: 2px solid hsl(217, 71%, 53%);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+/* Professional Dividers */
+.divider-gradient {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.1), transparent);
 }
