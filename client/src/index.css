@@ -80,6 +80,11 @@
     @apply font-sans antialiased bg-background text-foreground;
   }
   
+  /* Prevent horizontal scrolling only where needed */
+  body {
+    max-width: 100vw;
+  }
+  
   /* Professional scrollbar styles */
   ::-webkit-scrollbar {
     width: 8px;
@@ -111,6 +116,35 @@
 
 .profile-tab.active {
   @apply border-b-2 border-primary text-primary;
+}
+
+/* Ensure forms don't overflow */
+.form-container {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Apply overflow control to specific containers */
+.page-wrapper {
+  overflow-x: hidden;
+}
+
+.employee-form-wrapper {
+  overflow-x: hidden;
+  width: 100%;
+}
+
+/* Responsive step navigation */
+@media (max-width: 768px) {
+  .step-navigation {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .step-indicator-text {
+    display: none;
+  }
 }
 
 /* Table Styles */
@@ -177,6 +211,48 @@
   }
   50% {
     box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  }
+}
+
+/* Professional form field styling */
+.form-field-group {
+  @apply space-y-2;
+}
+
+.form-field-group label {
+  @apply text-sm font-medium text-foreground;
+}
+
+.form-field-group input,
+.form-field-group select,
+.form-field-group textarea {
+  @apply w-full transition-all duration-200;
+}
+
+.form-field-group input:focus,
+.form-field-group select:focus,
+.form-field-group textarea:focus {
+  @apply ring-2 ring-offset-0 border-primary;
+  --tw-ring-color: hsl(217 71% 53% / 0.2);
+}
+
+/* Improved card styling */
+.card-professional {
+  @apply bg-card border-0 shadow-sm hover:shadow-md transition-shadow duration-200;
+}
+
+/* Better responsive breakpoints */
+@media (max-width: 640px) {
+  .grid-cols-1 {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .button-group {
+    @apply flex-col w-full;
+  }
+  
+  .button-group > * {
+    @apply w-full;
   }
 }
 

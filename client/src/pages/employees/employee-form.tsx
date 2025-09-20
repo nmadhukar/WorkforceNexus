@@ -17,8 +17,11 @@ import { EmployeeIncidents } from "@/components/forms/employee-incidents";
 import { EmployeeReview } from "@/components/forms/employee-review";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, User, Building2, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 interface EmployeeFormData {
   // Personal Info
@@ -443,37 +446,107 @@ export default function EmployeeForm() {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
-        <div className="flex items-center space-x-4">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => navigate("/employees")}
-            data-testid="button-back"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold text-foreground" data-testid="text-form-title">
-              {isEdit ? "Edit Employee" : "Add New Employee"}
-            </h1>
-            <p className="text-muted-foreground">
-              {isEdit ? "Update employee information" : "Complete all steps to add a new medical staff member"}
-            </p>
-          </div>
-        </div>
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Enhanced Header Section */}
+        <Card className="border-0 shadow-sm bg-gradient-to-r from-primary/5 via-background to-secondary/5">
+          <CardContent className="p-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              {/* Left Side - Navigation & Title */}
+              <div className="flex flex-col space-y-4">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => navigate("/employees")}
+                  data-testid="button-back"
+                  className="w-fit"
+                >
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Back to Employees
+                </Button>
+                <div>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="p-2 bg-primary/10 rounded-lg">
+                      {isEdit ? <User className="w-6 h-6 text-primary" /> : <Building2 className="w-6 h-6 text-primary" />}
+                    </div>
+                    <h1 className="text-2xl md:text-3xl font-bold text-foreground" data-testid="text-form-title">
+                      {isEdit ? 
+                        `Edit: ${formData.firstName || ''} ${formData.lastName || 'Employee'}` : 
+                        "Add New Employee"
+                      }
+                    </h1>
+                  </div>
+                  <p className="text-muted-foreground ml-11">
+                    {isEdit ? 
+                      "Update employee information and related records" : 
+                      "Complete all steps to add a new medical staff member"
+                    }
+                  </p>
+                </div>
+              </div>
+              
+              {/* Right Side - Quick Actions & Status */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                {isEdit && (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="bg-background">
+                      ID: #{params.id}
+                    </Badge>
+                    {formData.status && (
+                      <Badge 
+                        variant={formData.status === 'active' ? 'default' : 'secondary'}
+                        className={cn(
+                          formData.status === 'active' && "bg-secondary text-secondary-foreground",
+                          formData.status === 'inactive' && "bg-destructive text-destructive-foreground"
+                        )}
+                      >
+                        {formData.status}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-testid="button-cancel"
+                    onClick={() => {
+                      if (confirm(isEdit ? "Discard changes?" : "Cancel employee creation?")) {
+                        navigate("/employees");
+                      }
+                    }}
+                  >
+                    <X className="w-4 h-4 mr-2" />
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    data-testid="button-save-draft"
+                    onClick={handleSubmit}
+                    disabled={createMutation.isPending || updateMutation.isPending}
+                    className="bg-gradient-to-r from-primary to-primary/90"
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    {createMutation.isPending || updateMutation.isPending ? "Saving..." : "Save Draft"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-        <MultiStepForm
-          steps={steps}
-          currentStep={currentStep}
-          onNext={handleNext}
-          onPrevious={handlePrevious}
-          onSubmit={handleSubmit}
-          isSubmitting={createMutation.isPending || updateMutation.isPending}
-          canNext={true} // Add validation logic here
-          data-testid="multi-step-form"
-        />
+        {/* Form Container with Constrained Width */}
+        <div className="w-full employee-form-wrapper">
+          <MultiStepForm
+            steps={steps}
+            currentStep={currentStep}
+            onNext={handleNext}
+            onPrevious={handlePrevious}
+            onSubmit={handleSubmit}
+            isSubmitting={createMutation.isPending || updateMutation.isPending}
+            canNext={true} // Add validation logic here
+            data-testid="multi-step-form"
+          />
+        </div>
       </div>
     </MainLayout>
   );
