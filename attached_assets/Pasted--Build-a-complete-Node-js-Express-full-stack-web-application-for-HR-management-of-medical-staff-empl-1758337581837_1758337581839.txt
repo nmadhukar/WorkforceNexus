@@ -1,0 +1,313 @@
+"Build a complete Node.js Express full-stack web application for HR management of medical staff employees. This app needs to be user-friendly for non-technical HR personnel and as production-ready as possible, incorporating security, auditability, and additional HR features.
+DATABASE SETUP:
+First, create a PostgreSQL database and run this exact enhanced schema with additional tables for real-world HR ops (emergency contacts, tax forms like I-9/W-4, trainings/CEUs, payer enrollments, incident logs), improved constraints, and an audits table for tracking changes. Also include a users table for HR accounts with roles.
+sql-- Users table for HR authentication and RBAC
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,  -- Hashed passwords only
+    role VARCHAR(20) NOT NULL DEFAULT 'hr',  -- e.g., 'admin', 'hr', 'viewer'
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Core Employees table with enhanced constraints
+CREATE TABLE employees (
+    id SERIAL PRIMARY KEY,
+    first_name VARCHAR(50) NOT NULL,
+    middle_name VARCHAR(50),
+    last_name VARCHAR(50) NOT NULL,
+    date_of_birth DATE CHECK (date_of_birth < CURRENT_DATE),
+    personal_email VARCHAR(100) UNIQUE,
+    work_email VARCHAR(100) UNIQUE NOT NULL,
+    cell_phone VARCHAR(20),
+    work_phone VARCHAR(20),
+    home_address1 VARCHAR(100),
+    home_address2 VARCHAR(100),
+    home_city VARCHAR(50),
+    home_state VARCHAR(50),
+    home_zip VARCHAR(10),
+    gender VARCHAR(20),
+    birth_city VARCHAR(50),
+    birth_state VARCHAR(50),
+    birth_country VARCHAR(50),
+    drivers_license_number VARCHAR(50),
+    dl_state_issued VARCHAR(50),
+    dl_issue_date DATE,
+    dl_expiration_date DATE,
+    ssn VARCHAR(20),  -- Encrypt in app
+    npi_number VARCHAR(20) UNIQUE,
+    enumeration_date DATE,
+    job_title VARCHAR(100),
+    work_location VARCHAR(100),
+    qualification TEXT,
+    medical_license_number VARCHAR(50),
+    substance_use_license_number VARCHAR(50),
+    substance_use_qualification TEXT,
+    mental_health_license_number VARCHAR(50),
+    mental_health_qualification TEXT,
+    medicaid_number VARCHAR(50),
+    medicare_ptan_number VARCHAR(50),
+    caqh_provider_id VARCHAR(50),
+    caqh_issue_date DATE,
+    caqh_last_attestation_date DATE,
+    caqh_enabled BOOLEAN DEFAULT FALSE,
+    caqh_reattestation_due_date DATE,
+    caqh_login_id VARCHAR(50),
+    caqh_password VARCHAR(100),  -- Encrypt in app
+    nppes_login_id VARCHAR(50),
+    nppes_password VARCHAR(100)  -- Encrypt in app
+);
+
+-- Education history (multiple per employee)
+CREATE TABLE educations (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+    education_type VARCHAR(50),
+    school_institution VARCHAR(100),
+    degree VARCHAR(50),
+    specialty_major VARCHAR(100),
+    start_date DATE,
+    end_date DATE CHECK (end_date > start_date)
+);
+
+-- Employment history (multiple per employee)
+CREATE TABLE employments (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+    employer VARCHAR(100),
+    position VARCHAR(100),
+    start_date DATE,
+    end_date DATE,
+    description TEXT
+);
+
+-- Peer references (multiple per employee)
+CREATE TABLE peer_references (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+    reference_name VARCHAR(100),
+    contact_info VARCHAR(100),
+    relationship VARCHAR(100),
+    comments TEXT
+);
+
+-- State licenses (multiple per employee)
+CREATE TABLE state_licenses (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+    license_number VARCHAR(50) NOT NULL,
+    state VARCHAR(50) NOT NULL,
+    issue_date DATE,
+    expiration_date DATE CHECK (expiration_date > issue_date),
+    status VARCHAR(50)
+);
+
+-- DEA licenses (multiple per employee)
+CREATE TABLE dea_licenses (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+    license_number VARCHAR(50) NOT NULL,
+    issue_date DATE,
+    expiration_date DATE CHECK (expiration_date > issue_date),
+    status VARCHAR(50)
+);
+
+-- Board certifications (multiple per employee)
+CREATE TABLE board_certifications (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+    board_name VARCHAR(100),
+    certification VARCHAR(100),
+    issue_date DATE,
+    expiration_date DATE CHECK (expiration_date > issue_date),
+    status VARCHAR(50)
+);
+
+-- Documents (multiple per employee)
+CREATE TABLE documents (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+    document_type VARCHAR(100) NOT NULL,
+    file_path VARCHAR(255),
+    signed_date DATE,
+    notes TEXT
+);
+
+-- New: Emergency contacts (multiple per employee)
+CREATE TABLE emergency_contacts (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    relationship VARCHAR(50),
+    phone VARCHAR(20),
+    email VARCHAR(100)
+);
+
+-- New: Tax forms (e.g., I-9, W-4; multiple per employee)
+CREATE TABLE tax_forms (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+    form_type VARCHAR(50) NOT NULL,  -- e.g., 'I-9', 'W-4'
+    file_path VARCHAR(255),
+    submitted_date DATE,
+    status VARCHAR(50)
+);
+
+-- New: Trainings/CEUs (multiple per employee)
+CREATE TABLE trainings (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+    training_type VARCHAR(100),
+    provider VARCHAR(100),
+    completion_date DATE,
+    expiration_date DATE,
+    credits DECIMAL(5,2),
+    certificate_path VARCHAR(255)
+);
+
+-- New: Payer enrollments (multiple per employee)
+CREATE TABLE payer_enrollments (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+    payer_name VARCHAR(100),  -- e.g., 'Medicare', 'Aetna'
+    enrollment_id VARCHAR(50),
+    enrollment_date DATE,
+    status VARCHAR(50)
+);
+
+-- New: Incident logs (multiple per employee)
+CREATE TABLE incident_logs (
+    id SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+    incident_date DATE NOT NULL,
+    description TEXT,
+    resolution TEXT,
+    reported_by VARCHAR(50)
+);
+
+-- Audits table for tracking changes
+CREATE TABLE audits (
+    id SERIAL PRIMARY KEY,
+    table_name VARCHAR(50) NOT NULL,
+    record_id INTEGER NOT NULL,
+    action VARCHAR(20) NOT NULL,  -- e.g., 'INSERT', 'UPDATE', 'DELETE'
+    changed_by INTEGER REFERENCES users(id),
+    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    old_data JSONB,
+    new_data JSONB
+);
+
+-- Enhanced Performance indexes
+CREATE INDEX idx_employees_work_email ON employees(work_email);
+CREATE INDEX idx_dl_expiration ON employees(dl_expiration_date);
+CREATE INDEX idx_caqh_reattestation ON employees(caqh_reattestation_due_date);
+CREATE INDEX idx_state_licenses_expiration ON state_licenses(expiration_date);
+CREATE INDEX idx_dea_licenses_expiration ON dea_licenses(expiration_date);
+CREATE INDEX idx_board_certifications_expiration ON board_certifications(expiration_date);
+CREATE INDEX idx_trainings_expiration ON trainings(expiration_date);
+CREATE INDEX idx_audits_table_record ON audits(table_name, record_id);
+CREATE INDEX idx_audits_changed_at ON audits(changed_at);
+TECHNICAL REQUIREMENTS:
+
+Use Node.js with Express.js
+Use PostgreSQL with the 'pg' library
+Use Knex.js for database migrations and seeding (include migration files to apply the schema and seed sample data)
+Use bcrypt for hashing passwords (never store plaintext credentials like passwords or SSN—encrypt SSN with a key from env vars)
+Use Multer for file uploads (documents, certificates)
+Create an 'uploads' folder for storing files securely
+Use environment variables (DATABASE_URL from Replit, add SECRET_KEY for encryption/JWT)
+Implement background jobs with node-cron for checking expiring items (e.g., daily check for licenses expiring in 30 days and log/email alerts—use console.log for alerts in Replit)
+Add Jest for basic unit/integration tests (test auth, CRUD, reports)
+Make it deployable on Replit
+
+USER INTERFACE REQUIREMENTS:
+Create a simple, professional web interface with Bootstrap for styling. Include these main sections:
+
+HR Dashboard (after login):
+
+Navigation menu with: Employees, Documents, Reports, Settings, Audits
+Welcome message with current date
+Quick stats: Total employees, documents pending, licenses expiring soon (from background job)
+
+
+Employees Management:
+
+List View: Paginated table (10 per page) showing all employees (Name, Job Title, Work Email, Status) with search/filtering (by name, job, location)
+Add New Employee: Multi-step form covering all fields, including new sections for emergency contacts, tax forms, etc.
+
+Step 1: Personal Info (name, DOB, contact, address)
+Step 2: Professional Info (job title, licenses, credentials)
+Step 3: Login Credentials (CAQH, NPPES—encrypt on save)
+Step 4: Additional (emergency contacts, trainings)
+Step 5: Review & Submit
+
+
+Edit Employee: Similar form pre-filled, with audit logging on changes
+Employee Profile: Complete view with all related data, masked sensitive fields (e.g., SSN as ****-**-1234)
+
+
+Documents Management:
+
+Upload documents with predefined types (as before, plus any for new tables like tax forms, certificates)
+View/download/delete with confirmation
+Track missing required documents per employee
+
+
+Related Data Management:
+
+Add/Edit multiples for all tables: Educations, Employments, References, Licenses, Emergency Contacts, Tax Forms, Trainings, Payer Enrollments, Incident Logs
+Proper date fields for expirations
+
+
+Reports Section:
+
+Expiring Items Report: Licenses, certifications, trainings, DL, CAQH expiring in 30/60/90 days (paginated, filterable)
+Document Compliance Report: Employees missing required docs/tax forms
+Audit Log Report: Changes history, filter by user/date/table
+Employee Directory: Printable list with contacts
+Export to CSV: Secure downloads (no sensitive data exposed), hardened against injection
+All reports searchable, filterable, paginated
+
+
+
+SECURITY & AUTHENTICATION:
+
+Proper auth with JWT (use jsonwebtoken) and sessions (express-session)
+RBAC: Admins can manage users, HR can edit employees, viewers read-only
+Hash all passwords with bcrypt
+Encrypt sensitive fields (SSN, caqh_password, etc.) using crypto module with SECRET_KEY
+Input validation/sanitization (use express-validator)
+Rate limiting (express-rate-limit)
+Audit all CRUD operations (insert into audits table with triggers or in code)
+Mask sensitive data in UI
+
+ROUTES TO IMPLEMENT:
+
+Auth: POST /login, POST /logout, POST /register (for admins)
+Protected routes with middleware for auth/RBAC
+GET /employees (paginated list)
+GET /employees/new
+POST /employees
+GET /employees/:id
+PUT /employees/:id
+DELETE /employees/:id (with audit)
+Similar for all related tables (e.g., POST /employees/:id/emergency-contacts)
+POST /upload/:type (documents, etc.)
+GET /reports/expiring (with params for days)
+GET /reports/audits
+GET /export/:report-type (CSV)
+Background job route: GET /cron/check-expirations (manual trigger)
+
+MAKE IT HR-FRIENDLY & PRODUCTION-READY:
+
+Clear navigation, form validation with errors
+Confirmation dialogs, loading spinners
+Mobile-responsive
+Search/filter/pagination everywhere
+Print-friendly reports
+Include DB migrations (knex migrate:latest on startup)
+Seed sample data (3 employees with relations)
+Basic tests (Jest: auth, add employee, report query)
+Error handling/logging
+
+Please build the complete application with all database tables, migrations, backend routes, frontend pages, security, and tests. Make it production-ready for Replit deployment. Include sample data for testing."
