@@ -501,3 +501,95 @@ export type IncidentLog = typeof incidentLogs.$inferSelect;
 export type InsertIncidentLog = z.infer<typeof insertIncidentLogSchema>;
 export type Audit = typeof audits.$inferSelect;
 export type InsertAudit = z.infer<typeof insertAuditSchema>;
+
+/**
+ * API KEYS TABLE
+ * 
+ * Manages API keys for external application authentication.
+ * Provides secure token-based access as an alternative to session authentication.
+ * Supports key rotation, permission scopes, and usage tracking for security.
+ */
+export const apiKeys = pgTable("api_keys", {
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  name: varchar("name", { length: 100 }).notNull(), // Friendly name for the API key
+  keyHash: varchar("key_hash", { length: 255 }).notNull(), // Hashed version of the API key (bcrypt)
+  keyPrefix: varchar("key_prefix", { length: 16 }).notNull().unique(), // First 16 chars of key for identification (unique for collision prevention)
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(), // Owner of the API key
+  permissions: jsonb("permissions").notNull().default([]), // Array of allowed endpoints/scopes
+  lastUsedAt: timestamp("last_used_at"), // Track last usage timestamp
+  expiresAt: timestamp("expires_at").notNull(), // Key expiration date
+  createdAt: timestamp("created_at").defaultNow().notNull(), // Key creation timestamp
+  revokedAt: timestamp("revoked_at"), // Soft delete timestamp (null if active)
+  environment: varchar("environment", { length: 20 }).notNull().default("live"), // live or test
+  rateLimitPerHour: integer("rate_limit_per_hour").default(1000), // Per-key rate limiting
+  metadata: jsonb("metadata") // Additional metadata (IP restrictions, etc.)
+}, (table) => ({
+  userIdx: index("idx_api_keys_user").on(table.userId),
+  keyPrefixIdx: index("idx_api_keys_prefix").on(table.keyPrefix),
+  expiresAtIdx: index("idx_api_keys_expires").on(table.expiresAt),
+  revokedAtIdx: index("idx_api_keys_revoked").on(table.revokedAt)
+}));
+
+/**
+ * API KEY ROTATIONS TABLE
+ * 
+ * Tracks API key rotation history for security auditing.
+ * Maintains a log of all key rotations including automatic and manual rotations.
+ * Supports grace periods where both old and new keys can work temporarily.
+ */
+export const apiKeyRotations = pgTable("api_key_rotations", {
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  apiKeyId: integer("api_key_id").references(() => apiKeys.id, { onDelete: "cascade" }).notNull(), // Original API key
+  oldKeyId: integer("old_key_id").references(() => apiKeys.id), // Previous key ID (for rotation chain)
+  newKeyId: integer("new_key_id").references(() => apiKeys.id), // New key ID after rotation
+  rotationType: varchar("rotation_type", { length: 20 }).notNull(), // manual | automatic | emergency
+  rotatedAt: timestamp("rotated_at").defaultNow().notNull(), // When rotation occurred
+  rotatedBy: integer("rotated_by").references(() => users.id), // User who initiated rotation
+  gracePeriodEnds: timestamp("grace_period_ends"), // When old key stops working
+  reason: text("reason") // Reason for rotation
+});
+
+// Add relations for API keys
+export const apiKeysRelations = relations(apiKeys, ({ one, many }) => ({
+  user: one(users, { fields: [apiKeys.userId], references: [users.id] }),
+  rotations: many(apiKeyRotations)
+}));
+
+export const apiKeyRotationsRelations = relations(apiKeyRotations, ({ one }) => ({
+  apiKey: one(apiKeys, { fields: [apiKeyRotations.apiKeyId], references: [apiKeys.id] }),
+  oldKey: one(apiKeys, { fields: [apiKeyRotations.oldKeyId], references: [apiKeys.id] }),
+  newKey: one(apiKeys, { fields: [apiKeyRotations.newKeyId], references: [apiKeys.id] }),
+  rotatedByUser: one(users, { fields: [apiKeyRotations.rotatedBy], references: [users.id] })
+}));
+
+// Update users relations to include API keys
+export const usersRelationsUpdated = relations(users, ({ many }) => ({
+  audits: many(audits),
+  apiKeys: many(apiKeys),
+  apiKeyRotations: many(apiKeyRotations)
+}));
+
+// Insert schemas for API keys
+export const insertApiKeySchema = createInsertSchema(apiKeys).omit({
+  id: true,
+  createdAt: true,
+  lastUsedAt: true,
+  revokedAt: true
+}).extend({
+  permissions: z.array(z.string()).default([]),
+  metadata: z.object({
+    allowedIps: z.array(z.string()).optional(),
+    description: z.string().optional()
+  }).optional()
+});
+
+export const insertApiKeyRotationSchema = createInsertSchema(apiKeyRotations).omit({
+  id: true,
+  rotatedAt: true
+});
+
+// Types for API keys
+export type ApiKey = typeof apiKeys.$inferSelect;
+export type InsertApiKey = z.infer<typeof insertApiKeySchema>;
+export type ApiKeyRotation = typeof apiKeyRotations.$inferSelect;
+export type InsertApiKeyRotation = z.infer<typeof insertApiKeyRotationSchema>;

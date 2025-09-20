@@ -12,7 +12,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, Users, Bell, Shield, Edit, Trash2, Plus, Save } from "lucide-react";
+import { Settings as SettingsIcon, Users, Bell, Shield, Edit, Trash2, Plus, Save, Key } from "lucide-react";
+import { Link } from "wouter";
 
 interface User {
   id: number;
@@ -357,6 +358,44 @@ export default function Settings() {
             </CardContent>
           </Card>
         </div>
+
+        {/* API Keys Management */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="flex items-center">
+              <Key className="w-5 h-5 mr-2" />
+              API Keys
+            </CardTitle>
+            <Link href="/settings/api-keys">
+              <Button size="sm" variant="outline" data-testid="button-manage-api-keys">
+                Manage API Keys
+              </Button>
+            </Link>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground">
+              Create and manage API keys for external application integration. 
+              API keys provide secure, token-based authentication for programmatic access to the HR system.
+            </p>
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="text-center p-3 bg-muted/50 rounded-lg">
+                <p className="text-sm text-muted-foreground">Key Rotation</p>
+                <p className="font-medium">Automatic</p>
+                <Badge variant="outline" className="mt-1">90 days</Badge>
+              </div>
+              <div className="text-center p-3 bg-muted/50 rounded-lg">
+                <p className="text-sm text-muted-foreground">Hashing</p>
+                <p className="font-medium">bcrypt</p>
+                <Badge variant="outline" className="mt-1">Secure</Badge>
+              </div>
+              <div className="text-center p-3 bg-muted/50 rounded-lg">
+                <p className="text-sm text-muted-foreground">Rate Limiting</p>
+                <p className="font-medium">Per Key</p>
+                <Badge variant="outline" className="mt-1">1000/hr</Badge>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Security Information */}
         <Card>

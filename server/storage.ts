@@ -28,6 +28,8 @@ import {
   payerEnrollments,
   incidentLogs,
   audits,
+  apiKeys,
+  apiKeyRotations,
   type User, 
   type InsertUser,
   type Employee,
@@ -57,7 +59,11 @@ import {
   type IncidentLog,
   type InsertIncidentLog,
   type Audit,
-  type InsertAudit
+  type InsertAudit,
+  type ApiKey,
+  type InsertApiKey,
+  type ApiKeyRotation,
+  type InsertApiKeyRotation
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, like, and, or, lte, sql, count } from "drizzle-orm";
@@ -210,6 +216,22 @@ export interface IStorage {
     type?: string;
     employeeId?: number;
   }): Promise<{ documents: Document[]; total: number }>;
+  
+  // API Key operations
+  createApiKey(apiKey: InsertApiKey): Promise<ApiKey>;
+  getApiKey(id: number): Promise<ApiKey | undefined>;
+  getApiKeyByHash(keyHash: string): Promise<ApiKey | undefined>;
+  getApiKeyByPrefix(prefix: string): Promise<ApiKey | undefined>;
+  getUserApiKeys(userId: number): Promise<ApiKey[]>;
+  updateApiKey(id: number, updates: Partial<ApiKey>): Promise<ApiKey>;
+  revokeApiKey(id: number): Promise<void>;
+  deleteApiKey(id: number): Promise<void>;
+  getActiveApiKeys(): Promise<ApiKey[]>;
+  getExpiringApiKeys(days: number): Promise<ApiKey[]>;
+  
+  // API Key Rotation operations
+  createApiKeyRotation(rotation: InsertApiKeyRotation): Promise<ApiKeyRotation>;
+  getApiKeyRotations(apiKeyId: number): Promise<ApiKeyRotation[]>;
   
   sessionStore: session.SessionStore;
 }
@@ -859,6 +881,156 @@ export class DatabaseStorage implements IStorage {
       expiringSoon,
       pendingDocs: Math.floor(pendingDocsResult.count * 0.1) // Simulate 10% pending
     };
+  }
+
+  /**
+   * API Key Operations Implementation
+   */
+  
+  /**
+   * Create a new API key for a user
+   * @param {InsertApiKey} apiKey - API key data with hashed key
+   * @returns {Promise<ApiKey>} Created API key record
+   */
+  async createApiKey(apiKey: InsertApiKey): Promise<ApiKey> {
+    const [created] = await db.insert(apiKeys).values(apiKey).returning();
+    return created;
+  }
+  
+  /**
+   * Get API key by ID
+   * @param {number} id - API key ID
+   * @returns {Promise<ApiKey | undefined>} API key if found
+   */
+  async getApiKey(id: number): Promise<ApiKey | undefined> {
+    const [key] = await db.select().from(apiKeys).where(eq(apiKeys.id, id));
+    return key;
+  }
+  
+  /**
+   * Get API key by hash (for authentication)
+   * @param {string} keyHash - Hashed API key
+   * @returns {Promise<ApiKey | undefined>} API key if found
+   */
+  async getApiKeyByHash(keyHash: string): Promise<ApiKey | undefined> {
+    const [key] = await db.select()
+      .from(apiKeys)
+      .where(and(
+        eq(apiKeys.keyHash, keyHash),
+        sql`${apiKeys.revokedAt} IS NULL`
+      ));
+    return key;
+  }
+  
+  /**
+   * Get API key by prefix for identification
+   * @param {string} prefix - First 8 characters of the API key
+   * @returns {Promise<ApiKey | undefined>} API key if found
+   */
+  async getApiKeyByPrefix(prefix: string): Promise<ApiKey | undefined> {
+    const [key] = await db.select()
+      .from(apiKeys)
+      .where(eq(apiKeys.keyPrefix, prefix));
+    return key;
+  }
+  
+  /**
+   * Get all API keys for a user
+   * @param {number} userId - User ID
+   * @returns {Promise<ApiKey[]>} Array of user's API keys
+   */
+  async getUserApiKeys(userId: number): Promise<ApiKey[]> {
+    return await db.select()
+      .from(apiKeys)
+      .where(eq(apiKeys.userId, userId))
+      .orderBy(desc(apiKeys.createdAt));
+  }
+  
+  /**
+   * Update an API key (e.g., lastUsedAt)
+   * @param {number} id - API key ID
+   * @param {Partial<ApiKey>} updates - Fields to update
+   * @returns {Promise<ApiKey>} Updated API key
+   */
+  async updateApiKey(id: number, updates: Partial<ApiKey>): Promise<ApiKey> {
+    const [updated] = await db.update(apiKeys)
+      .set(updates)
+      .where(eq(apiKeys.id, id))
+      .returning();
+    return updated;
+  }
+  
+  /**
+   * Revoke an API key (soft delete)
+   * @param {number} id - API key ID
+   */
+  async revokeApiKey(id: number): Promise<void> {
+    await db.update(apiKeys)
+      .set({ revokedAt: new Date() })
+      .where(eq(apiKeys.id, id));
+  }
+  
+  /**
+   * Delete an API key (hard delete)
+   * @param {number} id - API key ID
+   */
+  async deleteApiKey(id: number): Promise<void> {
+    await db.delete(apiKeys).where(eq(apiKeys.id, id));
+  }
+  
+  /**
+   * Get all active API keys
+   * @returns {Promise<ApiKey[]>} Array of active API keys
+   */
+  async getActiveApiKeys(): Promise<ApiKey[]> {
+    return await db.select()
+      .from(apiKeys)
+      .where(and(
+        sql`${apiKeys.revokedAt} IS NULL`,
+        sql`${apiKeys.expiresAt} > NOW()`
+      ))
+      .orderBy(desc(apiKeys.createdAt));
+  }
+  
+  /**
+   * Get API keys expiring within specified days
+   * @param {number} days - Number of days to look ahead
+   * @returns {Promise<ApiKey[]>} Array of expiring API keys
+   */
+  async getExpiringApiKeys(days: number): Promise<ApiKey[]> {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + days);
+    
+    return await db.select()
+      .from(apiKeys)
+      .where(and(
+        sql`${apiKeys.revokedAt} IS NULL`,
+        lte(apiKeys.expiresAt, futureDate),
+        sql`${apiKeys.expiresAt} > NOW()`
+      ))
+      .orderBy(asc(apiKeys.expiresAt));
+  }
+  
+  /**
+   * Create API key rotation record
+   * @param {InsertApiKeyRotation} rotation - Rotation data
+   * @returns {Promise<ApiKeyRotation>} Created rotation record
+   */
+  async createApiKeyRotation(rotation: InsertApiKeyRotation): Promise<ApiKeyRotation> {
+    const [created] = await db.insert(apiKeyRotations).values(rotation).returning();
+    return created;
+  }
+  
+  /**
+   * Get rotation history for an API key
+   * @param {number} apiKeyId - API key ID
+   * @returns {Promise<ApiKeyRotation[]>} Array of rotation records
+   */
+  async getApiKeyRotations(apiKeyId: number): Promise<ApiKeyRotation[]> {
+    return await db.select()
+      .from(apiKeyRotations)
+      .where(eq(apiKeyRotations.apiKeyId, apiKeyId))
+      .orderBy(desc(apiKeyRotations.rotatedAt));
   }
 }
 
