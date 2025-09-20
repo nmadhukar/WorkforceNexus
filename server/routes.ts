@@ -372,8 +372,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: 'No file uploaded' });
         }
         
+        // Validate required fields
+        if (!req.body.employeeId || !req.body.documentType) {
+          return res.status(400).json({ error: 'Employee ID and document type are required' });
+        }
+        
+        const employeeId = parseInt(req.body.employeeId);
+        if (isNaN(employeeId)) {
+          return res.status(400).json({ error: 'Invalid employee ID' });
+        }
+        
         const document = await storage.createDocument({
-          employeeId: parseInt(req.body.employeeId),
+          employeeId,
           documentType: req.body.documentType,
           filePath: req.file.path,
           signedDate: req.body.signedDate || null,

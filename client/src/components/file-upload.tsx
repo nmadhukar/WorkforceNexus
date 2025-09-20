@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,9 +31,21 @@ export function FileUpload({ onUpload, isUploading, employeeId }: FileUploadProp
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [documentType, setDocumentType] = useState("");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState(employeeId?.toString() || "");
   const [notes, setNotes] = useState("");
   const [signedDate, setSignedDate] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch employees for selection if no employeeId provided
+  const { data: employeesData } = useQuery({
+    queryKey: ["/api/employees"],
+    queryFn: async () => {
+      const res = await fetch("/api/employees?limit=100", { credentials: "include" });
+      if (!res.ok) throw new Error('Failed to fetch employees');
+      return res.json();
+    },
+    enabled: !employeeId // Only fetch if employeeId not provided
+  });
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -62,14 +75,12 @@ export function FileUpload({ onUpload, isUploading, employeeId }: FileUploadProp
   };
 
   const handleUpload = () => {
-    if (!selectedFile || !documentType) return;
+    if (!selectedFile || !documentType || !selectedEmployeeId) return;
 
     const formData = new FormData();
     formData.append("document", selectedFile);
     formData.append("documentType", documentType);
-    if (employeeId) {
-      formData.append("employeeId", employeeId.toString());
-    }
+    formData.append("employeeId", selectedEmployeeId);
     if (signedDate) {
       formData.append("signedDate", signedDate);
     }
@@ -82,6 +93,7 @@ export function FileUpload({ onUpload, isUploading, employeeId }: FileUploadProp
     // Reset form
     setSelectedFile(null);
     setDocumentType("");
+    setSelectedEmployeeId(employeeId?.toString() || "");
     setNotes("");
     setSignedDate("");
     if (fileInputRef.current) {
@@ -171,6 +183,24 @@ export function FileUpload({ onUpload, isUploading, employeeId }: FileUploadProp
               </SelectContent>
             </Select>
           </div>
+
+          {!employeeId && (
+            <div>
+              <Label htmlFor="employee">Employee *</Label>
+              <Select value={selectedEmployeeId} onValueChange={setSelectedEmployeeId}>
+                <SelectTrigger data-testid="select-employee">
+                  <SelectValue placeholder="Select employee" />
+                </SelectTrigger>
+                <SelectContent>
+                  {employeesData?.employees.map((employee: any) => (
+                    <SelectItem key={employee.id} value={employee.id.toString()}>
+                      {employee.firstName} {employee.lastName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           
           <div>
             <Label htmlFor="signedDate">Signed Date</Label>
