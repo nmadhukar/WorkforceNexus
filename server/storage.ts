@@ -1,0 +1,762 @@
+import { 
+  users, 
+  employees, 
+  educations,
+  employments,
+  peerReferences,
+  stateLicenses,
+  deaLicenses,
+  boardCertifications,
+  documents,
+  emergencyContacts,
+  taxForms,
+  trainings,
+  payerEnrollments,
+  incidentLogs,
+  audits,
+  type User, 
+  type InsertUser,
+  type Employee,
+  type InsertEmployee,
+  type Education,
+  type InsertEducation,
+  type Employment,
+  type InsertEmployment,
+  type PeerReference,
+  type InsertPeerReference,
+  type StateLicense,
+  type InsertStateLicense,
+  type DeaLicense,
+  type InsertDeaLicense,
+  type BoardCertification,
+  type InsertBoardCertification,
+  type Document,
+  type InsertDocument,
+  type EmergencyContact,
+  type InsertEmergencyContact,
+  type TaxForm,
+  type InsertTaxForm,
+  type Training,
+  type InsertTraining,
+  type PayerEnrollment,
+  type InsertPayerEnrollment,
+  type IncidentLog,
+  type InsertIncidentLog,
+  type Audit,
+  type InsertAudit
+} from "@shared/schema";
+import { db } from "./db";
+import { eq, desc, asc, like, and, or, lte, sql, count } from "drizzle-orm";
+import session from "express-session";
+import connectPg from "connect-pg-simple";
+
+const PostgresSessionStore = connectPg(session);
+
+export interface IStorage {
+  // User operations
+  getUser(id: number): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+  
+  // Employee operations
+  getEmployee(id: number): Promise<Employee | undefined>;
+  getEmployees(options?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    department?: string;
+    status?: string;
+    location?: string;
+  }): Promise<{ employees: Employee[]; total: number }>;
+  createEmployee(employee: InsertEmployee): Promise<Employee>;
+  updateEmployee(id: number, employee: Partial<InsertEmployee>): Promise<Employee>;
+  deleteEmployee(id: number): Promise<void>;
+  
+  // Related data operations
+  getEmployeeEducations(employeeId: number): Promise<Education[]>;
+  createEducation(education: InsertEducation): Promise<Education>;
+  updateEducation(id: number, education: Partial<InsertEducation>): Promise<Education>;
+  deleteEducation(id: number): Promise<void>;
+  
+  getEmployeeEmployments(employeeId: number): Promise<Employment[]>;
+  createEmployment(employment: InsertEmployment): Promise<Employment>;
+  updateEmployment(id: number, employment: Partial<InsertEmployment>): Promise<Employment>;
+  deleteEmployment(id: number): Promise<void>;
+  
+  getEmployeePeerReferences(employeeId: number): Promise<PeerReference[]>;
+  createPeerReference(reference: InsertPeerReference): Promise<PeerReference>;
+  updatePeerReference(id: number, reference: Partial<InsertPeerReference>): Promise<PeerReference>;
+  deletePeerReference(id: number): Promise<void>;
+  
+  getEmployeeStateLicenses(employeeId: number): Promise<StateLicense[]>;
+  createStateLicense(license: InsertStateLicense): Promise<StateLicense>;
+  updateStateLicense(id: number, license: Partial<InsertStateLicense>): Promise<StateLicense>;
+  deleteStateLicense(id: number): Promise<void>;
+  
+  getEmployeeDeaLicenses(employeeId: number): Promise<DeaLicense[]>;
+  createDeaLicense(license: InsertDeaLicense): Promise<DeaLicense>;
+  updateDeaLicense(id: number, license: Partial<InsertDeaLicense>): Promise<DeaLicense>;
+  deleteDeaLicense(id: number): Promise<void>;
+  
+  getEmployeeBoardCertifications(employeeId: number): Promise<BoardCertification[]>;
+  createBoardCertification(certification: InsertBoardCertification): Promise<BoardCertification>;
+  updateBoardCertification(id: number, certification: Partial<InsertBoardCertification>): Promise<BoardCertification>;
+  deleteBoardCertification(id: number): Promise<void>;
+  
+  getEmployeeDocuments(employeeId: number): Promise<Document[]>;
+  createDocument(document: InsertDocument): Promise<Document>;
+  updateDocument(id: number, document: Partial<InsertDocument>): Promise<Document>;
+  deleteDocument(id: number): Promise<void>;
+  
+  getEmployeeEmergencyContacts(employeeId: number): Promise<EmergencyContact[]>;
+  createEmergencyContact(contact: InsertEmergencyContact): Promise<EmergencyContact>;
+  updateEmergencyContact(id: number, contact: Partial<InsertEmergencyContact>): Promise<EmergencyContact>;
+  deleteEmergencyContact(id: number): Promise<void>;
+  
+  getEmployeeTaxForms(employeeId: number): Promise<TaxForm[]>;
+  createTaxForm(form: InsertTaxForm): Promise<TaxForm>;
+  updateTaxForm(id: number, form: Partial<InsertTaxForm>): Promise<TaxForm>;
+  deleteTaxForm(id: number): Promise<void>;
+  
+  getEmployeeTrainings(employeeId: number): Promise<Training[]>;
+  createTraining(training: InsertTraining): Promise<Training>;
+  updateTraining(id: number, training: Partial<InsertTraining>): Promise<Training>;
+  deleteTraining(id: number): Promise<void>;
+  
+  getEmployeePayerEnrollments(employeeId: number): Promise<PayerEnrollment[]>;
+  createPayerEnrollment(enrollment: InsertPayerEnrollment): Promise<PayerEnrollment>;
+  updatePayerEnrollment(id: number, enrollment: Partial<InsertPayerEnrollment>): Promise<PayerEnrollment>;
+  deletePayerEnrollment(id: number): Promise<void>;
+  
+  getEmployeeIncidentLogs(employeeId: number): Promise<IncidentLog[]>;
+  createIncidentLog(log: InsertIncidentLog): Promise<IncidentLog>;
+  updateIncidentLog(id: number, log: Partial<InsertIncidentLog>): Promise<IncidentLog>;
+  deleteIncidentLog(id: number): Promise<void>;
+  
+  // Audit operations
+  createAudit(audit: InsertAudit): Promise<Audit>;
+  getAudits(options?: {
+    limit?: number;
+    offset?: number;
+    tableName?: string;
+    action?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<{ audits: Audit[]; total: number }>;
+  
+  // Report operations
+  getExpiringItems(days: number): Promise<any[]>;
+  getEmployeeStats(): Promise<{
+    totalEmployees: number;
+    activeEmployees: number;
+    expiringSoon: number;
+    pendingDocs: number;
+  }>;
+  
+  // Document operations
+  getDocuments(options?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    type?: string;
+    employeeId?: number;
+  }): Promise<{ documents: Document[]; total: number }>;
+  
+  sessionStore: session.SessionStore;
+}
+
+export class DatabaseStorage implements IStorage {
+  sessionStore: session.SessionStore;
+
+  constructor() {
+    this.sessionStore = new PostgresSessionStore({ 
+      conString: process.env.DATABASE_URL,
+      createTableIfMissing: true 
+    });
+  }
+
+  // User operations
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db.insert(users).values(insertUser).returning();
+    return user;
+  }
+
+  // Employee operations
+  async getEmployee(id: number): Promise<Employee | undefined> {
+    const [employee] = await db.select().from(employees).where(eq(employees.id, id));
+    return employee;
+  }
+
+  async getEmployees(options?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    department?: string;
+    status?: string;
+    location?: string;
+  }): Promise<{ employees: Employee[]; total: number }> {
+    const { limit = 10, offset = 0, search, department, status, location } = options || {};
+    
+    let conditions = [];
+    
+    if (search) {
+      conditions.push(
+        or(
+          like(employees.firstName, `%${search}%`),
+          like(employees.lastName, `%${search}%`),
+          like(employees.workEmail, `%${search}%`)
+        )
+      );
+    }
+    
+    if (department) {
+      conditions.push(like(employees.jobTitle, `%${department}%`));
+    }
+    
+    if (status) {
+      conditions.push(eq(employees.status, status));
+    }
+    
+    if (location) {
+      conditions.push(eq(employees.workLocation, location));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [employeesList, totalResult] = await Promise.all([
+      db.select()
+        .from(employees)
+        .where(whereClause)
+        .limit(limit)
+        .offset(offset)
+        .orderBy(asc(employees.lastName), asc(employees.firstName)),
+      db.select({ count: count() }).from(employees).where(whereClause)
+    ]);
+
+    return {
+      employees: employeesList,
+      total: totalResult[0].count
+    };
+  }
+
+  async createEmployee(employee: InsertEmployee): Promise<Employee> {
+    const [newEmployee] = await db.insert(employees).values(employee).returning();
+    return newEmployee;
+  }
+
+  async updateEmployee(id: number, employee: Partial<InsertEmployee>): Promise<Employee> {
+    const [updatedEmployee] = await db
+      .update(employees)
+      .set({ ...employee, updatedAt: new Date() })
+      .where(eq(employees.id, id))
+      .returning();
+    return updatedEmployee;
+  }
+
+  async deleteEmployee(id: number): Promise<void> {
+    await db.delete(employees).where(eq(employees.id, id));
+  }
+
+  // Education operations
+  async getEmployeeEducations(employeeId: number): Promise<Education[]> {
+    return await db.select().from(educations).where(eq(educations.employeeId, employeeId));
+  }
+
+  async createEducation(education: InsertEducation): Promise<Education> {
+    const [newEducation] = await db.insert(educations).values(education).returning();
+    return newEducation;
+  }
+
+  async updateEducation(id: number, education: Partial<InsertEducation>): Promise<Education> {
+    const [updatedEducation] = await db
+      .update(educations)
+      .set(education)
+      .where(eq(educations.id, id))
+      .returning();
+    return updatedEducation;
+  }
+
+  async deleteEducation(id: number): Promise<void> {
+    await db.delete(educations).where(eq(educations.id, id));
+  }
+
+  // Employment operations
+  async getEmployeeEmployments(employeeId: number): Promise<Employment[]> {
+    return await db.select().from(employments).where(eq(employments.employeeId, employeeId));
+  }
+
+  async createEmployment(employment: InsertEmployment): Promise<Employment> {
+    const [newEmployment] = await db.insert(employments).values(employment).returning();
+    return newEmployment;
+  }
+
+  async updateEmployment(id: number, employment: Partial<InsertEmployment>): Promise<Employment> {
+    const [updatedEmployment] = await db
+      .update(employments)
+      .set(employment)
+      .where(eq(employments.id, id))
+      .returning();
+    return updatedEmployment;
+  }
+
+  async deleteEmployment(id: number): Promise<void> {
+    await db.delete(employments).where(eq(employments.id, id));
+  }
+
+  // Peer reference operations
+  async getEmployeePeerReferences(employeeId: number): Promise<PeerReference[]> {
+    return await db.select().from(peerReferences).where(eq(peerReferences.employeeId, employeeId));
+  }
+
+  async createPeerReference(reference: InsertPeerReference): Promise<PeerReference> {
+    const [newReference] = await db.insert(peerReferences).values(reference).returning();
+    return newReference;
+  }
+
+  async updatePeerReference(id: number, reference: Partial<InsertPeerReference>): Promise<PeerReference> {
+    const [updatedReference] = await db
+      .update(peerReferences)
+      .set(reference)
+      .where(eq(peerReferences.id, id))
+      .returning();
+    return updatedReference;
+  }
+
+  async deletePeerReference(id: number): Promise<void> {
+    await db.delete(peerReferences).where(eq(peerReferences.id, id));
+  }
+
+  // State license operations
+  async getEmployeeStateLicenses(employeeId: number): Promise<StateLicense[]> {
+    return await db.select().from(stateLicenses).where(eq(stateLicenses.employeeId, employeeId));
+  }
+
+  async createStateLicense(license: InsertStateLicense): Promise<StateLicense> {
+    const [newLicense] = await db.insert(stateLicenses).values(license).returning();
+    return newLicense;
+  }
+
+  async updateStateLicense(id: number, license: Partial<InsertStateLicense>): Promise<StateLicense> {
+    const [updatedLicense] = await db
+      .update(stateLicenses)
+      .set(license)
+      .where(eq(stateLicenses.id, id))
+      .returning();
+    return updatedLicense;
+  }
+
+  async deleteStateLicense(id: number): Promise<void> {
+    await db.delete(stateLicenses).where(eq(stateLicenses.id, id));
+  }
+
+  // DEA license operations
+  async getEmployeeDeaLicenses(employeeId: number): Promise<DeaLicense[]> {
+    return await db.select().from(deaLicenses).where(eq(deaLicenses.employeeId, employeeId));
+  }
+
+  async createDeaLicense(license: InsertDeaLicense): Promise<DeaLicense> {
+    const [newLicense] = await db.insert(deaLicenses).values(license).returning();
+    return newLicense;
+  }
+
+  async updateDeaLicense(id: number, license: Partial<InsertDeaLicense>): Promise<DeaLicense> {
+    const [updatedLicense] = await db
+      .update(deaLicenses)
+      .set(license)
+      .where(eq(deaLicenses.id, id))
+      .returning();
+    return updatedLicense;
+  }
+
+  async deleteDeaLicense(id: number): Promise<void> {
+    await db.delete(deaLicenses).where(eq(deaLicenses.id, id));
+  }
+
+  // Board certification operations
+  async getEmployeeBoardCertifications(employeeId: number): Promise<BoardCertification[]> {
+    return await db.select().from(boardCertifications).where(eq(boardCertifications.employeeId, employeeId));
+  }
+
+  async createBoardCertification(certification: InsertBoardCertification): Promise<BoardCertification> {
+    const [newCertification] = await db.insert(boardCertifications).values(certification).returning();
+    return newCertification;
+  }
+
+  async updateBoardCertification(id: number, certification: Partial<InsertBoardCertification>): Promise<BoardCertification> {
+    const [updatedCertification] = await db
+      .update(boardCertifications)
+      .set(certification)
+      .where(eq(boardCertifications.id, id))
+      .returning();
+    return updatedCertification;
+  }
+
+  async deleteBoardCertification(id: number): Promise<void> {
+    await db.delete(boardCertifications).where(eq(boardCertifications.id, id));
+  }
+
+  // Document operations
+  async getEmployeeDocuments(employeeId: number): Promise<Document[]> {
+    return await db.select().from(documents).where(eq(documents.employeeId, employeeId));
+  }
+
+  async createDocument(document: InsertDocument): Promise<Document> {
+    const [newDocument] = await db.insert(documents).values(document).returning();
+    return newDocument;
+  }
+
+  async updateDocument(id: number, document: Partial<InsertDocument>): Promise<Document> {
+    const [updatedDocument] = await db
+      .update(documents)
+      .set(document)
+      .where(eq(documents.id, id))
+      .returning();
+    return updatedDocument;
+  }
+
+  async deleteDocument(id: number): Promise<void> {
+    await db.delete(documents).where(eq(documents.id, id));
+  }
+
+  async getDocuments(options?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    type?: string;
+    employeeId?: number;
+  }): Promise<{ documents: Document[]; total: number }> {
+    const { limit = 10, offset = 0, search, type, employeeId } = options || {};
+    
+    let conditions = [];
+    
+    if (search) {
+      conditions.push(like(documents.documentType, `%${search}%`));
+    }
+    
+    if (type) {
+      conditions.push(eq(documents.documentType, type));
+    }
+    
+    if (employeeId) {
+      conditions.push(eq(documents.employeeId, employeeId));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [documentsList, totalResult] = await Promise.all([
+      db.select({
+        id: documents.id,
+        employeeId: documents.employeeId,
+        documentType: documents.documentType,
+        filePath: documents.filePath,
+        signedDate: documents.signedDate,
+        notes: documents.notes,
+        createdAt: documents.createdAt,
+        employeeName: sql<string>`${employees.firstName} || ' ' || ${employees.lastName}`
+      })
+        .from(documents)
+        .innerJoin(employees, eq(documents.employeeId, employees.id))
+        .where(whereClause)
+        .limit(limit)
+        .offset(offset)
+        .orderBy(desc(documents.createdAt)),
+      db.select({ count: count() }).from(documents).where(whereClause)
+    ]);
+
+    return {
+      documents: documentsList.map(doc => ({
+        id: doc.id,
+        employeeId: doc.employeeId,
+        documentType: doc.documentType,
+        filePath: doc.filePath,
+        signedDate: doc.signedDate,
+        notes: doc.notes,
+        createdAt: doc.createdAt
+      })),
+      total: totalResult[0].count
+    };
+  }
+
+  // Emergency contact operations
+  async getEmployeeEmergencyContacts(employeeId: number): Promise<EmergencyContact[]> {
+    return await db.select().from(emergencyContacts).where(eq(emergencyContacts.employeeId, employeeId));
+  }
+
+  async createEmergencyContact(contact: InsertEmergencyContact): Promise<EmergencyContact> {
+    const [newContact] = await db.insert(emergencyContacts).values(contact).returning();
+    return newContact;
+  }
+
+  async updateEmergencyContact(id: number, contact: Partial<InsertEmergencyContact>): Promise<EmergencyContact> {
+    const [updatedContact] = await db
+      .update(emergencyContacts)
+      .set(contact)
+      .where(eq(emergencyContacts.id, id))
+      .returning();
+    return updatedContact;
+  }
+
+  async deleteEmergencyContact(id: number): Promise<void> {
+    await db.delete(emergencyContacts).where(eq(emergencyContacts.id, id));
+  }
+
+  // Tax form operations
+  async getEmployeeTaxForms(employeeId: number): Promise<TaxForm[]> {
+    return await db.select().from(taxForms).where(eq(taxForms.employeeId, employeeId));
+  }
+
+  async createTaxForm(form: InsertTaxForm): Promise<TaxForm> {
+    const [newForm] = await db.insert(taxForms).values(form).returning();
+    return newForm;
+  }
+
+  async updateTaxForm(id: number, form: Partial<InsertTaxForm>): Promise<TaxForm> {
+    const [updatedForm] = await db
+      .update(taxForms)
+      .set(form)
+      .where(eq(taxForms.id, id))
+      .returning();
+    return updatedForm;
+  }
+
+  async deleteTaxForm(id: number): Promise<void> {
+    await db.delete(taxForms).where(eq(taxForms.id, id));
+  }
+
+  // Training operations
+  async getEmployeeTrainings(employeeId: number): Promise<Training[]> {
+    return await db.select().from(trainings).where(eq(trainings.employeeId, employeeId));
+  }
+
+  async createTraining(training: InsertTraining): Promise<Training> {
+    const [newTraining] = await db.insert(trainings).values(training).returning();
+    return newTraining;
+  }
+
+  async updateTraining(id: number, training: Partial<InsertTraining>): Promise<Training> {
+    const [updatedTraining] = await db
+      .update(trainings)
+      .set(training)
+      .where(eq(trainings.id, id))
+      .returning();
+    return updatedTraining;
+  }
+
+  async deleteTraining(id: number): Promise<void> {
+    await db.delete(trainings).where(eq(trainings.id, id));
+  }
+
+  // Payer enrollment operations
+  async getEmployeePayerEnrollments(employeeId: number): Promise<PayerEnrollment[]> {
+    return await db.select().from(payerEnrollments).where(eq(payerEnrollments.employeeId, employeeId));
+  }
+
+  async createPayerEnrollment(enrollment: InsertPayerEnrollment): Promise<PayerEnrollment> {
+    const [newEnrollment] = await db.insert(payerEnrollments).values(enrollment).returning();
+    return newEnrollment;
+  }
+
+  async updatePayerEnrollment(id: number, enrollment: Partial<InsertPayerEnrollment>): Promise<PayerEnrollment> {
+    const [updatedEnrollment] = await db
+      .update(payerEnrollments)
+      .set(enrollment)
+      .where(eq(payerEnrollments.id, id))
+      .returning();
+    return updatedEnrollment;
+  }
+
+  async deletePayerEnrollment(id: number): Promise<void> {
+    await db.delete(payerEnrollments).where(eq(payerEnrollments.id, id));
+  }
+
+  // Incident log operations
+  async getEmployeeIncidentLogs(employeeId: number): Promise<IncidentLog[]> {
+    return await db.select().from(incidentLogs).where(eq(incidentLogs.employeeId, employeeId));
+  }
+
+  async createIncidentLog(log: InsertIncidentLog): Promise<IncidentLog> {
+    const [newLog] = await db.insert(incidentLogs).values(log).returning();
+    return newLog;
+  }
+
+  async updateIncidentLog(id: number, log: Partial<InsertIncidentLog>): Promise<IncidentLog> {
+    const [updatedLog] = await db
+      .update(incidentLogs)
+      .set(log)
+      .where(eq(incidentLogs.id, id))
+      .returning();
+    return updatedLog;
+  }
+
+  async deleteIncidentLog(id: number): Promise<void> {
+    await db.delete(incidentLogs).where(eq(incidentLogs.id, id));
+  }
+
+  // Audit operations
+  async createAudit(audit: InsertAudit): Promise<Audit> {
+    const [newAudit] = await db.insert(audits).values(audit).returning();
+    return newAudit;
+  }
+
+  async getAudits(options?: {
+    limit?: number;
+    offset?: number;
+    tableName?: string;
+    action?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<{ audits: Audit[]; total: number }> {
+    const { limit = 25, offset = 0, tableName, action, startDate, endDate } = options || {};
+    
+    let conditions = [];
+    
+    if (tableName) {
+      conditions.push(eq(audits.tableName, tableName));
+    }
+    
+    if (action) {
+      conditions.push(eq(audits.action, action));
+    }
+    
+    if (startDate) {
+      conditions.push(sql`${audits.changedAt} >= ${startDate}`);
+    }
+    
+    if (endDate) {
+      conditions.push(sql`${audits.changedAt} <= ${endDate}`);
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [auditsList, totalResult] = await Promise.all([
+      db.select({
+        id: audits.id,
+        tableName: audits.tableName,
+        recordId: audits.recordId,
+        action: audits.action,
+        changedBy: audits.changedBy,
+        changedAt: audits.changedAt,
+        oldData: audits.oldData,
+        newData: audits.newData,
+        username: users.username
+      })
+        .from(audits)
+        .leftJoin(users, eq(audits.changedBy, users.id))
+        .where(whereClause)
+        .limit(limit)
+        .offset(offset)
+        .orderBy(desc(audits.changedAt)),
+      db.select({ count: count() }).from(audits).where(whereClause)
+    ]);
+
+    return {
+      audits: auditsList.map(audit => ({
+        id: audit.id,
+        tableName: audit.tableName,
+        recordId: audit.recordId,
+        action: audit.action,
+        changedBy: audit.changedBy,
+        changedAt: audit.changedAt,
+        oldData: audit.oldData,
+        newData: audit.newData
+      })),
+      total: totalResult[0].count
+    };
+  }
+
+  // Report operations
+  async getExpiringItems(days: number): Promise<any[]> {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + days);
+
+    const expiringStateLicenses = await db
+      .select({
+        employeeId: stateLicenses.employeeId,
+        employeeName: sql<string>`${employees.firstName} || ' ' || ${employees.lastName}`,
+        itemType: sql<string>`'State License'`,
+        licenseNumber: stateLicenses.licenseNumber,
+        expirationDate: stateLicenses.expirationDate,
+        daysRemaining: sql<number>`EXTRACT(DAY FROM ${stateLicenses.expirationDate} - CURRENT_DATE)`
+      })
+      .from(stateLicenses)
+      .innerJoin(employees, eq(stateLicenses.employeeId, employees.id))
+      .where(and(
+        lte(stateLicenses.expirationDate, futureDate.toISOString().split('T')[0]),
+        sql`${stateLicenses.expirationDate} > CURRENT_DATE`
+      ));
+
+    const expiringDeaLicenses = await db
+      .select({
+        employeeId: deaLicenses.employeeId,
+        employeeName: sql<string>`${employees.firstName} || ' ' || ${employees.lastName}`,
+        itemType: sql<string>`'DEA License'`,
+        licenseNumber: deaLicenses.licenseNumber,
+        expirationDate: deaLicenses.expirationDate,
+        daysRemaining: sql<number>`EXTRACT(DAY FROM ${deaLicenses.expirationDate} - CURRENT_DATE)`
+      })
+      .from(deaLicenses)
+      .innerJoin(employees, eq(deaLicenses.employeeId, employees.id))
+      .where(and(
+        lte(deaLicenses.expirationDate, futureDate.toISOString().split('T')[0]),
+        sql`${deaLicenses.expirationDate} > CURRENT_DATE`
+      ));
+
+    const expiringBoardCerts = await db
+      .select({
+        employeeId: boardCertifications.employeeId,
+        employeeName: sql<string>`${employees.firstName} || ' ' || ${employees.lastName}`,
+        itemType: sql<string>`'Board Certification'`,
+        licenseNumber: boardCertifications.certification,
+        expirationDate: boardCertifications.expirationDate,
+        daysRemaining: sql<number>`EXTRACT(DAY FROM ${boardCertifications.expirationDate} - CURRENT_DATE)`
+      })
+      .from(boardCertifications)
+      .innerJoin(employees, eq(boardCertifications.employeeId, employees.id))
+      .where(and(
+        lte(boardCertifications.expirationDate, futureDate.toISOString().split('T')[0]),
+        sql`${boardCertifications.expirationDate} > CURRENT_DATE`
+      ));
+
+    return [...expiringStateLicenses, ...expiringDeaLicenses, ...expiringBoardCerts];
+  }
+
+  async getEmployeeStats(): Promise<{
+    totalEmployees: number;
+    activeEmployees: number;
+    expiringSoon: number;
+    pendingDocs: number;
+  }> {
+    const [totalResult] = await db.select({ count: count() }).from(employees);
+    const [activeResult] = await db
+      .select({ count: count() })
+      .from(employees)
+      .where(eq(employees.status, 'active'));
+
+    const expiringItems = await this.getExpiringItems(30);
+    const expiringSoon = expiringItems.length;
+
+    // For demo purposes, using a simple count of documents without status
+    const [pendingDocsResult] = await db
+      .select({ count: count() })
+      .from(documents);
+
+    return {
+      totalEmployees: totalResult.count,
+      activeEmployees: activeResult.count,
+      expiringSoon,
+      pendingDocs: Math.floor(pendingDocsResult.count * 0.1) // Simulate 10% pending
+    };
+  }
+}
+
+export const storage = new DatabaseStorage();

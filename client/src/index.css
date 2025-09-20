@@ -1,0 +1,144 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(210, 40%, 98%);
+  --foreground: hsl(222.2, 84%, 4.9%);
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(222.2, 84%, 4.9%);
+  --popover: hsl(0, 0%, 100%);
+  --popover-foreground: hsl(222.2, 84%, 4.9%);
+  --primary: hsl(217, 71%, 53%);
+  --primary-foreground: hsl(210, 40%, 98%);
+  --secondary: hsl(159, 61%, 47%);
+  --secondary-foreground: hsl(222.2, 84%, 4.9%);
+  --muted: hsl(210, 40%, 96%);
+  --muted-foreground: hsl(215.4, 16.3%, 46.9%);
+  --accent: hsl(43, 96%, 56%);
+  --accent-foreground: hsl(222.2, 84%, 4.9%);
+  --destructive: hsl(0, 84.2%, 60.2%);
+  --destructive-foreground: hsl(210, 40%, 98%);
+  --border: hsl(214.3, 31.8%, 91.4%);
+  --input: hsl(214.3, 31.8%, 91.4%);
+  --ring: hsl(217, 71%, 53%);
+  --chart-1: hsl(217, 71%, 53%);
+  --chart-2: hsl(159, 61%, 47%);
+  --chart-3: hsl(43, 96%, 56%);
+  --chart-4: hsl(147.1429, 78.5047%, 41.9608%);
+  --chart-5: hsl(341.4894, 75.2000%, 50.9804%);
+  --sidebar: hsl(0, 0%, 100%);
+  --sidebar-foreground: hsl(222.2, 84%, 4.9%);
+  --sidebar-primary: hsl(217, 71%, 53%);
+  --sidebar-primary-foreground: hsl(210, 40%, 98%);
+  --sidebar-accent: hsl(210, 40%, 96%);
+  --sidebar-accent-foreground: hsl(217, 71%, 53%);
+  --sidebar-border: hsl(214.3, 31.8%, 91.4%);
+  --sidebar-ring: hsl(217, 71%, 53%);
+  --font-sans: Inter, system-ui, sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: Menlo, monospace;
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: hsl(222.2, 84%, 4.9%);
+  --foreground: hsl(210, 40%, 98%);
+  --card: hsl(222.2, 84%, 4.9%);
+  --card-foreground: hsl(210, 40%, 98%);
+  --popover: hsl(222.2, 84%, 4.9%);
+  --popover-foreground: hsl(210, 40%, 98%);
+  --primary: hsl(217, 71%, 53%);
+  --primary-foreground: hsl(222.2, 84%, 4.9%);
+  --secondary: hsl(217.2, 32.6%, 17.5%);
+  --secondary-foreground: hsl(210, 40%, 98%);
+  --muted: hsl(217.2, 32.6%, 17.5%);
+  --muted-foreground: hsl(215, 20.2%, 65.1%);
+  --accent: hsl(217.2, 32.6%, 17.5%);
+  --accent-foreground: hsl(210, 40%, 98%);
+  --destructive: hsl(0, 62.8%, 30.6%);
+  --destructive-foreground: hsl(210, 40%, 98%);
+  --border: hsl(217.2, 32.6%, 17.5%);
+  --input: hsl(217.2, 32.6%, 17.5%);
+  --ring: hsl(212.7, 26.8%, 83.9%);
+  --sidebar: hsl(222.2, 84%, 4.9%);
+  --sidebar-foreground: hsl(210, 40%, 98%);
+  --sidebar-primary: hsl(217, 71%, 53%);
+  --sidebar-primary-foreground: hsl(210, 40%, 98%);
+  --sidebar-accent: hsl(217.2, 32.6%, 17.5%);
+  --sidebar-accent-foreground: hsl(210, 40%, 98%);
+  --sidebar-border: hsl(217.2, 32.6%, 17.5%);
+  --sidebar-ring: hsl(217, 71%, 53%);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+  }
+}
+
+/* Custom HR Management Styles */
+.nav-item.active {
+  @apply bg-muted text-primary;
+}
+
+.step-indicator.active {
+  @apply bg-primary text-primary-foreground;
+}
+
+.profile-tab.active {
+  @apply border-b-2 border-primary text-primary;
+}
+
+/* Table Styles */
+.table-row:hover {
+  @apply bg-muted;
+}
+
+/* Form Styles */
+.form-step {
+  @apply transition-all duration-300 ease-in-out;
+}
+
+.form-step.hidden {
+  @apply opacity-0 pointer-events-none;
+}
+
+/* Status Badge Styles */
+.status-active {
+  @apply bg-secondary text-secondary-foreground;
+}
+
+.status-inactive {
+  @apply bg-destructive text-destructive-foreground;
+}
+
+.status-on-leave {
+  @apply bg-accent text-accent-foreground;
+}
+
+/* Priority Badge Styles */
+.priority-high {
+  @apply bg-destructive text-destructive-foreground;
+}
+
+.priority-medium {
+  @apply bg-accent text-accent-foreground;
+}
+
+.priority-low {
+  @apply bg-secondary text-secondary-foreground;
+}
+
+/* File Upload Styles */
+.upload-zone {
+  @apply border-2 border-dashed border-border rounded-lg p-6 text-center hover:border-primary transition-colors cursor-pointer;
+}
+
+.upload-zone.dragover {
+  @apply border-primary bg-primary;
+}
