@@ -522,6 +522,26 @@ export type Audit = typeof audits.$inferSelect;
 export type InsertAudit = z.infer<typeof insertAuditSchema>;
 
 /**
+ * S3_CONFIGURATION TABLE
+ * 
+ * Stores AWS S3 configuration settings for document storage.
+ * Sensitive fields (accessKeyId, secretAccessKey) are encrypted at rest.
+ * Only admin users can view and modify this configuration.
+ * Supports secure migration from environment variables to database storage.
+ */
+export const s3Configuration = pgTable("s3_configuration", {
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  accessKeyId: text("access_key_id"), // AWS Access Key ID (AES-256 encrypted)
+  secretAccessKey: text("secret_access_key"), // AWS Secret Access Key (AES-256 encrypted) 
+  region: varchar("region", { length: 50 }), // AWS region (e.g., us-east-1)
+  bucketName: varchar("bucket_name", { length: 100 }), // S3 bucket name
+  endpoint: varchar("endpoint", { length: 255 }), // Optional S3-compatible endpoint
+  enabled: boolean("enabled").default(true), // Whether S3 storage is enabled
+  updatedAt: timestamp("updated_at").defaultNow(), // Last update timestamp
+  updatedBy: integer("updated_by").references(() => users.id) // User who last updated
+});
+
+/**
  * API KEYS TABLE
  * 
  * Manages API keys for external application authentication.
@@ -606,6 +626,16 @@ export const insertApiKeyRotationSchema = createInsertSchema(apiKeyRotations).om
   id: true,
   rotatedAt: true
 });
+
+// Insert schema for S3 configuration
+export const insertS3ConfigurationSchema = createInsertSchema(s3Configuration).omit({
+  id: true,
+  updatedAt: true
+});
+
+// Types for S3 configuration
+export type S3Configuration = typeof s3Configuration.$inferSelect;
+export type InsertS3Configuration = z.infer<typeof insertS3ConfigurationSchema>;
 
 // Types for API keys
 export type ApiKey = typeof apiKeys.$inferSelect;

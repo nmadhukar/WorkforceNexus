@@ -30,6 +30,7 @@ import {
   audits,
   apiKeys,
   apiKeyRotations,
+  s3Configuration,
   type User, 
   type InsertUser,
   type Employee,
@@ -63,7 +64,9 @@ import {
   type ApiKey,
   type InsertApiKey,
   type ApiKeyRotation,
-  type InsertApiKeyRotation
+  type InsertApiKeyRotation,
+  type S3Configuration,
+  type InsertS3Configuration
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, like, and, or, lte, sql, count } from "drizzle-orm";
@@ -240,6 +243,11 @@ export interface IStorage {
   // API Key Rotation operations
   createApiKeyRotation(rotation: InsertApiKeyRotation): Promise<ApiKeyRotation>;
   getApiKeyRotations(apiKeyId: number): Promise<ApiKeyRotation[]>;
+  
+  // S3 Configuration operations
+  getS3Configuration(): Promise<S3Configuration | undefined>;
+  createS3Configuration(config: InsertS3Configuration): Promise<S3Configuration>;
+  updateS3Configuration(config: Partial<InsertS3Configuration>): Promise<S3Configuration>;
   
   sessionStore: session.SessionStore;
 }
@@ -1061,6 +1069,58 @@ export class DatabaseStorage implements IStorage {
       .from(apiKeyRotations)
       .where(eq(apiKeyRotations.apiKeyId, apiKeyId))
       .orderBy(desc(apiKeyRotations.rotatedAt));
+  }
+  
+  /**
+   * S3 Configuration Operations Implementation
+   */
+  
+  /**
+   * Get current S3 configuration from database
+   * @returns {Promise<S3Configuration | undefined>} S3 configuration or undefined
+   */
+  async getS3Configuration(): Promise<S3Configuration | undefined> {
+    const [config] = await db.select()
+      .from(s3Configuration)
+      .orderBy(desc(s3Configuration.updatedAt))
+      .limit(1);
+    return config;
+  }
+  
+  /**
+   * Create S3 configuration in database
+   * @param {InsertS3Configuration} config - S3 configuration data
+   * @returns {Promise<S3Configuration>} Created configuration
+   */
+  async createS3Configuration(config: InsertS3Configuration): Promise<S3Configuration> {
+    const [created] = await db.insert(s3Configuration).values(config).returning();
+    return created;
+  }
+  
+  /**
+   * Update S3 configuration in database
+   * @param {Partial<InsertS3Configuration>} config - S3 configuration updates
+   * @returns {Promise<S3Configuration>} Updated configuration
+   */
+  async updateS3Configuration(config: Partial<InsertS3Configuration>): Promise<S3Configuration> {
+    // Get the most recent configuration
+    const existingConfig = await this.getS3Configuration();
+    
+    if (!existingConfig) {
+      // If no config exists, create a new one
+      return await this.createS3Configuration(config as InsertS3Configuration);
+    }
+    
+    // Update existing config with new updated timestamp
+    const [updated] = await db.update(s3Configuration)
+      .set({
+        ...config,
+        updatedAt: new Date()
+      })
+      .where(eq(s3Configuration.id, existingConfig.id))
+      .returning();
+    
+    return updated;
   }
 }
 

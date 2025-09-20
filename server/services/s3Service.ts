@@ -34,6 +34,9 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Readable } from 'stream';
 import fs from 'fs';
 import path from 'path';
+import { storage } from '../storage';
+import { encrypt, decrypt } from '../utils/encryption';
+import type { S3Configuration } from '@shared/schema';
 
 /**
  * S3 configuration interface
@@ -88,8 +91,11 @@ export interface FileInfo {
 class S3Service {
   private client: S3Client | null = null;
   private bucketName: string | null = null;
-  private isConfigured: boolean = false;
+  private _isConfigured: boolean = false;
   private localFallbackPath: string;
+  private cachedConfig: S3Configuration | null = null;
+  private configCacheTime: number = 0;
+  private readonly CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes cache
 
   constructor() {
     this.localFallbackPath = path.join(process.cwd(), 'server', 'uploads');
@@ -97,10 +103,97 @@ class S3Service {
   }
 
   /**
-   * Initialize S3 client with credentials from environment variables
+   * Initialize S3 client with credentials from database or environment variables
    * @private
    */
-  private initialize(): void {
+  private async initialize(): Promise<void> {
+    try {
+      // First try to load from database
+      const dbConfig = await this.loadConfigFromDatabase();
+      
+      if (dbConfig) {
+        await this.initializeFromConfig(dbConfig);
+        return;
+      }
+      
+      // Fall back to environment variables
+      const envConfig = this.loadConfigFromEnv();
+      if (envConfig) {
+        await this.initializeFromConfig(envConfig);
+        
+        // Optionally save env config to database for future use
+        if (envConfig.accessKeyId && envConfig.secretAccessKey && envConfig.bucketName) {
+          console.log('S3 Service: Consider saving configuration to database for better security');
+        }
+      } else {
+        console.log('S3 Service: No configuration found. Using local storage fallback.');
+        this._isConfigured = false;
+      }
+    } catch (error) {
+      console.error('S3 Service: Failed to initialize:', error);
+      this._isConfigured = false;
+    }
+  }
+
+  /**
+   * Load S3 configuration from database
+   * @private
+   * @returns {Promise<S3Config | null>} Configuration or null
+   */
+  private async loadConfigFromDatabase(): Promise<S3Config | null> {
+    try {
+      // Check cache first
+      if (this.cachedConfig && Date.now() - this.configCacheTime < this.CACHE_DURATION_MS) {
+        const config = this.cachedConfig;
+        if (!config.enabled) {
+          return null;
+        }
+        
+        return {
+          region: config.region || 'us-east-1',
+          bucketName: config.bucketName || '',
+          endpoint: config.endpoint || undefined,
+          credentials: config.accessKeyId && config.secretAccessKey ? {
+            accessKeyId: decrypt(config.accessKeyId),
+            secretAccessKey: decrypt(config.secretAccessKey)
+          } : undefined
+        };
+      }
+      
+      // Load from database
+      const config = await storage.getS3Configuration();
+      if (!config || !config.enabled) {
+        return null;
+      }
+      
+      // Cache the config
+      this.cachedConfig = config;
+      this.configCacheTime = Date.now();
+      
+      // Decrypt sensitive fields
+      const decryptedConfig: S3Config = {
+        region: config.region || 'us-east-1',
+        bucketName: config.bucketName || '',
+        endpoint: config.endpoint || undefined,
+        credentials: config.accessKeyId && config.secretAccessKey ? {
+          accessKeyId: decrypt(config.accessKeyId),
+          secretAccessKey: decrypt(config.secretAccessKey)
+        } : undefined
+      };
+      
+      return decryptedConfig;
+    } catch (error) {
+      console.error('S3 Service: Failed to load config from database:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Load S3 configuration from environment variables
+   * @private
+   * @returns {S3Config | null} Configuration or null
+   */
+  private loadConfigFromEnv(): S3Config | null {
     const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
     const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
     const region = process.env.AWS_REGION || 'us-east-1';
@@ -108,48 +201,70 @@ class S3Service {
     const endpoint = process.env.AWS_S3_ENDPOINT;
 
     if (!accessKeyId || !secretAccessKey || !bucketName) {
-      console.log('S3 Service: AWS credentials not configured. Using local storage fallback.');
-      this.isConfigured = false;
+      return null;
+    }
+
+    return {
+      region,
+      bucketName,
+      endpoint,
+      credentials: {
+        accessKeyId,
+        secretAccessKey
+      }
+    };
+  }
+
+  /**
+   * Initialize S3 client with provided configuration
+   * @private
+   * @param {S3Config} config - S3 configuration
+   */
+  private async initializeFromConfig(config: S3Config): Promise<void> {
+    if (!config.credentials || !config.bucketName) {
+      console.log('S3 Service: Incomplete configuration. Using local storage fallback.');
+      this._isConfigured = false;
       return;
     }
 
     try {
-      const config: any = {
-        region,
-        credentials: {
-          accessKeyId,
-          secretAccessKey
-        },
-        // Force path style to handle bucket endpoint issues
+      const clientConfig: any = {
+        region: config.region,
+        credentials: config.credentials,
         forcePathStyle: true
       };
 
-      // Add endpoint for S3-compatible services (e.g., MinIO, DigitalOcean Spaces)
-      if (endpoint) {
-        config.endpoint = endpoint;
+      if (config.endpoint) {
+        clientConfig.endpoint = config.endpoint;
       }
 
-      this.client = new S3Client(config);
-      this.bucketName = bucketName;
+      this.client = new S3Client(clientConfig);
+      this.bucketName = config.bucketName;
       
       // Check bucket access before marking as configured
-      this.checkBucketAccess().then(isAccessible => {
-        this.isConfigured = isAccessible;
-        if (isAccessible) {
-          console.log(`S3 Service: ✅ Initialized successfully with bucket ${bucketName}`);
-        } else {
-          console.error(`S3 Service: ⚠️ Bucket ${bucketName} is not accessible. Using local storage fallback.`);
-          console.error(`S3 Service: This could be due to:`);
-          console.error(`  1. Incorrect AWS_REGION (should be the region where your bucket is located)`);
-          console.error(`  2. Missing IAM permissions for the bucket`);
-          console.error(`  3. Bucket doesn't exist or wrong bucket name`);
-          console.error(`S3 Service: Please check the logs above for more specific error details.`);
-        }
-      });
+      const isAccessible = await this.checkBucketAccess();
+      this._isConfigured = isAccessible;
+      
+      if (isAccessible) {
+        console.log(`S3 Service: ✅ Initialized successfully with bucket ${config.bucketName}`);
+      } else {
+        console.error(`S3 Service: ⚠️ Bucket ${config.bucketName} is not accessible. Using local storage fallback.`);
+      }
     } catch (error) {
-      console.error('S3 Service: Failed to initialize:', error);
-      this.isConfigured = false;
+      console.error('S3 Service: Failed to initialize with config:', error);
+      this._isConfigured = false;
     }
+  }
+
+  /**
+   * Refresh configuration from database
+   * @public
+   */
+  public async refreshConfiguration(): Promise<void> {
+    // Clear cache to force reload
+    this.cachedConfig = null;
+    this.configCacheTime = 0;
+    await this.initialize();
   }
 
   /**
@@ -157,7 +272,7 @@ class S3Service {
    * @returns {boolean} Configuration status
    */
   public isS3Configured(): boolean {
-    return this.isConfigured;
+    return this._isConfigured;
   }
 
   /**
@@ -165,7 +280,7 @@ class S3Service {
    * @returns {boolean} Configuration status
    */
   public isConfigured(): boolean {
-    return this.isConfigured;
+    return this._isConfigured;
   }
 
   /**
@@ -210,7 +325,7 @@ class S3Service {
           
           // Check response headers for x-amz-bucket-region
           const bucketRegion = error.$response?.headers?.['x-amz-bucket-region'] || 
-                              error.$metadata?.headers?.['x-amz-bucket-region'];
+                              (error.$response as any)?.headers?.['x-amz-bucket-region'];
           
           if (bucketRegion && bucketRegion !== (process.env.AWS_REGION || 'us-east-1')) {
             console.log(`S3 Service: Bucket '${this.bucketName}' is in region: ${bucketRegion}`);
@@ -360,7 +475,7 @@ class S3Service {
     metadata?: Record<string, string>
   ): Promise<UploadResult> {
     // Use S3 if configured
-    if (this.isConfigured && this.client && this.bucketName) {
+    if (this.isConfigured() && this.client && this.bucketName) {
       try {
         const params: PutObjectCommandInput = {
           Bucket: this.bucketName,
@@ -633,7 +748,7 @@ class S3Service {
     endpoint?: string;
   } {
     return {
-      isConfigured: this.isConfigured,
+      isConfigured: this.isConfigured(),
       bucketName: this.bucketName,
       region: process.env.AWS_REGION || 'us-east-1',
       endpoint: process.env.AWS_S3_ENDPOINT

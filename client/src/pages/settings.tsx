@@ -52,6 +52,19 @@ interface S3Status {
   };
 }
 
+interface S3Configuration {
+  source: 'database' | 'environment' | 'none';
+  enabled: boolean;
+  region?: string;
+  bucketName?: string;
+  endpoint?: string | null;
+  accessKeyId?: string | null;
+  secretAccessKey?: string | null;
+  updatedAt?: string;
+  updatedBy?: number;
+  message?: string;
+}
+
 export default function Settings() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -60,6 +73,16 @@ export default function Settings() {
   const [migrateDialogOpen, setMigrateDialogOpen] = useState(false);
   const [migrationBatchSize, setMigrationBatchSize] = useState(10);
   const [migrationDryRun, setMigrationDryRun] = useState(true);
+  const [s3ConfigDialogOpen, setS3ConfigDialogOpen] = useState(false);
+  const [testingS3, setTestingS3] = useState(false);
+  const [s3FormData, setS3FormData] = useState({
+    accessKeyId: "",
+    secretAccessKey: "",
+    region: "us-east-1",
+    bucketName: "",
+    endpoint: "",
+    enabled: true
+  });
   const [newUser, setNewUser] = useState({
     username: "",
     password: "",
@@ -77,6 +100,12 @@ export default function Settings() {
   const { data: s3Status, isLoading: s3StatusLoading } = useQuery<S3Status>({
     queryKey: ["/api/storage/status"],
     enabled: isAdmin || user?.role === 'hr'
+  });
+
+  // S3 Configuration Query (Admin only)
+  const { data: s3Config, isLoading: s3ConfigLoading } = useQuery<S3Configuration>({
+    queryKey: ["/api/admin/s3-config"],
+    enabled: isAdmin
   });
 
   // Mock users query - in a real app this would fetch from /api/users
@@ -171,6 +200,68 @@ export default function Settings() {
     }
   });
 
+  // S3 Configuration Mutations
+  const updateS3ConfigMutation = useMutation({
+    mutationFn: (configData: typeof s3FormData) => 
+      apiRequest("PUT", "/api/admin/s3-config", configData),
+    onSuccess: (data) => {
+      toast({
+        title: "Success",
+        description: "S3 configuration updated successfully"
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/s3-config"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/storage/status"] });
+      setS3ConfigDialogOpen(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
+  const testS3ConfigMutation = useMutation({
+    mutationFn: (configData: typeof s3FormData) => 
+      apiRequest("POST", "/api/admin/s3-config/test", configData),
+    onSuccess: (data) => {
+      toast({
+        title: data.success ? "Success" : "Connection Failed",
+        description: data.message,
+        variant: data.success ? "default" : "destructive"
+      });
+      setTestingS3(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Test Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+      setTestingS3(false);
+    }
+  });
+
+  const migrateS3ConfigMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/admin/s3-config/migrate"),
+    onSuccess: (data) => {
+      toast({
+        title: "Success",
+        description: data.message
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/s3-config"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/storage/status"] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Migration Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
   const handleCreateUser = () => {
     createUserMutation.mutate(newUser);
   };
@@ -186,6 +277,30 @@ export default function Settings() {
 
   const handleSettingChange = (key: keyof SystemSettings, value: boolean | number) => {
     setSettings(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleTestS3Connection = () => {
+    setTestingS3(true);
+    testS3ConfigMutation.mutate(s3FormData);
+  };
+
+  const handleSaveS3Config = () => {
+    updateS3ConfigMutation.mutate(s3FormData);
+  };
+
+  const handleOpenS3ConfigDialog = () => {
+    // Pre-fill form with current configuration if exists
+    if (s3Config && s3Config.source !== 'none') {
+      setS3FormData({
+        accessKeyId: "", // Don't pre-fill sensitive data
+        secretAccessKey: "", // Don't pre-fill sensitive data
+        region: s3Config.region || "us-east-1",
+        bucketName: s3Config.bucketName || "",
+        endpoint: s3Config.endpoint || "",
+        enabled: s3Config.enabled
+      });
+    }
+    setS3ConfigDialogOpen(true);
   };
 
   const getRoleBadge = (role: string) => {
@@ -575,17 +690,193 @@ export default function Settings() {
                     </div>
                   )}
 
+                  {/* Admin S3 Configuration */}
+                  {isAdmin && (
+                    <div className="pt-4 border-t">
+                      <div className="flex items-center justify-between mb-3">
+                        <Label className="text-base font-medium">S3 Configuration</Label>
+                        {s3ConfigLoading ? (
+                          <Badge variant="secondary">Loading...</Badge>
+                        ) : s3Config ? (
+                          <Badge 
+                            variant={s3Config.source === 'database' ? 'default' : 'secondary'}
+                            className={s3Config.source === 'database' ? 'bg-green-500/10 text-green-600' : ''}
+                          >
+                            {s3Config.source === 'database' ? 'Database Config' : 
+                             s3Config.source === 'environment' ? 'Env Variables' : 'Not Configured'}
+                          </Badge>
+                        ) : null}
+                      </div>
+                      
+                      {s3Config?.source === 'database' && s3Config.updatedAt && (
+                        <p className="text-sm text-muted-foreground mb-3">
+                          Last updated: {new Date(s3Config.updatedAt).toLocaleString()}
+                        </p>
+                      )}
+                      
+                      <div className="space-y-2">
+                        <Dialog open={s3ConfigDialogOpen} onOpenChange={setS3ConfigDialogOpen}>
+                          <DialogTrigger asChild>
+                            <Button 
+                              variant="outline" 
+                              className="w-full"
+                              onClick={handleOpenS3ConfigDialog}
+                              data-testid="button-configure-s3"
+                            >
+                              <Settings className="w-4 h-4 mr-2" />
+                              Configure S3 Settings
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-2xl">
+                            <DialogHeader>
+                              <DialogTitle>Configure AWS S3 Storage</DialogTitle>
+                            </DialogHeader>
+                            
+                            <div className="space-y-4 py-4">
+                              {s3Config?.message && (
+                                <div className="p-3 bg-amber-500/10 text-amber-700 rounded-lg text-sm">
+                                  {s3Config.message}
+                                </div>
+                              )}
+                              
+                              <div>
+                                <Label htmlFor="s3-access-key">AWS Access Key ID</Label>
+                                <Input
+                                  id="s3-access-key"
+                                  type="text"
+                                  value={s3FormData.accessKeyId}
+                                  onChange={(e) => setS3FormData(prev => ({ ...prev, accessKeyId: e.target.value }))}
+                                  placeholder="AKIA..."
+                                  data-testid="input-s3-access-key"
+                                />
+                                {s3Config?.accessKeyId && (
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    Current: {s3Config.accessKeyId}
+                                  </p>
+                                )}
+                              </div>
+                              
+                              <div>
+                                <Label htmlFor="s3-secret-key">AWS Secret Access Key</Label>
+                                <Input
+                                  id="s3-secret-key"
+                                  type="password"
+                                  value={s3FormData.secretAccessKey}
+                                  onChange={(e) => setS3FormData(prev => ({ ...prev, secretAccessKey: e.target.value }))}
+                                  placeholder="Enter secret key"
+                                  data-testid="input-s3-secret-key"
+                                />
+                                {s3Config?.secretAccessKey && (
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    Current: ****
+                                  </p>
+                                )}
+                              </div>
+                              
+                              <div>
+                                <Label htmlFor="s3-region">AWS Region</Label>
+                                <select
+                                  id="s3-region"
+                                  value={s3FormData.region}
+                                  onChange={(e) => setS3FormData(prev => ({ ...prev, region: e.target.value }))}
+                                  className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                                  data-testid="select-s3-region"
+                                >
+                                  <option value="us-east-1">US East (N. Virginia)</option>
+                                  <option value="us-east-2">US East (Ohio)</option>
+                                  <option value="us-west-1">US West (N. California)</option>
+                                  <option value="us-west-2">US West (Oregon)</option>
+                                  <option value="eu-west-1">Europe (Ireland)</option>
+                                  <option value="eu-central-1">Europe (Frankfurt)</option>
+                                  <option value="ap-southeast-1">Asia Pacific (Singapore)</option>
+                                  <option value="ap-northeast-1">Asia Pacific (Tokyo)</option>
+                                </select>
+                              </div>
+                              
+                              <div>
+                                <Label htmlFor="s3-bucket">Bucket Name</Label>
+                                <Input
+                                  id="s3-bucket"
+                                  type="text"
+                                  value={s3FormData.bucketName}
+                                  onChange={(e) => setS3FormData(prev => ({ ...prev, bucketName: e.target.value }))}
+                                  placeholder="my-bucket-name"
+                                  data-testid="input-s3-bucket"
+                                />
+                              </div>
+                              
+                              <div>
+                                <Label htmlFor="s3-endpoint">Custom Endpoint (Optional)</Label>
+                                <Input
+                                  id="s3-endpoint"
+                                  type="text"
+                                  value={s3FormData.endpoint}
+                                  onChange={(e) => setS3FormData(prev => ({ ...prev, endpoint: e.target.value }))}
+                                  placeholder="https://s3-compatible-endpoint.com"
+                                  data-testid="input-s3-endpoint"
+                                />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  For S3-compatible services like MinIO or DigitalOcean Spaces
+                                </p>
+                              </div>
+                              
+                              <div className="flex items-center space-x-2">
+                                <Checkbox
+                                  id="s3-enabled"
+                                  checked={s3FormData.enabled}
+                                  onCheckedChange={(checked) => setS3FormData(prev => ({ ...prev, enabled: !!checked }))}
+                                  data-testid="checkbox-s3-enabled"
+                                />
+                                <Label htmlFor="s3-enabled">Enable S3 storage</Label>
+                              </div>
+                              
+                              <div className="flex gap-2">
+                                <Button
+                                  onClick={handleTestS3Connection}
+                                  disabled={testingS3 || !s3FormData.accessKeyId || !s3FormData.secretAccessKey || !s3FormData.bucketName}
+                                  variant="outline"
+                                  className="flex-1"
+                                  data-testid="button-test-s3"
+                                >
+                                  {testingS3 ? "Testing..." : "Test Connection"}
+                                </Button>
+                                
+                                <Button
+                                  onClick={handleSaveS3Config}
+                                  disabled={updateS3ConfigMutation.isPending || !s3FormData.accessKeyId || !s3FormData.secretAccessKey || !s3FormData.bucketName}
+                                  className="flex-1"
+                                  data-testid="button-save-s3"
+                                >
+                                  {updateS3ConfigMutation.isPending ? "Saving..." : "Save Configuration"}
+                                </Button>
+                              </div>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                        
+                        {s3Config?.source === 'environment' && (
+                          <Button
+                            onClick={() => migrateS3ConfigMutation.mutate()}
+                            disabled={migrateS3ConfigMutation.isPending}
+                            variant="secondary"
+                            className="w-full"
+                            data-testid="button-migrate-s3"
+                          >
+                            <ArrowUpCircle className="w-4 h-4 mr-2" />
+                            {migrateS3ConfigMutation.isPending ? "Migrating..." : "Migrate from Environment Variables"}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
                   {/* Configuration Help */}
-                  {!s3Status.s3.configured && (
+                  {!isAdmin && !s3Status.s3.configured && (
                     <div className="mt-4 p-4 bg-muted/30 rounded-lg">
-                      <p className="text-sm font-medium mb-2">To enable S3 storage:</p>
-                      <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
-                        <li>Set AWS_ACCESS_KEY_ID environment variable</li>
-                        <li>Set AWS_SECRET_ACCESS_KEY environment variable</li>
-                        <li>Set AWS_S3_BUCKET_NAME environment variable</li>
-                        <li>Optionally set AWS_REGION (defaults to us-east-1)</li>
-                        <li>Restart the application after configuration</li>
-                      </ol>
+                      <p className="text-sm font-medium mb-2">S3 storage is not configured.</p>
+                      <p className="text-sm text-muted-foreground">
+                        Please contact an administrator to configure S3 storage settings.
+                      </p>
                     </div>
                   )}
                 </div>

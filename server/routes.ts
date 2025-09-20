@@ -54,6 +54,7 @@ import { s3Service, generateDocumentKey } from "./services/s3Service";
 import { db } from "./db";
 import { documents } from "@shared/schema";
 import { eq, or, sql, count } from "drizzle-orm";
+import { encrypt, decrypt, mask } from "./utils/encryption";
 
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -1453,6 +1454,271 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error('Error in manual expiration check:', error);
         res.status(500).json({ error: 'Failed to run expiration check' });
+      }
+    }
+  );
+
+  /**
+   * S3 Configuration Routes (Admin Only)
+   * 
+   * @description
+   * Endpoints for managing AWS S3 storage configuration.
+   * Allows administrators to configure S3 settings through the web interface
+   * instead of using environment variables.
+   */
+  
+  /**
+   * GET /api/admin/s3-config
+   * Get current S3 configuration (with masked credentials)
+   */
+  app.get('/api/admin/s3-config',
+    requireAuth,
+    requireRole(['admin']),
+    async (req: AuditRequest, res) => {
+      try {
+        // Get current configuration from database
+        const config = await storage.getS3Configuration();
+        
+        if (!config) {
+          // Check if environment variables are set
+          const hasEnvConfig = process.env.AWS_ACCESS_KEY_ID && 
+                             process.env.AWS_SECRET_ACCESS_KEY && 
+                             process.env.AWS_S3_BUCKET_NAME;
+          
+          if (hasEnvConfig) {
+            return res.json({
+              source: 'environment',
+              enabled: true,
+              region: process.env.AWS_REGION || 'us-east-1',
+              bucketName: process.env.AWS_S3_BUCKET_NAME,
+              endpoint: process.env.AWS_S3_ENDPOINT || null,
+              accessKeyId: mask(process.env.AWS_ACCESS_KEY_ID || ''),
+              secretAccessKey: '****',
+              message: 'Configuration loaded from environment variables. Consider migrating to database for better security.'
+            });
+          }
+          
+          return res.json({
+            source: 'none',
+            enabled: false,
+            message: 'No S3 configuration found'
+          });
+        }
+        
+        // Return configuration with masked sensitive fields
+        res.json({
+          source: 'database',
+          enabled: config.enabled,
+          region: config.region,
+          bucketName: config.bucketName,
+          endpoint: config.endpoint,
+          accessKeyId: config.accessKeyId ? mask(decrypt(config.accessKeyId)) : null,
+          secretAccessKey: config.secretAccessKey ? '****' : null,
+          updatedAt: config.updatedAt,
+          updatedBy: config.updatedBy
+        });
+      } catch (error) {
+        console.error('Error fetching S3 configuration:', error);
+        res.status(500).json({ error: 'Failed to fetch S3 configuration' });
+      }
+    }
+  );
+  
+  /**
+   * PUT /api/admin/s3-config
+   * Update S3 configuration
+   */
+  app.put('/api/admin/s3-config',
+    requireAuth,
+    requireRole(['admin']),
+    [
+      body('accessKeyId').notEmpty().withMessage('AWS Access Key ID is required'),
+      body('secretAccessKey').notEmpty().withMessage('AWS Secret Access Key is required'),
+      body('region').notEmpty().withMessage('AWS Region is required'),
+      body('bucketName').notEmpty().withMessage('S3 Bucket Name is required'),
+      body('enabled').isBoolean().withMessage('Enabled must be a boolean')
+    ],
+    handleValidationErrors,
+    async (req: AuditRequest, res) => {
+      try {
+        const { accessKeyId, secretAccessKey, region, bucketName, endpoint, enabled = true } = req.body;
+        
+        // Encrypt sensitive fields before storing
+        const encryptedConfig = {
+          accessKeyId: encrypt(accessKeyId),
+          secretAccessKey: encrypt(secretAccessKey),
+          region,
+          bucketName,
+          endpoint: endpoint || null,
+          enabled,
+          updatedBy: req.user!.id
+        };
+        
+        // Update or create configuration
+        const updatedConfig = await storage.updateS3Configuration(encryptedConfig);
+        
+        // Refresh S3 service configuration
+        await s3Service.refreshConfiguration();
+        
+        // Log the configuration change
+        await logAudit(
+          's3_configuration',
+          updatedConfig.id,
+          'UPDATE',
+          null,
+          null,
+          { userId: req.user!.id, action: 'S3 configuration updated' }
+        );
+        
+        res.json({
+          message: 'S3 configuration updated successfully',
+          enabled: updatedConfig.enabled,
+          region: updatedConfig.region,
+          bucketName: updatedConfig.bucketName,
+          endpoint: updatedConfig.endpoint,
+          accessKeyId: mask(accessKeyId),
+          updatedAt: updatedConfig.updatedAt
+        });
+      } catch (error) {
+        console.error('Error updating S3 configuration:', error);
+        res.status(500).json({ error: 'Failed to update S3 configuration' });
+      }
+    }
+  );
+  
+  /**
+   * POST /api/admin/s3-config/test
+   * Test S3 connection with provided credentials
+   */
+  app.post('/api/admin/s3-config/test',
+    requireAuth,
+    requireRole(['admin']),
+    [
+      body('accessKeyId').notEmpty().withMessage('AWS Access Key ID is required'),
+      body('secretAccessKey').notEmpty().withMessage('AWS Secret Access Key is required'),
+      body('region').notEmpty().withMessage('AWS Region is required'),
+      body('bucketName').notEmpty().withMessage('S3 Bucket Name is required')
+    ],
+    handleValidationErrors,
+    async (req: AuditRequest, res) => {
+      try {
+        const { accessKeyId, secretAccessKey, region, bucketName, endpoint } = req.body;
+        
+        // Import S3 client directly for testing
+        const { S3Client, ListObjectsV2Command } = await import('@aws-sdk/client-s3');
+        
+        // Create a test client with provided credentials
+        const clientConfig: any = {
+          region,
+          credentials: {
+            accessKeyId,
+            secretAccessKey
+          },
+          forcePathStyle: true
+        };
+        
+        if (endpoint) {
+          clientConfig.endpoint = endpoint;
+        }
+        
+        const testClient = new S3Client(clientConfig);
+        
+        // Test bucket access
+        try {
+          const command = new ListObjectsV2Command({
+            Bucket: bucketName,
+            MaxKeys: 1
+          });
+          
+          await testClient.send(command);
+          
+          res.json({
+            success: true,
+            message: `Successfully connected to S3 bucket: ${bucketName}`,
+            details: {
+              region,
+              bucketName,
+              hasEndpoint: !!endpoint
+            }
+          });
+        } catch (error: any) {
+          res.status(400).json({
+            success: false,
+            message: 'Failed to connect to S3',
+            error: error.message || 'Unknown error',
+            details: {
+              region,
+              bucketName,
+              errorCode: error.name,
+              suggestion: error.name === 'NoSuchBucket' ? 'The bucket does not exist' :
+                        error.name === 'AccessDenied' ? 'Invalid credentials or insufficient permissions' :
+                        error.name === 'PermanentRedirect' ? 'Wrong region for this bucket' :
+                        'Check your configuration and try again'
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Error testing S3 configuration:', error);
+        res.status(500).json({ error: 'Failed to test S3 configuration' });
+      }
+    }
+  );
+  
+  /**
+   * POST /api/admin/s3-config/migrate
+   * Migrate S3 configuration from environment variables to database
+   */
+  app.post('/api/admin/s3-config/migrate',
+    requireAuth,
+    requireRole(['admin']),
+    async (req: AuditRequest, res) => {
+      try {
+        // Check if environment variables are set
+        const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+        const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+        const region = process.env.AWS_REGION || 'us-east-1';
+        const bucketName = process.env.AWS_S3_BUCKET_NAME;
+        const endpoint = process.env.AWS_S3_ENDPOINT;
+        
+        if (!accessKeyId || !secretAccessKey || !bucketName) {
+          return res.status(400).json({
+            error: 'No environment variables found to migrate'
+          });
+        }
+        
+        // Check if database config already exists
+        const existingConfig = await storage.getS3Configuration();
+        if (existingConfig) {
+          return res.status(400).json({
+            error: 'Database configuration already exists. Delete it first if you want to migrate from environment variables.'
+          });
+        }
+        
+        // Encrypt and save to database
+        const encryptedConfig = {
+          accessKeyId: encrypt(accessKeyId),
+          secretAccessKey: encrypt(secretAccessKey),
+          region,
+          bucketName,
+          endpoint: endpoint || null,
+          enabled: true,
+          updatedBy: req.user!.id
+        };
+        
+        const newConfig = await storage.createS3Configuration(encryptedConfig);
+        
+        // Refresh S3 service configuration
+        await s3Service.refreshConfiguration();
+        
+        res.json({
+          message: 'Successfully migrated S3 configuration from environment variables to database',
+          region: newConfig.region,
+          bucketName: newConfig.bucketName,
+          note: 'You can now remove AWS credentials from environment variables for improved security'
+        });
+      } catch (error) {
+        console.error('Error migrating S3 configuration:', error);
+        res.status(500).json({ error: 'Failed to migrate S3 configuration' });
       }
     }
   );
