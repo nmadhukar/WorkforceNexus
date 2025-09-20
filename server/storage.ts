@@ -686,7 +686,7 @@ export class DatabaseStorage implements IStorage {
         itemType: sql<string>`'State License'`,
         licenseNumber: stateLicenses.licenseNumber,
         expirationDate: stateLicenses.expirationDate,
-        daysRemaining: sql<number>`EXTRACT(DAY FROM ${stateLicenses.expirationDate} - CURRENT_DATE)`
+        daysRemaining: sql<number>`${stateLicenses.expirationDate}::date - CURRENT_DATE`
       })
       .from(stateLicenses)
       .innerJoin(employees, eq(stateLicenses.employeeId, employees.id))
@@ -702,7 +702,7 @@ export class DatabaseStorage implements IStorage {
         itemType: sql<string>`'DEA License'`,
         licenseNumber: deaLicenses.licenseNumber,
         expirationDate: deaLicenses.expirationDate,
-        daysRemaining: sql<number>`EXTRACT(DAY FROM ${deaLicenses.expirationDate} - CURRENT_DATE)`
+        daysRemaining: sql<number>`${deaLicenses.expirationDate}::date - CURRENT_DATE`
       })
       .from(deaLicenses)
       .innerJoin(employees, eq(deaLicenses.employeeId, employees.id))
@@ -718,7 +718,7 @@ export class DatabaseStorage implements IStorage {
         itemType: sql<string>`'Board Certification'`,
         licenseNumber: boardCertifications.certification,
         expirationDate: boardCertifications.expirationDate,
-        daysRemaining: sql<number>`EXTRACT(DAY FROM ${boardCertifications.expirationDate} - CURRENT_DATE)`
+        daysRemaining: sql<number>`${boardCertifications.expirationDate}::date - CURRENT_DATE`
       })
       .from(boardCertifications)
       .innerJoin(employees, eq(boardCertifications.employeeId, employees.id))
