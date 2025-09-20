@@ -33,6 +33,9 @@ Preferred communication style: Simple, everyday language.
 - Added secure S3 configuration with masked credentials in UI
 - Implemented document migration utility from local to S3 storage
 - Added presigned URLs for secure S3 document downloads
+- Made AWS S3 settings configurable from admin interface only
+- Implemented encrypted database storage for S3 credentials
+- Added migration path from environment variables to database configuration
 
 ## System Architecture
 

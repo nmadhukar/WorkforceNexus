@@ -31,12 +31,10 @@ interface SystemSettings {
 }
 
 interface S3Status {
-  s3: {
-    configured: boolean;
-    bucketName: string;
-    region: string;
-    endpoint: string;
-  };
+  configured: boolean;
+  bucketName: string;
+  region: string;
+  endpoint: string;
   statistics: {
     totalDocuments: number;
     s3Documents: number;
@@ -68,6 +66,7 @@ interface S3Configuration {
 export default function Settings() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const isAdmin = user?.role === 'admin';
   const [deleteUserId, setDeleteUserId] = useState<number | null>(null);
   const [newUserDialogOpen, setNewUserDialogOpen] = useState(false);
   const [migrateDialogOpen, setMigrateDialogOpen] = useState(false);
@@ -316,8 +315,6 @@ export default function Settings() {
     }
   };
 
-  const isAdmin = user?.role === 'admin';
-
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -545,25 +542,25 @@ export default function Settings() {
                   {/* S3 Configuration Status */}
                   <div className="p-4 bg-muted/50 rounded-lg">
                     <div className="flex items-center mb-3">
-                      {s3Status.s3.configured ? (
+                      {s3Status?.configured ? (
                         <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
                       ) : (
                         <XCircle className="w-5 h-5 text-destructive mr-2" />
                       )}
                       <span className="font-medium">
-                        S3 Storage {s3Status.s3.configured ? 'Configured' : 'Not Configured'}
+                        S3 Storage {s3Status?.configured ? 'Configured' : 'Not Configured'}
                       </span>
                     </div>
                     
-                    {s3Status.s3.configured && (
+                    {s3Status?.configured && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                         <div>
                           <span className="text-muted-foreground">Bucket:</span>{' '}
-                          <span className="font-medium">{s3Status.s3.bucketName || 'Not set'}</span>
+                          <span className="font-medium">{s3Status?.bucketName || 'Not set'}</span>
                         </div>
                         <div>
                           <span className="text-muted-foreground">Region:</span>{' '}
-                          <span className="font-medium">{s3Status.s3.region || 'Not set'}</span>
+                          <span className="font-medium">{s3Status?.region || 'Not set'}</span>
                         </div>
                       </div>
                     )}
@@ -574,31 +571,31 @@ export default function Settings() {
                     <Label className="text-base font-medium mb-2">Storage Statistics</Label>
                     <div className="grid grid-cols-3 gap-4 mt-2">
                       <div className="text-center p-3 bg-muted/50 rounded-lg">
-                        <p className="text-2xl font-bold">{s3Status.statistics.totalDocuments}</p>
+                        <p className="text-2xl font-bold">{s3Status?.statistics?.totalDocuments || 0}</p>
                         <p className="text-sm text-muted-foreground">Total Documents</p>
                       </div>
                       <div className="text-center p-3 bg-muted/50 rounded-lg">
                         <Database className="w-5 h-5 mx-auto mb-1 text-primary" />
-                        <p className="text-xl font-bold">{s3Status.statistics.localDocuments}</p>
+                        <p className="text-xl font-bold">{s3Status?.statistics?.localDocuments || 0}</p>
                         <p className="text-sm text-muted-foreground">Local Storage</p>
                       </div>
                       <div className="text-center p-3 bg-muted/50 rounded-lg">
                         <Cloud className="w-5 h-5 mx-auto mb-1 text-primary" />
-                        <p className="text-xl font-bold">{s3Status.statistics.s3Documents}</p>
+                        <p className="text-xl font-bold">{s3Status?.statistics?.s3Documents || 0}</p>
                         <p className="text-sm text-muted-foreground">S3 Storage</p>
                       </div>
                     </div>
                     
-                    {s3Status.statistics.totalDocuments > 0 && (
+                    {(s3Status?.statistics?.totalDocuments || 0) > 0 && (
                       <div className="mt-3">
                         <div className="flex justify-between text-sm mb-1">
                           <span>S3 Usage</span>
-                          <span className="font-medium">{s3Status.statistics.s3Percentage}%</span>
+                          <span className="font-medium">{s3Status?.statistics?.s3Percentage || '0'}%</span>
                         </div>
                         <div className="w-full bg-muted rounded-full h-2">
                           <div 
                             className="bg-primary rounded-full h-2" 
-                            style={{ width: `${s3Status.statistics.s3Percentage}%` }}
+                            style={{ width: `${s3Status?.statistics?.s3Percentage || '0'}%` }}
                           />
                         </div>
                       </div>
@@ -609,7 +606,7 @@ export default function Settings() {
                   <div>
                     <Label className="text-base font-medium mb-2">Environment Configuration</Label>
                     <div className="space-y-2 text-sm">
-                      {Object.entries(s3Status.environment).map(([key, value]) => (
+                      {Object.entries(s3Status?.environment || {}).map(([key, value]) => (
                         <div key={key} className="flex items-center justify-between p-2 bg-muted/30 rounded">
                           <span className="font-mono text-xs">{key}</span>
                           <Badge 
@@ -624,11 +621,11 @@ export default function Settings() {
                   </div>
 
                   {/* Migration Actions */}
-                  {isAdmin && s3Status.s3.configured && s3Status.statistics.localDocuments > 0 && (
+                  {isAdmin && s3Status?.configured && (s3Status?.statistics?.localDocuments || 0) > 0 && (
                     <div className="pt-4 border-t">
                       <Label className="text-base font-medium mb-2">Document Migration</Label>
                       <p className="text-sm text-muted-foreground mb-3">
-                        Migrate {s3Status.statistics.localDocuments} local documents to S3 storage.
+                        Migrate {s3Status?.statistics?.localDocuments || 0} local documents to S3 storage.
                       </p>
                       
                       <Dialog open={migrateDialogOpen} onOpenChange={setMigrateDialogOpen}>
@@ -871,7 +868,7 @@ export default function Settings() {
                   )}
                   
                   {/* Configuration Help */}
-                  {!isAdmin && !s3Status.s3.configured && (
+                  {!isAdmin && !s3Status?.configured && (
                     <div className="mt-4 p-4 bg-muted/30 rounded-lg">
                       <p className="text-sm font-medium mb-2">S3 storage is not configured.</p>
                       <p className="text-sm text-muted-foreground">
