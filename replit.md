@@ -25,6 +25,10 @@ Preferred communication style: Simple, everyday language.
 - Added comprehensive code documentation with JSDoc comments throughout backend and frontend
 - Created complete REST API documentation with all 60+ endpoints
 - Created developer guide with setup, architecture, and deployment instructions
+- Implemented secure API key mechanism for external application integration
+- Added key rotation with automatic expiration and 24-hour grace period
+- Created API key management UI with permissions system
+- Enabled dual authentication (session-based for web, API keys for external apps)
 
 ## System Architecture
 
