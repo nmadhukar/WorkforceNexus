@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, Users, Bell, Shield, Edit, Trash2, Plus, Save, Key } from "lucide-react";
+import { Settings as SettingsIcon, Users, Bell, Shield, Edit, Trash2, Plus, Save, Key, Cloud, Database, CheckCircle, XCircle, ArrowUpCircle } from "lucide-react";
 import { Link } from "wouter";
 
 interface User {
@@ -30,11 +30,36 @@ interface SystemSettings {
   caqhReattestationWarningDays: number;
 }
 
+interface S3Status {
+  s3: {
+    configured: boolean;
+    bucketName: string;
+    region: string;
+    endpoint: string;
+  };
+  statistics: {
+    totalDocuments: number;
+    s3Documents: number;
+    localDocuments: number;
+    s3Percentage: string;
+  };
+  environment: {
+    AWS_ACCESS_KEY_ID: string;
+    AWS_SECRET_ACCESS_KEY: string;
+    AWS_REGION: string;
+    AWS_S3_BUCKET_NAME: string;
+    AWS_S3_ENDPOINT: string;
+  };
+}
+
 export default function Settings() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [deleteUserId, setDeleteUserId] = useState<number | null>(null);
   const [newUserDialogOpen, setNewUserDialogOpen] = useState(false);
+  const [migrateDialogOpen, setMigrateDialogOpen] = useState(false);
+  const [migrationBatchSize, setMigrationBatchSize] = useState(10);
+  const [migrationDryRun, setMigrationDryRun] = useState(true);
   const [newUser, setNewUser] = useState({
     username: "",
     password: "",
@@ -46,6 +71,12 @@ export default function Settings() {
     weeklyAuditSummaries: false,
     licenseExpiryWarningDays: 30,
     caqhReattestationWarningDays: 90
+  });
+
+  // S3 Storage Status Query
+  const { data: s3Status, isLoading: s3StatusLoading } = useQuery<S3Status>({
+    queryKey: ["/api/storage/status"],
+    enabled: isAdmin || user?.role === 'hr'
   });
 
   // Mock users query - in a real app this would fetch from /api/users
@@ -61,6 +92,27 @@ export default function Settings() {
           createdAt: new Date().toISOString()
         }
       ];
+    }
+  });
+
+  // S3 Migration Mutation
+  const migrateMutation = useMutation({
+    mutationFn: (data: { batchSize: number; dryRun: boolean }) => 
+      apiRequest("POST", "/api/storage/migrate", data),
+    onSuccess: (data) => {
+      toast({
+        title: data.dryRun ? "Dry Run Complete" : "Migration Complete",
+        description: `Migrated: ${data.migrated}, Failed: ${data.failed}, Skipped: ${data.skipped}`
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/storage/status"] });
+      setMigrateDialogOpen(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Migration Error",
+        description: error.message,
+        variant: "destructive"
+      });
     }
   });
 
@@ -358,6 +410,191 @@ export default function Settings() {
             </CardContent>
           </Card>
         </div>
+
+        {/* S3 Storage Configuration */}
+        {(isAdmin || user?.role === 'hr') && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Cloud className="w-5 h-5 mr-2" />
+                Document Storage (Amazon S3)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {s3StatusLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+              ) : s3Status ? (
+                <div className="space-y-4">
+                  {/* S3 Configuration Status */}
+                  <div className="p-4 bg-muted/50 rounded-lg">
+                    <div className="flex items-center mb-3">
+                      {s3Status.s3.configured ? (
+                        <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
+                      ) : (
+                        <XCircle className="w-5 h-5 text-destructive mr-2" />
+                      )}
+                      <span className="font-medium">
+                        S3 Storage {s3Status.s3.configured ? 'Configured' : 'Not Configured'}
+                      </span>
+                    </div>
+                    
+                    {s3Status.s3.configured && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">Bucket:</span>{' '}
+                          <span className="font-medium">{s3Status.s3.bucketName || 'Not set'}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Region:</span>{' '}
+                          <span className="font-medium">{s3Status.s3.region || 'Not set'}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Storage Statistics */}
+                  <div>
+                    <Label className="text-base font-medium mb-2">Storage Statistics</Label>
+                    <div className="grid grid-cols-3 gap-4 mt-2">
+                      <div className="text-center p-3 bg-muted/50 rounded-lg">
+                        <p className="text-2xl font-bold">{s3Status.statistics.totalDocuments}</p>
+                        <p className="text-sm text-muted-foreground">Total Documents</p>
+                      </div>
+                      <div className="text-center p-3 bg-muted/50 rounded-lg">
+                        <Database className="w-5 h-5 mx-auto mb-1 text-primary" />
+                        <p className="text-xl font-bold">{s3Status.statistics.localDocuments}</p>
+                        <p className="text-sm text-muted-foreground">Local Storage</p>
+                      </div>
+                      <div className="text-center p-3 bg-muted/50 rounded-lg">
+                        <Cloud className="w-5 h-5 mx-auto mb-1 text-primary" />
+                        <p className="text-xl font-bold">{s3Status.statistics.s3Documents}</p>
+                        <p className="text-sm text-muted-foreground">S3 Storage</p>
+                      </div>
+                    </div>
+                    
+                    {s3Status.statistics.totalDocuments > 0 && (
+                      <div className="mt-3">
+                        <div className="flex justify-between text-sm mb-1">
+                          <span>S3 Usage</span>
+                          <span className="font-medium">{s3Status.statistics.s3Percentage}%</span>
+                        </div>
+                        <div className="w-full bg-muted rounded-full h-2">
+                          <div 
+                            className="bg-primary rounded-full h-2" 
+                            style={{ width: `${s3Status.statistics.s3Percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Environment Variables Status */}
+                  <div>
+                    <Label className="text-base font-medium mb-2">Environment Configuration</Label>
+                    <div className="space-y-2 text-sm">
+                      {Object.entries(s3Status.environment).map(([key, value]) => (
+                        <div key={key} className="flex items-center justify-between p-2 bg-muted/30 rounded">
+                          <span className="font-mono text-xs">{key}</span>
+                          <Badge 
+                            variant={value === 'configured' ? 'default' : 'secondary'}
+                            className={value === 'configured' ? 'bg-green-500/10 text-green-600' : ''}
+                          >
+                            {value}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Migration Actions */}
+                  {isAdmin && s3Status.s3.configured && s3Status.statistics.localDocuments > 0 && (
+                    <div className="pt-4 border-t">
+                      <Label className="text-base font-medium mb-2">Document Migration</Label>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        Migrate {s3Status.statistics.localDocuments} local documents to S3 storage.
+                      </p>
+                      
+                      <Dialog open={migrateDialogOpen} onOpenChange={setMigrateDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button variant="outline" className="w-full">
+                            <ArrowUpCircle className="w-4 h-4 mr-2" />
+                            Migrate Documents to S3
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Migrate Documents to S3</DialogTitle>
+                          </DialogHeader>
+                          
+                          <div className="space-y-4 py-4">
+                            <div>
+                              <Label htmlFor="batchSize">Batch Size</Label>
+                              <Input
+                                id="batchSize"
+                                type="number"
+                                value={migrationBatchSize}
+                                onChange={(e) => setMigrationBatchSize(Math.min(100, Math.max(1, parseInt(e.target.value) || 10)))}
+                                min="1"
+                                max="100"
+                              />
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Number of documents to migrate at once (max 100)
+                              </p>
+                            </div>
+                            
+                            <div className="flex items-center space-x-2">
+                              <Checkbox
+                                id="dryRun"
+                                checked={migrationDryRun}
+                                onCheckedChange={(checked) => setMigrationDryRun(!!checked)}
+                              />
+                              <Label htmlFor="dryRun">
+                                Dry Run (simulate migration without changes)
+                              </Label>
+                            </div>
+                            
+                            <Button
+                              onClick={() => migrateMutation.mutate({ 
+                                batchSize: migrationBatchSize, 
+                                dryRun: migrationDryRun 
+                              })}
+                              disabled={migrateMutation.isPending}
+                              className="w-full"
+                            >
+                              {migrateMutation.isPending 
+                                ? "Migrating..." 
+                                : migrationDryRun 
+                                  ? "Run Migration Test" 
+                                  : "Start Migration"}
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                  )}
+
+                  {/* Configuration Help */}
+                  {!s3Status.s3.configured && (
+                    <div className="mt-4 p-4 bg-muted/30 rounded-lg">
+                      <p className="text-sm font-medium mb-2">To enable S3 storage:</p>
+                      <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
+                        <li>Set AWS_ACCESS_KEY_ID environment variable</li>
+                        <li>Set AWS_SECRET_ACCESS_KEY environment variable</li>
+                        <li>Set AWS_S3_BUCKET_NAME environment variable</li>
+                        <li>Optionally set AWS_REGION (defaults to us-east-1)</li>
+                        <li>Restart the application after configuration</li>
+                      </ol>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">Unable to fetch storage status</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* API Keys Management */}
         <Card>

@@ -50,6 +50,10 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import rateLimit from "express-rate-limit";
+import { s3Service, generateDocumentKey } from "./services/s3Service";
+import { db } from "./db";
+import { documents } from "@shared/schema";
+import { eq, or, sql, count } from "drizzle-orm";
 
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -571,15 +575,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: 'Invalid employee ID' });
         }
         
+        // Read the file from local storage
+        const fileBuffer = await fs.promises.readFile(req.file.path);
+        
+        // Generate S3 key for the document
+        const s3Key = generateDocumentKey(
+          employeeId,
+          req.body.documentType,
+          req.file.originalname
+        );
+        
+        // Try to upload to S3
+        const uploadResult = await s3Service.uploadFile(
+          fileBuffer,
+          s3Key,
+          req.file.mimetype,
+          {
+            employeeId: employeeId.toString(),
+            documentType: req.body.documentType,
+            originalName: req.file.originalname
+          }
+        );
+        
+        // Create document record with storage information
         const document = await storage.createDocument({
           employeeId,
           documentType: req.body.documentType,
-          filePath: req.file.path,
+          documentName: req.body.documentName || req.file.originalname,
+          fileName: req.file.originalname,
+          filePath: req.file.path, // Keep for backward compatibility
+          storageType: uploadResult.storageType,
+          storageKey: uploadResult.storageKey,
+          fileSize: req.file.size,
+          mimeType: req.file.mimetype,
+          s3Etag: uploadResult.etag,
           signedDate: req.body.signedDate || null,
           notes: req.body.notes || null
         });
         
-        res.status(201).json(document);
+        // Clean up temporary Multer file
+        // For S3: The file was uploaded to S3, delete the temp file
+        // For local: The file was copied to final location, delete the temp file
+        try {
+          await fs.promises.unlink(req.file.path);
+          console.log(`Deleted temp file after ${uploadResult.storageType} storage: ${req.file.path}`);
+        } catch (error) {
+          console.error('Failed to delete temp file:', error);
+        }
+        
+        res.status(201).json({
+          ...document,
+          storageInfo: {
+            type: uploadResult.storageType,
+            isS3Enabled: s3Service.isS3Configured()
+          }
+        });
       } catch (error) {
         console.error('Error uploading document:', error);
         res.status(500).json({ error: 'Failed to upload document' });
@@ -593,22 +643,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('read:documents'),
     async (req: AuditRequest, res) => {
       try {
-        const document = await storage.getDocuments({ 
-          limit: 1, 
-          offset: 0,
-          employeeId: parseInt(req.params.id) 
-        });
+        const documentId = parseInt(req.params.id);
+        const document = await storage.getDocument(documentId);
         
-        if (!document.documents[0] || !document.documents[0].filePath) {
+        if (!document) {
           return res.status(404).json({ error: 'Document not found' });
         }
         
-        const filePath = document.documents[0].filePath;
-        if (!fs.existsSync(filePath)) {
-          return res.status(404).json({ error: 'File not found on disk' });
+        // Handle S3 stored documents
+        if (document.storageType === 's3' && document.storageKey) {
+          // Generate a signed URL for direct download from S3
+          const signedUrl = await s3Service.getSignedUrl(document.storageKey, 3600);
+          
+          if (signedUrl) {
+            // Redirect to the signed URL for download
+            return res.redirect(signedUrl);
+          } else {
+            // Fallback: Download from S3 and stream to client
+            const downloadResult = await s3Service.downloadFile(document.storageKey, 's3');
+            
+            if (downloadResult.success && downloadResult.data) {
+              res.setHeader('Content-Type', downloadResult.contentType || 'application/octet-stream');
+              res.setHeader('Content-Disposition', `attachment; filename="${document.fileName || 'document'}"`);
+              return res.send(downloadResult.data);
+            }
+          }
         }
         
-        res.download(filePath);
+        // Handle locally stored documents (backward compatibility)
+        if (document.filePath && fs.existsSync(document.filePath)) {
+          return res.download(document.filePath, document.fileName || 'document');
+        }
+        
+        // If storage key exists but file is local
+        if (document.storageKey && document.storageType === 'local') {
+          if (fs.existsSync(document.storageKey)) {
+            return res.download(document.storageKey, document.fileName || 'document');
+          }
+        }
+        
+        return res.status(404).json({ error: 'Document file not found' });
       } catch (error) {
         console.error('Error downloading document:', error);
         res.status(500).json({ error: 'Failed to download document' });
@@ -1732,6 +1806,275 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error('Error fetching API key usage:', error);
         res.status(500).json({ error: 'Failed to fetch usage statistics' });
+      }
+    }
+  );
+
+  /**
+   * S3 Storage Management Routes
+   */
+  
+  /**
+   * GET /api/storage/status
+   * 
+   * @route GET /api/storage/status
+   * @group Storage - S3 storage management
+   * @security Session
+   * 
+   * @returns {object} 200 - Storage configuration status and statistics
+   */
+  app.get('/api/storage/status',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('read:employees'),
+    async (req: AuditRequest, res) => {
+      try {
+        // Get document storage statistics from the storage layer
+        const stats = await storage.getDocumentStorageStats();
+        
+        // Get safe configuration status (no secrets)
+        const bucketName = s3Service.getBucketName();
+        const maskedBucketName = bucketName 
+          ? bucketName.substring(0, Math.min(5, bucketName.length)) + '...'
+          : null;
+        
+        res.json({
+          configured: s3Service.isConfigured(),
+          bucketName: maskedBucketName,
+          stats: {
+            totalCount: stats.totalCount,
+            s3Count: stats.s3Count,
+            localCount: stats.localCount,
+            s3Percentage: stats.totalCount > 0 
+              ? ((stats.s3Count / stats.totalCount) * 100).toFixed(2)
+              : '0'
+          },
+          canMigrate: s3Service.isConfigured() && stats.localCount > 0
+        });
+      } catch (error) {
+        console.error('Error fetching storage status:', error);
+        res.status(500).json({ error: 'Failed to fetch storage status' });
+      }
+    }
+  );
+  
+  /**
+   * POST /api/storage/migrate
+   * 
+   * @route POST /api/storage/migrate
+   * @group Storage - S3 storage management
+   * @security Session
+   * @param {number} body.batchSize - Number of documents to migrate (default: 10, max: 100)
+   * @param {boolean} body.dryRun - Whether to simulate migration without making changes
+   * 
+   * @returns {object} 200 - Migration results
+   */
+  app.post('/api/storage/migrate',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('admin'),
+    async (req: AuditRequest, res) => {
+      try {
+        const { batchSize = 10, dryRun = false } = req.body;
+        const limitedBatchSize = Math.min(batchSize, 100);
+        
+        // Check if S3 is configured
+        if (!s3Service.isS3Configured()) {
+          return res.status(400).json({ 
+            error: 'S3 is not configured. Please set AWS credentials in environment variables.' 
+          });
+        }
+        
+        // Get documents that are stored locally
+        const localDocuments = await db.select()
+          .from(documents)
+          .where(or(
+            eq(documents.storageType, 'local'),
+            sql`${documents.storageType} IS NULL`
+          ))
+          .limit(limitedBatchSize);
+        
+        if (localDocuments.length === 0) {
+          return res.json({
+            message: 'No local documents to migrate',
+            migrated: 0,
+            failed: 0
+          });
+        }
+        
+        const results = {
+          migrated: [] as any[],
+          failed: [] as any[],
+          skipped: [] as any[]
+        };
+        
+        for (const doc of localDocuments) {
+          try {
+            // Skip if no file path
+            if (!doc.filePath) {
+              results.skipped.push({
+                id: doc.id,
+                reason: 'No file path'
+              });
+              continue;
+            }
+            
+            // Check if local file exists
+            if (!fs.existsSync(doc.filePath)) {
+              results.failed.push({
+                id: doc.id,
+                fileName: doc.fileName,
+                error: 'Local file not found'
+              });
+              continue;
+            }
+            
+            if (dryRun) {
+              results.migrated.push({
+                id: doc.id,
+                fileName: doc.fileName,
+                filePath: doc.filePath,
+                dryRun: true
+              });
+              continue;
+            }
+            
+            // Generate S3 key
+            const s3Key = generateDocumentKey(
+              doc.employeeId!,
+              doc.documentType,
+              doc.fileName || 'document'
+            );
+            
+            // Migrate to S3
+            const migrationResult = await s3Service.migrateToS3(
+              doc.filePath,
+              s3Key,
+              doc.mimeType || 'application/octet-stream'
+            );
+            
+            if (migrationResult.success && migrationResult.storageType === 's3') {
+              // Update database record
+              await db.update(documents)
+                .set({
+                  storageType: 's3',
+                  storageKey: s3Key,
+                  s3Etag: migrationResult.etag
+                })
+                .where(eq(documents.id, doc.id));
+              
+              // Delete local file after successful migration
+              try {
+                await fs.promises.unlink(doc.filePath);
+              } catch (err) {
+                console.error(`Failed to delete local file after migration: ${doc.filePath}`, err);
+              }
+              
+              results.migrated.push({
+                id: doc.id,
+                fileName: doc.fileName,
+                s3Key,
+                etag: migrationResult.etag
+              });
+            } else {
+              results.failed.push({
+                id: doc.id,
+                fileName: doc.fileName,
+                error: migrationResult.error || 'Migration failed'
+              });
+            }
+          } catch (error) {
+            results.failed.push({
+              id: doc.id,
+              fileName: doc.fileName,
+              error: error instanceof Error ? error.message : 'Unknown error'
+            });
+          }
+        }
+        
+        // Log migration audit
+        if (!dryRun && results.migrated.length > 0) {
+          await logAudit(
+            req,
+            0,
+            'MIGRATE_TO_S3',
+            { documentCount: localDocuments.length },
+            results,
+            {}
+          );
+        }
+        
+        res.json({
+          message: dryRun ? 'Dry run completed' : 'Migration completed',
+          dryRun,
+          total: localDocuments.length,
+          migrated: results.migrated.length,
+          failed: results.failed.length,
+          skipped: results.skipped.length,
+          results
+        });
+      } catch (error) {
+        console.error('Error migrating documents to S3:', error);
+        res.status(500).json({ error: 'Failed to migrate documents' });
+      }
+    }
+  );
+  
+  /**
+   * GET /api/storage/documents/:id/url
+   * 
+   * @route GET /api/storage/documents/:id/url
+   * @group Storage - S3 storage management
+   * @security Session
+   * @param {number} params.id - Document ID
+   * @param {number} query.expiresIn - URL expiration in seconds (default: 3600, max: 86400)
+   * 
+   * @returns {object} 200 - Signed URL for document access
+   */
+  app.get('/api/storage/documents/:id/url',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('read:documents'),
+    validateId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res) => {
+      try {
+        const documentId = parseInt(req.params.id);
+        const expiresIn = Math.min(
+          parseInt(req.query.expiresIn as string) || 3600,
+          86400 // Max 24 hours
+        );
+        
+        const document = await storage.getDocument(documentId);
+        
+        if (!document) {
+          return res.status(404).json({ error: 'Document not found' });
+        }
+        
+        // Only generate signed URLs for S3 documents
+        if (document.storageType !== 's3' || !document.storageKey) {
+          return res.status(400).json({ 
+            error: 'Document is not stored in S3' 
+          });
+        }
+        
+        const signedUrl = await s3Service.getSignedUrl(document.storageKey, expiresIn);
+        
+        if (!signedUrl) {
+          return res.status(500).json({ 
+            error: 'Failed to generate signed URL' 
+          });
+        }
+        
+        res.json({
+          url: signedUrl,
+          expiresIn,
+          documentId: document.id,
+          fileName: document.fileName
+        });
+      } catch (error) {
+        console.error('Error generating signed URL:', error);
+        res.status(500).json({ error: 'Failed to generate signed URL' });
       }
     }
   );

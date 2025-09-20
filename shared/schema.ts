@@ -254,16 +254,35 @@ export const boardCertifications = pgTable("board_certifications", {
  * Manages uploaded documents and file attachments for employees.
  * Supports various document types (contracts, certifications, forms, etc.).
  * Integrates with file upload system for secure document storage.
+ * Supports both local file system and Amazon S3 storage with seamless migration.
  */
 export const documents = pgTable("documents", {
   id: serial("id").primaryKey(), // Auto-incrementing primary key
   employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Foreign key to employees
   documentType: varchar("document_type", { length: 100 }).notNull(), // Document category (contract, certificate, form, etc.)
-  filePath: varchar("file_path", { length: 255 }), // Server file path or cloud storage URL
+  documentName: varchar("document_name", { length: 255 }), // Display name/title of document
+  fileName: varchar("file_name", { length: 255 }), // Original uploaded file name
+  filePath: varchar("file_path", { length: 255 }), // Legacy: Server file path for local files
+  storageType: varchar("storage_type", { length: 10 }).default("local"), // Storage type: 'local' or 's3'
+  storageKey: varchar("storage_key", { length: 500 }), // S3 key or local file path (longer for S3 keys)
+  fileSize: integer("file_size"), // File size in bytes
+  mimeType: varchar("mime_type", { length: 100 }), // MIME type (application/pdf, image/jpeg, etc.)
   signedDate: date("signed_date"), // Date document was signed or executed
+  uploadedDate: date("uploaded_date").defaultNow(), // Date document was uploaded
+  expirationDate: date("expiration_date"), // Document expiration date (if applicable)
+  isVerified: boolean("is_verified").default(false), // Whether document has been verified
+  verifiedBy: varchar("verified_by", { length: 100 }), // Who verified the document
+  verificationDate: date("verification_date"), // When document was verified
   notes: text("notes"), // Additional notes or comments about the document
+  s3Etag: varchar("s3_etag", { length: 255 }), // S3 ETag for integrity verification
+  s3VersionId: varchar("s3_version_id", { length: 255 }), // S3 version ID if versioning is enabled
   createdAt: timestamp("created_at").defaultNow() // Upload timestamp
-});
+}, (table) => ({
+  employeeIdx: index("idx_documents_employee").on(table.employeeId), // Index for employee document queries
+  typeIdx: index("idx_documents_type").on(table.documentType), // Index for document type filtering
+  expirationIdx: index("idx_documents_expiration").on(table.expirationDate), // Index for expiration tracking
+  storageTypeIdx: index("idx_documents_storage_type").on(table.storageType) // Index for storage type filtering
+}));
 
 /**
  * EMERGENCY CONTACTS TABLE

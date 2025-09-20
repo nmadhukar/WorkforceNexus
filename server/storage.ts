@@ -216,6 +216,14 @@ export interface IStorage {
     type?: string;
     employeeId?: number;
   }): Promise<{ documents: Document[]; total: number }>;
+  getDocument(id: number): Promise<Document | undefined>;
+  
+  // Document statistics operations
+  getDocumentStorageStats(): Promise<{
+    totalCount: number;
+    s3Count: number;
+    localCount: number;
+  }>;
   
   // API Key operations
   createApiKey(apiKey: InsertApiKey): Promise<ApiKey>;
@@ -513,7 +521,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createDocument(document: InsertDocument): Promise<Document> {
-    const [newDocument] = await db.insert(documents).values(document).returning();
+    // Set default values for backward compatibility
+    const documentWithDefaults = {
+      ...document,
+      storageType: document.storageType || 'local',
+      storageKey: document.storageKey || document.filePath
+    };
+    const [newDocument] = await db.insert(documents).values(documentWithDefaults).returning();
     return newDocument;
   }
 
@@ -556,18 +570,8 @@ export class DatabaseStorage implements IStorage {
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
     const [documentsList, totalResult] = await Promise.all([
-      db.select({
-        id: documents.id,
-        employeeId: documents.employeeId,
-        documentType: documents.documentType,
-        filePath: documents.filePath,
-        signedDate: documents.signedDate,
-        notes: documents.notes,
-        createdAt: documents.createdAt,
-        employeeName: sql<string>`${employees.firstName} || ' ' || ${employees.lastName}`
-      })
+      db.select()
         .from(documents)
-        .innerJoin(employees, eq(documents.employeeId, employees.id))
         .where(whereClause)
         .limit(limit)
         .offset(offset)
@@ -576,16 +580,42 @@ export class DatabaseStorage implements IStorage {
     ]);
 
     return {
-      documents: documentsList.map(doc => ({
-        id: doc.id,
-        employeeId: doc.employeeId,
-        documentType: doc.documentType,
-        filePath: doc.filePath,
-        signedDate: doc.signedDate,
-        notes: doc.notes,
-        createdAt: doc.createdAt
-      })),
+      documents: documentsList,
       total: totalResult[0].count
+    };
+  }
+  
+  async getDocument(id: number): Promise<Document | undefined> {
+    const [document] = await db.select()
+      .from(documents)
+      .where(eq(documents.id, id))
+      .limit(1);
+    return document;
+  }
+  
+  async getDocumentStorageStats(): Promise<{
+    totalCount: number;
+    s3Count: number;
+    localCount: number;
+  }> {
+    const [s3Docs, localDocs, totalDocs] = await Promise.all([
+      db.select({ count: count() })
+        .from(documents)
+        .where(eq(documents.storageType, 's3')),
+      db.select({ count: count() })
+        .from(documents)
+        .where(or(
+          eq(documents.storageType, 'local'),
+          sql`${documents.storageType} IS NULL`
+        )),
+      db.select({ count: count() })
+        .from(documents)
+    ]);
+    
+    return {
+      totalCount: totalDocs[0]?.count || 0,
+      s3Count: s3Docs[0]?.count || 0,
+      localCount: localDocs[0]?.count || 0
     };
   }
 
