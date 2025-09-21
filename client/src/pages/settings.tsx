@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, Users, Bell, Shield, Edit, Trash2, Plus, Save, Key, Cloud, Database, CheckCircle, XCircle, ArrowUpCircle, Mail, Send, Clock, UserPlus, RefreshCw } from "lucide-react";
+import { Settings as SettingsIcon, Users, Bell, Shield, Edit, Trash2, Plus, Save, Key, Cloud, Database, CheckCircle, XCircle, ArrowUpCircle } from "lucide-react";
 import { Link } from "wouter";
 
 interface User {
@@ -63,23 +63,22 @@ interface S3Configuration {
   message?: string;
 }
 
-interface EmployeeInvitation {
-  id: number;
-  email: string;
-  firstName: string;
-  lastName: string;
-  position: string;
-  department: string;
-  invitationToken: string;
-  invitedBy: number;
-  invitedAt: string;
-  registeredAt: string | null;
-  approvedAt: string | null;
-  approvedBy: number | null;
-  status: 'pending' | 'registered' | 'approved' | 'expired';
-  reminderCount: number;
-  lastReminderAt: string | null;
-  expiresAt: string;
+interface MigrationResponse {
+  dryRun: boolean;
+  migrated: number;
+  failed: number;
+  skipped: number;
+  message?: string;
+}
+
+interface S3TestResponse {
+  success: boolean;
+  message: string;
+}
+
+interface S3MigrateResponse {
+  success: boolean;
+  message: string;
 }
 
 export default function Settings() {
@@ -100,15 +99,6 @@ export default function Settings() {
     bucketName: "",
     endpoint: "",
     enabled: true
-  });
-  const [invitationDialogOpen, setInvitationDialogOpen] = useState(false);
-  const [resendInvitationId, setResendInvitationId] = useState<number | null>(null);
-  const [newInvitation, setNewInvitation] = useState({
-    email: "",
-    firstName: "",
-    lastName: "",
-    position: "",
-    department: ""
   });
   const [newUser, setNewUser] = useState({
     username: "",
@@ -135,12 +125,6 @@ export default function Settings() {
     enabled: isAdmin
   });
 
-  // Employee Invitations Query (Admin and HR only)
-  const { data: invitations = [], isLoading: invitationsLoading } = useQuery<EmployeeInvitation[]>({
-    queryKey: ["/api/invitations"],
-    enabled: isAdmin || user?.role === 'hr'
-  });
-
   // Mock users query - in a real app this would fetch from /api/users
   const { data: users = [] } = useQuery<User[]>({
     queryKey: ["/api/users"],
@@ -158,9 +142,11 @@ export default function Settings() {
   });
 
   // S3 Migration Mutation
-  const migrateMutation = useMutation({
-    mutationFn: (data: { batchSize: number; dryRun: boolean }) => 
-      apiRequest("POST", "/api/storage/migrate", data),
+  const migrateMutation = useMutation<MigrationResponse, Error, { batchSize: number; dryRun: boolean }>({
+    mutationFn: async (data: { batchSize: number; dryRun: boolean }) => {
+      const response = await apiRequest("POST", "/api/storage/migrate", data);
+      return response.json();
+    },
     onSuccess: (data) => {
       toast({
         title: data.dryRun ? "Dry Run Complete" : "Migration Complete",
@@ -255,9 +241,11 @@ export default function Settings() {
     }
   });
 
-  const testS3ConfigMutation = useMutation({
-    mutationFn: (configData: typeof s3FormData) => 
-      apiRequest("POST", "/api/admin/s3-config/test", configData),
+  const testS3ConfigMutation = useMutation<S3TestResponse, Error, typeof s3FormData>({
+    mutationFn: async (configData: typeof s3FormData) => {
+      const response = await apiRequest("POST", "/api/admin/s3-config/test", configData);
+      return response.json();
+    },
     onSuccess: (data) => {
       toast({
         title: data.success ? "Success" : "Connection Failed",
@@ -276,8 +264,11 @@ export default function Settings() {
     }
   });
 
-  const migrateS3ConfigMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/admin/s3-config/migrate"),
+  const migrateS3ConfigMutation = useMutation<S3MigrateResponse, Error>({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/admin/s3-config/migrate");
+      return response.json();
+    },
     onSuccess: (data) => {
       toast({
         title: "Success",
@@ -289,54 +280,6 @@ export default function Settings() {
     onError: (error) => {
       toast({
         title: "Migration Failed",
-        description: error.message,
-        variant: "destructive"
-      });
-    }
-  });
-
-  // Employee Invitation Mutations
-  const sendInvitationMutation = useMutation({
-    mutationFn: (invitationData: typeof newInvitation) => 
-      apiRequest("POST", "/api/invitations/send", invitationData),
-    onSuccess: () => {
-      toast({
-        title: "Success",
-        description: "Invitation sent successfully"
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/invitations"] });
-      setInvitationDialogOpen(false);
-      setNewInvitation({
-        email: "",
-        firstName: "",
-        lastName: "",
-        position: "",
-        department: ""
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive"
-      });
-    }
-  });
-
-  const resendInvitationMutation = useMutation({
-    mutationFn: (invitationId: number) => 
-      apiRequest("POST", `/api/invitations/${invitationId}/resend`, {}),
-    onSuccess: () => {
-      toast({
-        title: "Success",
-        description: "Invitation resent successfully"
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/invitations"] });
-      setResendInvitationId(null);
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
         description: error.message,
         variant: "destructive"
       });
@@ -367,29 +310,6 @@ export default function Settings() {
 
   const handleSaveS3Config = () => {
     updateS3ConfigMutation.mutate(s3FormData);
-  };
-
-  const handleSendInvitation = () => {
-    sendInvitationMutation.mutate(newInvitation);
-  };
-
-  const handleResendInvitation = (invitationId: number) => {
-    resendInvitationMutation.mutate(invitationId);
-  };
-
-  const getInvitationStatusBadge = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return <Badge className="bg-yellow-500/10 text-yellow-700 dark:text-yellow-400">Pending</Badge>;
-      case 'registered':
-        return <Badge className="bg-blue-500/10 text-blue-700 dark:text-blue-400">Registered</Badge>;
-      case 'approved':
-        return <Badge className="bg-green-500/10 text-green-700 dark:text-green-400">Approved</Badge>;
-      case 'expired':
-        return <Badge className="bg-destructive/10 text-destructive">Expired</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
-    }
   };
 
   const handleOpenS3ConfigDialog = () => {
@@ -825,7 +745,7 @@ export default function Settings() {
                               onClick={handleOpenS3ConfigDialog}
                               data-testid="button-configure-s3"
                             >
-                              <Settings className="w-4 h-4 mr-2" />
+                              <SettingsIcon className="w-4 h-4 mr-2" />
                               Configure S3 Settings
                             </Button>
                           </DialogTrigger>
@@ -989,187 +909,6 @@ export default function Settings() {
           </Card>
         )}
 
-        {/* Employee Invitations */}
-        {(isAdmin || user?.role === 'hr') && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="flex items-center">
-                <UserPlus className="w-5 h-5 mr-2" />
-                Employee Invitations
-              </CardTitle>
-              <Dialog open={invitationDialogOpen} onOpenChange={setInvitationDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button size="sm" data-testid="button-send-invitation">
-                    <Send className="w-4 h-4 mr-2" />
-                    Send Invitation
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Send Employee Invitation</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="invite-firstName">First Name</Label>
-                        <Input
-                          id="invite-firstName"
-                          value={newInvitation.firstName}
-                          onChange={(e) => setNewInvitation(prev => ({ ...prev, firstName: e.target.value }))}
-                          placeholder="John"
-                          data-testid="input-invite-firstName"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="invite-lastName">Last Name</Label>
-                        <Input
-                          id="invite-lastName"
-                          value={newInvitation.lastName}
-                          onChange={(e) => setNewInvitation(prev => ({ ...prev, lastName: e.target.value }))}
-                          placeholder="Doe"
-                          data-testid="input-invite-lastName"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <Label htmlFor="invite-email">Email Address</Label>
-                      <Input
-                        id="invite-email"
-                        type="email"
-                        value={newInvitation.email}
-                        onChange={(e) => setNewInvitation(prev => ({ ...prev, email: e.target.value }))}
-                        placeholder="john.doe@example.com"
-                        data-testid="input-invite-email"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="invite-position">Position</Label>
-                      <Input
-                        id="invite-position"
-                        value={newInvitation.position}
-                        onChange={(e) => setNewInvitation(prev => ({ ...prev, position: e.target.value }))}
-                        placeholder="Registered Nurse"
-                        data-testid="input-invite-position"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="invite-department">Department</Label>
-                      <Input
-                        id="invite-department"
-                        value={newInvitation.department}
-                        onChange={(e) => setNewInvitation(prev => ({ ...prev, department: e.target.value }))}
-                        placeholder="Emergency Department"
-                        data-testid="input-invite-department"
-                      />
-                    </div>
-                    <Button 
-                      onClick={handleSendInvitation}
-                      disabled={sendInvitationMutation.isPending || !newInvitation.email || !newInvitation.firstName || !newInvitation.lastName}
-                      className="w-full"
-                      data-testid="button-send-invitation-confirm"
-                    >
-                      {sendInvitationMutation.isPending ? "Sending..." : "Send Invitation"}
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </CardHeader>
-            <CardContent>
-              {invitationsLoading ? (
-                <div className="flex justify-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                </div>
-              ) : invitations.length > 0 ? (
-                <div className="space-y-4">
-                  <div className="overflow-x-auto">
-                    <table className="w-full border-collapse">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="text-left p-2 text-sm font-medium text-muted-foreground">Name</th>
-                          <th className="text-left p-2 text-sm font-medium text-muted-foreground">Email</th>
-                          <th className="text-left p-2 text-sm font-medium text-muted-foreground">Position</th>
-                          <th className="text-left p-2 text-sm font-medium text-muted-foreground">Status</th>
-                          <th className="text-left p-2 text-sm font-medium text-muted-foreground">Invited</th>
-                          <th className="text-left p-2 text-sm font-medium text-muted-foreground">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {invitations.map((invitation) => (
-                          <tr key={invitation.id} className="border-b" data-testid={`invitation-row-${invitation.id}`}>
-                            <td className="p-2 text-sm">
-                              {invitation.firstName} {invitation.lastName}
-                            </td>
-                            <td className="p-2 text-sm">{invitation.email}</td>
-                            <td className="p-2 text-sm">
-                              <div>
-                                <p>{invitation.position}</p>
-                                <p className="text-xs text-muted-foreground">{invitation.department}</p>
-                              </div>
-                            </td>
-                            <td className="p-2 text-sm">
-                              {getInvitationStatusBadge(invitation.status)}
-                              {invitation.reminderCount > 0 && (
-                                <div className="flex items-center mt-1">
-                                  <Clock className="w-3 h-3 mr-1 text-muted-foreground" />
-                                  <span className="text-xs text-muted-foreground">{invitation.reminderCount} reminders</span>
-                                </div>
-                              )}
-                            </td>
-                            <td className="p-2 text-sm">
-                              <p>{new Date(invitation.invitedAt).toLocaleDateString()}</p>
-                              {invitation.expiresAt && (
-                                <p className="text-xs text-muted-foreground">
-                                  Expires: {new Date(invitation.expiresAt).toLocaleDateString()}
-                                </p>
-                              )}
-                            </td>
-                            <td className="p-2">
-                              {invitation.status === 'pending' && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleResendInvitation(invitation.id)}
-                                  disabled={resendInvitationMutation.isPending && resendInvitationId === invitation.id}
-                                  data-testid={`button-resend-invitation-${invitation.id}`}
-                                >
-                                  <RefreshCw className="w-4 h-4 mr-1" />
-                                  {resendInvitationMutation.isPending && resendInvitationId === invitation.id ? "Sending..." : "Resend"}
-                                </Button>
-                              )}
-                              {invitation.status === 'registered' && (
-                                <Badge className="bg-blue-500/10 text-blue-700 dark:text-blue-400">
-                                  Awaiting Approval
-                                </Badge>
-                              )}
-                              {invitation.status === 'approved' && invitation.registeredAt && (
-                                <p className="text-xs text-muted-foreground">
-                                  Approved {new Date(invitation.approvedAt!).toLocaleDateString()}
-                                </p>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="mt-4 p-4 bg-muted/50 rounded-lg">
-                    <p className="text-sm text-muted-foreground">
-                      <Mail className="w-4 h-4 inline mr-1" />
-                      Invitations are sent via AWS SES with automatic reminders every 24 hours (up to 3 times).
-                      New hires can complete their onboarding forms independently and will be in "Onboarding" status until approved.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <UserPlus className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
-                  <p className="text-muted-foreground">No invitations sent yet</p>
-                  <p className="text-sm text-muted-foreground mt-2">Send an invitation to get started with employee onboarding</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
 
         {/* API Keys Management */}
         <Card>
