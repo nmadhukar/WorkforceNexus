@@ -131,7 +131,16 @@ export const employees = pgTable("employees", {
   nppesPassword: varchar("nppes_password", { length: 100 }), // NPPES password (AES-256 encrypted)
   
   // RECORD MANAGEMENT
-  status: varchar("status", { length: 20 }).default("active"), // active | inactive | on_leave | terminated
+  status: varchar("status", { length: 20 }).default("active"), // active | inactive | on_leave | terminated | onboarding
+  
+  // ONBOARDING FIELDS
+  onboardingStatus: varchar("onboarding_status", { length: 50 }), // invited | registered | in_progress | completed | approved
+  invitationId: integer("invitation_id"), // Link to employee_invitations table
+  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }), // User account for self-service portal
+  onboardingCompletedAt: timestamp("onboarding_completed_at"), // When employee completed their onboarding forms
+  approvedAt: timestamp("approved_at"), // When HR approved the onboarding
+  approvedBy: integer("approved_by").references(() => users.id, { onDelete: "set null" }), // HR user who approved
+  
   createdAt: timestamp("created_at").defaultNow(), // Record creation timestamp
   updatedAt: timestamp("updated_at").defaultNow() // Last modification timestamp
 }, (table) => ({
@@ -282,6 +291,109 @@ export const documents = pgTable("documents", {
   typeIdx: index("idx_documents_type").on(table.documentType), // Index for document type filtering
   expirationIdx: index("idx_documents_expiration").on(table.expirationDate), // Index for expiration tracking
   storageTypeIdx: index("idx_documents_storage_type").on(table.storageType) // Index for storage type filtering
+}));
+
+/**
+ * EMPLOYEE INVITATIONS TABLE
+ * 
+ * Manages invitations sent by HR to prospective employees for self-service onboarding.
+ * Tracks invitation status, access tokens, and reminder schedules.
+ */
+export const employeeInvitations = pgTable("employee_invitations", {
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  
+  // Invitee information
+  firstName: varchar("first_name", { length: 50 }).notNull(), // Prospective employee's first name
+  lastName: varchar("last_name", { length: 50 }).notNull(), // Prospective employee's last name
+  email: varchar("email", { length: 100 }).notNull().unique(), // Invitation email (must be unique)
+  cellPhone: varchar("cell_phone", { length: 20 }), // Contact phone number
+  
+  // Invitation details
+  invitationToken: varchar("invitation_token", { length: 255 }).notNull().unique(), // Unique token for secure access
+  invitedBy: integer("invited_by").references(() => users.id, { onDelete: "set null" }), // HR user who sent invitation
+  invitedAt: timestamp("invited_at").defaultNow(), // When invitation was sent
+  
+  // Status tracking
+  status: varchar("status", { length: 50 }).default("pending"), // pending | registered | in_progress | completed | expired
+  registeredAt: timestamp("registered_at"), // When invitee created their account
+  completedAt: timestamp("completed_at"), // When onboarding forms were completed
+  expiresAt: timestamp("expires_at").notNull(), // Invitation expiration (default 7 days)
+  
+  // Reminder tracking
+  remindersSent: integer("reminders_sent").default(0), // Number of reminders sent
+  lastReminderAt: timestamp("last_reminder_at"), // Last reminder timestamp
+  nextReminderAt: timestamp("next_reminder_at"), // Next scheduled reminder
+  
+  // Linked employee record
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Created employee record
+  
+  // Metadata
+  metadata: jsonb("metadata") // Additional data (IP address, user agent, etc.)
+}, (table) => ({
+  emailIdx: index("idx_invitations_email").on(table.email),
+  tokenIdx: index("idx_invitations_token").on(table.invitationToken),
+  statusIdx: index("idx_invitations_status").on(table.status),
+  nextReminderIdx: index("idx_invitations_next_reminder").on(table.nextReminderAt)
+}));
+
+/**
+ * SES CONFIGURATIONS TABLE
+ * 
+ * Stores AWS SES configuration for email notifications.
+ * Supports database-managed credentials for secure email sending.
+ */
+export const sesConfigurations = pgTable("ses_configurations", {
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  
+  // AWS SES Configuration
+  region: varchar("region", { length: 50 }).notNull().default("us-east-1"), // AWS region
+  accessKeyId: varchar("access_key_id", { length: 255 }), // AWS Access Key ID (encrypted)
+  secretAccessKey: varchar("secret_access_key", { length: 255 }), // AWS Secret Access Key (encrypted)
+  fromEmail: varchar("from_email", { length: 100 }).notNull(), // Verified sender email
+  fromName: varchar("from_name", { length: 100 }).default("HR Management System"), // Sender display name
+  
+  // Configuration status
+  enabled: boolean("enabled").default(false), // Whether SES is enabled
+  verified: boolean("verified").default(false), // Whether configuration is verified
+  lastVerifiedAt: timestamp("last_verified_at"), // Last successful verification
+  
+  // Metadata
+  updatedAt: timestamp("updated_at").defaultNow(), // Last update timestamp
+  updatedBy: integer("updated_by").references(() => users.id) // Admin who updated configuration
+});
+
+/**
+ * EMAIL REMINDERS TABLE
+ * 
+ * Tracks all email reminders sent for invitation follow-ups.
+ * Provides audit trail for email communications and delivery status.
+ */
+export const emailReminders = pgTable("email_reminders", {
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  
+  // Reference to invitation
+  invitationId: integer("invitation_id").references(() => employeeInvitations.id, { onDelete: "cascade" }), // Related invitation
+  
+  // Email details
+  recipientEmail: varchar("recipient_email", { length: 100 }).notNull(), // Recipient email address
+  subject: varchar("subject", { length: 255 }).notNull(), // Email subject
+  bodyText: text("body_text"), // Plain text body
+  bodyHtml: text("body_html"), // HTML body
+  
+  // Send status
+  status: varchar("status", { length: 50 }).default("pending"), // pending | sent | failed | bounced
+  sentAt: timestamp("sent_at"), // When email was sent
+  reminderNumber: integer("reminder_number").notNull(), // Which reminder this is (1, 2, or 3)
+  
+  // AWS SES response
+  messageId: varchar("message_id", { length: 255 }), // SES message ID
+  errorMessage: text("error_message"), // Error details if failed
+  
+  // Metadata
+  createdAt: timestamp("created_at").defaultNow() // Record creation time
+}, (table) => ({
+  invitationIdx: index("idx_email_reminders_invitation").on(table.invitationId),
+  statusIdx: index("idx_email_reminders_status").on(table.status)
 }));
 
 /**
@@ -642,3 +754,44 @@ export type ApiKey = typeof apiKeys.$inferSelect;
 export type InsertApiKey = z.infer<typeof insertApiKeySchema>;
 export type ApiKeyRotation = typeof apiKeyRotations.$inferSelect;
 export type InsertApiKeyRotation = z.infer<typeof insertApiKeyRotationSchema>;
+
+// Insert schemas for employee invitations
+export const insertEmployeeInvitationSchema = createInsertSchema(employeeInvitations).omit({
+  id: true,
+  invitedAt: true,
+  remindersSent: true,
+  lastReminderAt: true,
+  nextReminderAt: true,
+  registeredAt: true,
+  completedAt: true,
+  employeeId: true
+});
+
+// Insert schema for SES configurations
+export const insertSesConfigurationSchema = createInsertSchema(sesConfigurations).omit({
+  id: true,
+  updatedAt: true,
+  lastVerifiedAt: true,
+  verified: true
+});
+
+// Insert schema for email reminders
+export const insertEmailReminderSchema = createInsertSchema(emailReminders).omit({
+  id: true,
+  createdAt: true,
+  sentAt: true,
+  messageId: true,
+  errorMessage: true
+});
+
+// Types for employee invitations
+export type EmployeeInvitation = typeof employeeInvitations.$inferSelect;
+export type InsertEmployeeInvitation = z.infer<typeof insertEmployeeInvitationSchema>;
+
+// Types for SES configuration
+export type SesConfiguration = typeof sesConfigurations.$inferSelect;
+export type InsertSesConfiguration = z.infer<typeof insertSesConfigurationSchema>;
+
+// Types for email reminders
+export type EmailReminder = typeof emailReminders.$inferSelect;
+export type InsertEmailReminder = z.infer<typeof insertEmailReminderSchema>;
