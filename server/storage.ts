@@ -31,6 +31,9 @@ import {
   apiKeys,
   apiKeyRotations,
   s3Configuration,
+  employeeInvitations,
+  emailReminders,
+  sesConfigurations,
   type User, 
   type InsertUser,
   type Employee,
@@ -66,7 +69,13 @@ import {
   type ApiKeyRotation,
   type InsertApiKeyRotation,
   type S3Configuration,
-  type InsertS3Configuration
+  type InsertS3Configuration,
+  type EmployeeInvitation,
+  type InsertEmployeeInvitation,
+  type EmailReminder,
+  type InsertEmailReminder,
+  type SesConfiguration,
+  type InsertSesConfiguration
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, like, and, or, lte, sql, count } from "drizzle-orm";
@@ -248,6 +257,18 @@ export interface IStorage {
   getS3Configuration(): Promise<S3Configuration | undefined>;
   createS3Configuration(config: InsertS3Configuration): Promise<S3Configuration>;
   updateS3Configuration(config: Partial<InsertS3Configuration>): Promise<S3Configuration>;
+  
+  // Employee Invitation operations
+  createInvitation(invitation: any): Promise<any>;
+  getInvitationById(id: number): Promise<any | undefined>;
+  getInvitationByEmail(email: string): Promise<any | undefined>;
+  getInvitationByToken(token: string): Promise<any | undefined>;
+  getAllInvitations(): Promise<any[]>;
+  updateInvitation(id: number, updates: any): Promise<any>;
+  
+  // Email Reminder operations
+  createEmailReminder(reminder: any): Promise<any>;
+  getEmailRemindersByInvitationId(invitationId: number): Promise<any[]>;
   
   sessionStore: session.SessionStore;
 }
@@ -1121,6 +1142,106 @@ export class DatabaseStorage implements IStorage {
       .returning();
     
     return updated;
+  }
+  
+  /**
+   * Employee Invitation Operations Implementation
+   */
+  
+  /**
+   * Create a new employee invitation
+   * @param {any} invitation - Invitation data
+   * @returns {Promise<any>} Created invitation
+   */
+  async createInvitation(invitation: any): Promise<any> {
+    const [newInvitation] = await db.insert(employeeInvitations).values(invitation).returning();
+    return newInvitation;
+  }
+  
+  /**
+   * Get invitation by ID
+   * @param {number} id - Invitation ID
+   * @returns {Promise<any | undefined>} Invitation or undefined
+   */
+  async getInvitationById(id: number): Promise<any | undefined> {
+    const [invitation] = await db.select()
+      .from(employeeInvitations)
+      .where(eq(employeeInvitations.id, id));
+    return invitation;
+  }
+  
+  /**
+   * Get invitation by email
+   * @param {string} email - Email address
+   * @returns {Promise<any | undefined>} Invitation or undefined
+   */
+  async getInvitationByEmail(email: string): Promise<any | undefined> {
+    const [invitation] = await db.select()
+      .from(employeeInvitations)
+      .where(eq(employeeInvitations.email, email));
+    return invitation;
+  }
+  
+  /**
+   * Get invitation by token
+   * @param {string} token - Invitation token
+   * @returns {Promise<any | undefined>} Invitation or undefined
+   */
+  async getInvitationByToken(token: string): Promise<any | undefined> {
+    const [invitation] = await db.select()
+      .from(employeeInvitations)
+      .where(eq(employeeInvitations.invitationToken, token));
+    return invitation;
+  }
+  
+  /**
+   * Get all invitations
+   * @returns {Promise<any[]>} Array of invitations
+   */
+  async getAllInvitations(): Promise<any[]> {
+    return await db.select()
+      .from(employeeInvitations)
+      .orderBy(desc(employeeInvitations.invitedAt));
+  }
+  
+  /**
+   * Update invitation
+   * @param {number} id - Invitation ID
+   * @param {any} updates - Updates to apply
+   * @returns {Promise<any>} Updated invitation
+   */
+  async updateInvitation(id: number, updates: any): Promise<any> {
+    const [updated] = await db.update(employeeInvitations)
+      .set(updates)
+      .where(eq(employeeInvitations.id, id))
+      .returning();
+    return updated;
+  }
+  
+  /**
+   * Email Reminder Operations Implementation
+   */
+  
+  /**
+   * Create email reminder record
+   * @param {any} reminder - Reminder data
+   * @returns {Promise<any>} Created reminder
+   */
+  async createEmailReminder(reminder: any): Promise<any> {
+    const [newReminder] = await db.insert(emailReminders).values(reminder).returning();
+    return newReminder;
+  }
+  
+  /**
+   * Get email reminders by invitation ID
+   * @param {number} invitationId - Invitation ID
+   * @returns {Promise<any[]>} Array of reminders
+   */
+  async getEmailRemindersByInvitationId(invitationId: number): Promise<any[]> {
+    return await db.select()
+      .from(emailReminders)
+      .where(eq(emailReminders.invitationId, invitationId))
+      .orderBy(desc(emailReminders.createdAt));
   }
 }
 

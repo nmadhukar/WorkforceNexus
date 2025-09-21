@@ -1724,6 +1724,382 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   /**
+   * AWS SES Email Configuration Routes
+   * 
+   * @description
+   * Endpoints for managing AWS SES configuration for email notifications.
+   * Supports configuration management, testing, and invitation sending.
+   */
+
+  /**
+   * GET /api/admin/ses-config
+   * Get current SES configuration status
+   */
+  app.get('/api/admin/ses-config',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    async (req: AuditRequest, res) => {
+      try {
+        const { sesService } = await import('./services/sesService');
+        const status = await sesService.getConfigurationStatus();
+        res.json(status);
+      } catch (error) {
+        console.error('Error fetching SES configuration:', error);
+        res.status(500).json({ error: 'Failed to fetch SES configuration' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/admin/ses-config
+   * Save or update SES configuration
+   */
+  app.post('/api/admin/ses-config',
+    requireAuth,
+    requireRole(['admin']),
+    [
+      body('region').notEmpty().withMessage('AWS Region is required'),
+      body('accessKeyId').notEmpty().withMessage('AWS Access Key ID is required'),
+      body('secretAccessKey').notEmpty().withMessage('AWS Secret Access Key is required'),
+      body('fromEmail').isEmail().withMessage('Valid from email is required'),
+      body('fromName').optional()
+    ],
+    handleValidationErrors,
+    async (req: AuditRequest, res) => {
+      try {
+        const { sesService } = await import('./services/sesService');
+        const config = {
+          ...req.body,
+          updatedBy: req.user!.id
+        };
+        
+        const success = await sesService.saveConfiguration(config);
+        
+        if (success) {
+          await logAudit({
+            userId: req.user!.id,
+            action: 'UPDATE_SES_CONFIG',
+            entityType: 'settings',
+            entityId: 1,
+            changes: { configured: true },
+            ipAddress: req.ip || 'unknown',
+            userAgent: req.get('User-Agent') || 'unknown'
+          });
+          
+          res.json({ message: 'SES configuration saved successfully' });
+        } else {
+          res.status(400).json({ error: 'Failed to save SES configuration' });
+        }
+      } catch (error) {
+        console.error('Error saving SES configuration:', error);
+        res.status(500).json({ error: 'Failed to save SES configuration' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/admin/ses-config/test
+   * Test SES configuration by sending a test email
+   */
+  app.post('/api/admin/ses-config/test',
+    requireAuth,
+    requireRole(['admin']),
+    [
+      body('testEmail').isEmail().withMessage('Valid test email is required')
+    ],
+    handleValidationErrors,
+    async (req: AuditRequest, res) => {
+      try {
+        const { sesService } = await import('./services/sesService');
+        const result = await sesService.testConfiguration(req.body.testEmail);
+        
+        if (result.success) {
+          res.json({ 
+            message: 'Test email sent successfully',
+            details: 'Please check your inbox for the test email'
+          });
+        } else {
+          res.status(400).json({ 
+            error: 'Failed to send test email',
+            details: result.error
+          });
+        }
+      } catch (error) {
+        console.error('Error testing SES configuration:', error);
+        res.status(500).json({ error: 'Failed to test SES configuration' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/admin/ses-config/verify
+   * Verify an email address with AWS SES
+   */
+  app.post('/api/admin/ses-config/verify',
+    requireAuth,
+    requireRole(['admin']),
+    [
+      body('email').isEmail().withMessage('Valid email is required')
+    ],
+    handleValidationErrors,
+    async (req: AuditRequest, res) => {
+      try {
+        const { sesService } = await import('./services/sesService');
+        const success = await sesService.verifyEmailAddress(req.body.email);
+        
+        if (success) {
+          res.json({ 
+            message: 'Verification email sent',
+            details: 'Please check your email and follow the AWS verification link'
+          });
+        } else {
+          res.status(400).json({ error: 'Failed to send verification email' });
+        }
+      } catch (error) {
+        console.error('Error verifying email address:', error);
+        res.status(500).json({ error: 'Failed to verify email address' });
+      }
+    }
+  );
+
+  /**
+   * Employee Invitation Management Routes
+   * 
+   * @description
+   * Endpoints for managing employee invitations for self-service onboarding.
+   * Supports invitation creation, tracking, and reminder management.
+   */
+
+  /**
+   * GET /api/invitations
+   * Get all employee invitations
+   */
+  app.get('/api/invitations',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    async (req: AuditRequest, res) => {
+      try {
+        const invitations = await storage.getAllInvitations();
+        res.json(invitations);
+      } catch (error) {
+        console.error('Error fetching invitations:', error);
+        res.status(500).json({ error: 'Failed to fetch invitations' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/invitations
+   * Create a new employee invitation and send email
+   */
+  app.post('/api/invitations',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    [
+      body('firstName').notEmpty().withMessage('First name is required'),
+      body('lastName').notEmpty().withMessage('Last name is required'),
+      body('email').isEmail().withMessage('Valid email is required'),
+      body('cellPhone').optional().isMobilePhone('any')
+    ],
+    handleValidationErrors,
+    async (req: AuditRequest, res) => {
+      try {
+        const { firstName, lastName, email, cellPhone } = req.body;
+        
+        // Check if invitation already exists for this email
+        const existingInvitation = await storage.getInvitationByEmail(email);
+        if (existingInvitation && existingInvitation.status !== 'expired') {
+          return res.status(400).json({ 
+            error: 'An active invitation already exists for this email address' 
+          });
+        }
+        
+        // Generate secure invitation token
+        const invitationToken = generateApiKey();
+        
+        // Calculate expiration (7 days from now)
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7);
+        
+        // Calculate first reminder (24 hours from now)
+        const nextReminderAt = new Date();
+        nextReminderAt.setHours(nextReminderAt.getHours() + 24);
+        
+        // Create invitation record
+        const invitation = await storage.createInvitation({
+          firstName,
+          lastName,
+          email,
+          cellPhone: cellPhone || null,
+          invitationToken,
+          invitedBy: req.user!.id,
+          expiresAt,
+          nextReminderAt
+        });
+        
+        // Generate invitation link
+        const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+        const invitationLink = `${baseUrl}/onboarding/register?token=${invitationToken}`;
+        
+        // Send invitation email
+        const { sesService } = await import('./services/sesService');
+        const emailResult = await sesService.sendInvitationEmail(
+          {
+            to: email,
+            firstName,
+            lastName,
+            invitationLink,
+            expiresIn: '7 days'
+          },
+          invitation.id,
+          0 // Initial invitation, not a reminder
+        );
+        
+        if (!emailResult.success) {
+          console.error('Failed to send invitation email:', emailResult.error);
+          // Update invitation status to reflect email failure
+          await storage.updateInvitation(invitation.id, {
+            status: 'pending',
+            metadata: { emailError: emailResult.error }
+          });
+        }
+        
+        // Log audit
+        await logAudit({
+          userId: req.user!.id,
+          action: 'CREATE_INVITATION',
+          entityType: 'invitation',
+          entityId: invitation.id,
+          changes: { email, firstName, lastName },
+          ipAddress: req.ip || 'unknown',
+          userAgent: req.get('User-Agent') || 'unknown'
+        });
+        
+        res.status(201).json({
+          message: 'Invitation created and email sent successfully',
+          invitation: {
+            id: invitation.id,
+            email: invitation.email,
+            firstName: invitation.firstName,
+            lastName: invitation.lastName,
+            status: invitation.status,
+            expiresAt: invitation.expiresAt
+          }
+        });
+      } catch (error) {
+        console.error('Error creating invitation:', error);
+        res.status(500).json({ error: 'Failed to create invitation' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/invitations/:id/resend
+   * Resend invitation email
+   */
+  app.post('/api/invitations/:id/resend',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateId,
+    handleValidationErrors,
+    async (req: AuditRequest, res) => {
+      try {
+        const invitationId = parseInt(req.params.id);
+        const invitation = await storage.getInvitationById(invitationId);
+        
+        if (!invitation) {
+          return res.status(404).json({ error: 'Invitation not found' });
+        }
+        
+        if (invitation.status === 'completed' || invitation.status === 'expired') {
+          return res.status(400).json({ 
+            error: `Cannot resend invitation with status: ${invitation.status}` 
+          });
+        }
+        
+        // Generate invitation link
+        const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+        const invitationLink = `${baseUrl}/onboarding/register?token=${invitation.invitationToken}`;
+        
+        // Calculate time until expiration
+        const now = new Date();
+        const expiresAt = new Date(invitation.expiresAt);
+        const daysRemaining = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        
+        // Send email
+        const { sesService } = await import('./services/sesService');
+        const emailResult = await sesService.sendInvitationEmail(
+          {
+            to: invitation.email,
+            firstName: invitation.firstName,
+            lastName: invitation.lastName,
+            invitationLink,
+            expiresIn: `${daysRemaining} days`
+          },
+          invitation.id,
+          0 // Manual resend, not a reminder
+        );
+        
+        if (emailResult.success) {
+          res.json({ message: 'Invitation email resent successfully' });
+        } else {
+          res.status(400).json({ 
+            error: 'Failed to resend invitation email',
+            details: emailResult.error
+          });
+        }
+      } catch (error) {
+        console.error('Error resending invitation:', error);
+        res.status(500).json({ error: 'Failed to resend invitation' });
+      }
+    }
+  );
+
+  /**
+   * DELETE /api/invitations/:id
+   * Cancel an invitation
+   */
+  app.delete('/api/invitations/:id',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateId,
+    handleValidationErrors,
+    async (req: AuditRequest, res) => {
+      try {
+        const invitationId = parseInt(req.params.id);
+        const invitation = await storage.getInvitationById(invitationId);
+        
+        if (!invitation) {
+          return res.status(404).json({ error: 'Invitation not found' });
+        }
+        
+        if (invitation.status === 'completed') {
+          return res.status(400).json({ 
+            error: 'Cannot delete completed invitation' 
+          });
+        }
+        
+        await storage.updateInvitation(invitationId, { status: 'expired' });
+        
+        await logAudit({
+          userId: req.user!.id,
+          action: 'CANCEL_INVITATION',
+          entityType: 'invitation',
+          entityId: invitationId,
+          changes: { status: 'expired' },
+          ipAddress: req.ip || 'unknown',
+          userAgent: req.get('User-Agent') || 'unknown'
+        });
+        
+        res.json({ message: 'Invitation cancelled successfully' });
+      } catch (error) {
+        console.error('Error cancelling invitation:', error);
+        res.status(500).json({ error: 'Failed to cancel invitation' });
+      }
+    }
+  );
+
+  /**
    * API Key Management Routes
    * 
    * @description
