@@ -61,6 +61,87 @@ export function DocumentsTable({
     setDeleteId(null);
   };
 
+  const handleView = async (id: number) => {
+    try {
+      const response = await fetch(`/api/documents/${id}/download`, {
+        credentials: "include"
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to view document");
+      }
+      
+      const blob = await response.blob();
+      const contentType = blob.type.toLowerCase();
+      
+      // Check if the file type is viewable in browser
+      const viewableTypes = [
+        'application/pdf',
+        'image/jpeg',
+        'image/jpg', 
+        'image/png',
+        'image/gif',
+        'image/webp',
+        'image/svg+xml',
+        'text/plain',
+        'text/html',
+        'text/css',
+        'text/javascript',
+        'application/javascript'
+      ];
+      
+      const isViewable = viewableTypes.some(type => contentType.includes(type));
+      
+      if (isViewable) {
+        // Open in new tab for viewable formats
+        const url = window.URL.createObjectURL(blob);
+        const newTab = window.open(url, '_blank');
+        
+        if (!newTab) {
+          // Popup might be blocked, fall back to download
+          toast({
+            title: "Notice",
+            description: "Popup blocked. Downloading file instead.",
+          });
+          const a = document.createElement('a');
+          a.style.display = 'none';
+          a.href = url;
+          a.download = `document-${id}`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }
+        
+        // Clean up the object URL after a delay
+        setTimeout(() => {
+          window.URL.revokeObjectURL(url);
+        }, 1000);
+      } else {
+        // Fall back to download for non-viewable formats
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `document-${id}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        
+        toast({
+          title: "Notice",
+          description: "This file type cannot be viewed in browser. Downloaded instead.",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to view document",
+        variant: "destructive"
+      });
+    }
+  };
+
   const handleDownload = async (id: number) => {
     try {
       const response = await fetch(`/api/documents/${id}/download`, {
@@ -167,6 +248,7 @@ export function DocumentsTable({
                           <Button 
                             variant="ghost" 
                             size="sm"
+                            onClick={() => handleView(document.id)}
                             data-testid={`button-view-${document.id}`}
                           >
                             <Eye className="w-4 h-4" />
