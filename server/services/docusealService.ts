@@ -1,0 +1,651 @@
+/**
+ * DocuSeal API Service
+ * 
+ * Handles document signing and form management through DocuSeal API.
+ * Manages templates, submissions, and document tracking for employee onboarding
+ * and compliance requirements.
+ */
+
+import { db } from "../db";
+import { 
+  docusealConfigurations, 
+  docusealTemplates, 
+  formSubmissions,
+  employees,
+  employeeInvitations,
+  type DocusealConfiguration,
+  type DocusealTemplate,
+  type FormSubmission,
+  type InsertDocusealTemplate,
+  type InsertFormSubmission
+} from "@shared/schema";
+import { eq, and, desc, inArray } from "drizzle-orm";
+import * as crypto from "crypto";
+
+// Encryption key from environment or generate one
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex').slice(0, 32);
+const ENCRYPTION_IV_LENGTH = 16;
+
+/**
+ * Encrypt sensitive data using AES-256
+ */
+function encrypt(text: string): string {
+  const iv = crypto.randomBytes(ENCRYPTION_IV_LENGTH);
+  const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
+  let encrypted = cipher.update(text);
+  encrypted = Buffer.concat([encrypted, cipher.final()]);
+  return iv.toString('hex') + ':' + encrypted.toString('hex');
+}
+
+/**
+ * Decrypt sensitive data
+ */
+function decrypt(text: string): string {
+  const textParts = text.split(':');
+  const iv = Buffer.from(textParts.shift()!, 'hex');
+  const encryptedText = Buffer.from(textParts.join(':'), 'hex');
+  const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
+  let decrypted = decipher.update(encryptedText);
+  decrypted = Buffer.concat([decrypted, decipher.final()]);
+  return decrypted.toString();
+}
+
+/**
+ * DocuSeal API response types
+ */
+interface DocuSealTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  fields?: any[];
+  submitters?: any[];
+  documents?: any[];
+  created_at: string;
+  updated_at: string;
+}
+
+interface DocuSealSubmission {
+  id: string;
+  template_id: string;
+  status: 'pending' | 'sent' | 'opened' | 'completed' | 'expired';
+  submitters: DocuSealSubmitter[];
+  created_at: string;
+  completed_at?: string;
+  documents_url?: string;
+  submission_events?: any[];
+}
+
+interface DocuSealSubmitter {
+  id: string;
+  email: string;
+  name?: string;
+  phone?: string;
+  status: string;
+  sent_at?: string;
+  opened_at?: string;
+  completed_at?: string;
+  values?: Record<string, any>;
+}
+
+interface CreateSubmissionOptions {
+  template_id: string;
+  submitters: {
+    email: string;
+    name?: string;
+    phone?: string;
+    role?: string;
+  }[];
+  send_email?: boolean;
+  message?: string;
+}
+
+/**
+ * DocuSeal Service Class
+ * Manages all interactions with DocuSeal API for document signing
+ */
+export class DocuSealService {
+  private apiKey: string | null = null;
+  private baseUrl: string = "https://api.docuseal.co";
+  private config: DocusealConfiguration | null = null;
+  private initialized = false;
+
+  /**
+   * Initialize DocuSeal client with configuration from database
+   */
+  async initialize(): Promise<boolean> {
+    try {
+      // Get DocuSeal configuration from database
+      const configs = await db.select()
+        .from(docusealConfigurations)
+        .where(eq(docusealConfigurations.enabled, true))
+        .limit(1);
+      
+      if (configs.length === 0) {
+        console.log("DocuSeal Service: No enabled configuration found");
+        return false;
+      }
+
+      this.config = configs[0];
+      
+      // Decrypt API key
+      if (this.config.apiKey) {
+        this.apiKey = decrypt(this.config.apiKey);
+      } else {
+        console.error("DocuSeal Service: No API key configured");
+        return false;
+      }
+
+      // Set base URL
+      if (this.config.baseUrl) {
+        this.baseUrl = this.config.baseUrl;
+      }
+
+      this.initialized = true;
+      console.log("DocuSeal Service: Initialized successfully");
+      return true;
+    } catch (error) {
+      console.error("DocuSeal Service: Failed to initialize", error);
+      return false;
+    }
+  }
+
+  /**
+   * Test the API connection with current configuration
+   */
+  async testConnection(): Promise<{ success: boolean; message: string }> {
+    if (!this.initialized) {
+      const initSuccess = await this.initialize();
+      if (!initSuccess) {
+        return {
+          success: false,
+          message: "Failed to initialize DocuSeal service"
+        };
+      }
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/templates`, {
+        method: 'GET',
+        headers: {
+          'X-Auth-Token': this.apiKey!,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        // Update last test results
+        await db.update(docusealConfigurations)
+          .set({
+            lastTestAt: new Date(),
+            lastTestSuccess: true,
+            lastTestError: null
+          })
+          .where(eq(docusealConfigurations.id, this.config!.id));
+
+        return {
+          success: true,
+          message: "Successfully connected to DocuSeal API"
+        };
+      } else {
+        const errorText = await response.text();
+        
+        // Update last test results
+        await db.update(docusealConfigurations)
+          .set({
+            lastTestAt: new Date(),
+            lastTestSuccess: false,
+            lastTestError: errorText
+          })
+          .where(eq(docusealConfigurations.id, this.config!.id));
+
+        return {
+          success: false,
+          message: `Failed to connect to DocuSeal API: ${response.status} ${response.statusText}`
+        };
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      // Update last test results
+      if (this.config) {
+        await db.update(docusealConfigurations)
+          .set({
+            lastTestAt: new Date(),
+            lastTestSuccess: false,
+            lastTestError: errorMessage
+          })
+          .where(eq(docusealConfigurations.id, this.config.id));
+      }
+
+      return {
+        success: false,
+        message: `Connection test failed: ${errorMessage}`
+      };
+    }
+  }
+
+  /**
+   * Fetch all templates from DocuSeal API
+   */
+  async fetchTemplates(): Promise<DocuSealTemplate[]> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!this.apiKey) {
+      throw new Error("DocuSeal API key not configured");
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/templates`, {
+        method: 'GET',
+        headers: {
+          'X-Auth-Token': this.apiKey,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch templates: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return Array.isArray(data) ? data : data.data || [];
+    } catch (error) {
+      console.error("Failed to fetch templates from DocuSeal:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Sync templates from DocuSeal API to database
+   */
+  async syncTemplates(): Promise<{ synced: number; failed: number; message: string }> {
+    try {
+      const apiTemplates = await this.fetchTemplates();
+      let syncedCount = 0;
+      let failedCount = 0;
+
+      for (const apiTemplate of apiTemplates) {
+        try {
+          // Check if template already exists
+          const existingTemplate = await db.select()
+            .from(docusealTemplates)
+            .where(eq(docusealTemplates.templateId, apiTemplate.id))
+            .limit(1);
+
+          const templateData: Partial<InsertDocusealTemplate> = {
+            templateId: apiTemplate.id,
+            name: apiTemplate.name,
+            description: apiTemplate.description || null,
+            fields: apiTemplate.fields || null,
+            signerRoles: apiTemplate.submitters || null,
+            documentCount: apiTemplate.documents?.length || 0,
+            lastSyncedAt: new Date()
+          };
+
+          if (existingTemplate.length > 0) {
+            // Update existing template
+            await db.update(docusealTemplates)
+              .set({
+                ...templateData,
+                updatedAt: new Date()
+              })
+              .where(eq(docusealTemplates.id, existingTemplate[0].id));
+          } else {
+            // Insert new template
+            await db.insert(docusealTemplates).values({
+              ...templateData,
+              enabled: true,
+              requiredForOnboarding: false,
+              sortOrder: 0
+            } as InsertDocusealTemplate);
+          }
+          
+          syncedCount++;
+        } catch (error) {
+          console.error(`Failed to sync template ${apiTemplate.id}:`, error);
+          failedCount++;
+        }
+      }
+
+      return {
+        synced: syncedCount,
+        failed: failedCount,
+        message: `Successfully synced ${syncedCount} templates${failedCount > 0 ? `, ${failedCount} failed` : ''}`
+      };
+    } catch (error) {
+      return {
+        synced: 0,
+        failed: 0,
+        message: `Failed to sync templates: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  /**
+   * Create a new submission for a template
+   */
+  async createSubmission(options: CreateSubmissionOptions): Promise<DocuSealSubmission> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!this.apiKey) {
+      throw new Error("DocuSeal API key not configured");
+    }
+
+    try {
+      const payload = {
+        template_id: options.template_id,
+        send_email: options.send_email !== false, // Default to true
+        submitters: options.submitters,
+        message: options.message
+      };
+
+      const response = await fetch(`${this.baseUrl}/submissions`, {
+        method: 'POST',
+        headers: {
+          'X-Auth-Token': this.apiKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to create submission: ${response.status} ${errorText}`);
+      }
+
+      const submission = await response.json();
+      return submission;
+    } catch (error) {
+      console.error("Failed to create DocuSeal submission:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get submission status from DocuSeal
+   */
+  async getSubmission(submissionId: string): Promise<DocuSealSubmission> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!this.apiKey) {
+      throw new Error("DocuSeal API key not configured");
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/submissions/${submissionId}`, {
+        method: 'GET',
+        headers: {
+          'X-Auth-Token': this.apiKey,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to get submission: ${response.status} ${response.statusText}`);
+      }
+
+      const submission = await response.json();
+      return submission;
+    } catch (error) {
+      console.error(`Failed to get submission ${submissionId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Download completed documents for a submission
+   */
+  async downloadDocuments(submissionId: string): Promise<Buffer> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!this.apiKey) {
+      throw new Error("DocuSeal API key not configured");
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/submissions/${submissionId}/documents`, {
+        method: 'GET',
+        headers: {
+          'X-Auth-Token': this.apiKey
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to download documents: ${response.status} ${response.statusText}`);
+      }
+
+      const buffer = await response.arrayBuffer();
+      return Buffer.from(buffer);
+    } catch (error) {
+      console.error(`Failed to download documents for submission ${submissionId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update submission status in database based on DocuSeal API
+   */
+  async updateSubmissionStatus(submissionId: string): Promise<FormSubmission | null> {
+    try {
+      // Get submission from DocuSeal
+      const apiSubmission = await this.getSubmission(submissionId);
+      
+      // Find submission in database
+      const dbSubmissions = await db.select()
+        .from(formSubmissions)
+        .where(eq(formSubmissions.submissionId, submissionId))
+        .limit(1);
+
+      if (dbSubmissions.length === 0) {
+        console.warn(`Submission ${submissionId} not found in database`);
+        return null;
+      }
+
+      const dbSubmission = dbSubmissions[0];
+      
+      // Map DocuSeal status to our status
+      const statusMap: Record<string, string> = {
+        'pending': 'pending',
+        'sent': 'sent',
+        'opened': 'opened',
+        'completed': 'completed',
+        'expired': 'expired'
+      };
+
+      // Get primary submitter info (assuming first submitter is primary)
+      const primarySubmitter = apiSubmission.submitters[0];
+      
+      // Update submission in database
+      const updatedSubmission = await db.update(formSubmissions)
+        .set({
+          status: statusMap[apiSubmission.status] || apiSubmission.status,
+          sentAt: primarySubmitter?.sent_at ? new Date(primarySubmitter.sent_at) : dbSubmission.sentAt,
+          openedAt: primarySubmitter?.opened_at ? new Date(primarySubmitter.opened_at) : dbSubmission.openedAt,
+          completedAt: apiSubmission.completed_at ? new Date(apiSubmission.completed_at) : dbSubmission.completedAt,
+          documentsUrl: apiSubmission.documents_url || dbSubmission.documentsUrl,
+          submissionData: primarySubmitter?.values || dbSubmission.submissionData,
+          updatedAt: new Date()
+        })
+        .where(eq(formSubmissions.id, dbSubmission.id))
+        .returning();
+
+      return updatedSubmission[0];
+    } catch (error) {
+      console.error(`Failed to update submission status for ${submissionId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send form to employee
+   */
+  async sendFormToEmployee(
+    employeeId: number, 
+    templateId: number,
+    createdBy: number,
+    isOnboarding: boolean = false,
+    invitationId?: number
+  ): Promise<FormSubmission> {
+    try {
+      // Get employee details
+      const employee = await db.select()
+        .from(employees)
+        .where(eq(employees.id, employeeId))
+        .limit(1);
+
+      if (employee.length === 0) {
+        throw new Error("Employee not found");
+      }
+
+      // Get template details
+      const template = await db.select()
+        .from(docusealTemplates)
+        .where(eq(docusealTemplates.id, templateId))
+        .limit(1);
+
+      if (template.length === 0) {
+        throw new Error("Template not found");
+      }
+
+      const emp = employee[0];
+      const tmpl = template[0];
+
+      // Create submission in DocuSeal
+      const apiSubmission = await this.createSubmission({
+        template_id: tmpl.templateId,
+        submitters: [{
+          email: emp.workEmail,
+          name: `${emp.firstName} ${emp.lastName}`,
+          phone: emp.cellPhone || undefined
+        }],
+        send_email: true,
+        message: isOnboarding 
+          ? "Please complete this form as part of your onboarding process."
+          : "Please complete and sign this form at your earliest convenience."
+      });
+
+      // Save submission to database
+      const dbSubmission = await db.insert(formSubmissions).values({
+        submissionId: apiSubmission.id,
+        employeeId: employeeId,
+        templateId: templateId,
+        recipientEmail: emp.workEmail,
+        recipientName: `${emp.firstName} ${emp.lastName}`,
+        recipientPhone: emp.cellPhone,
+        status: 'sent',
+        sentAt: new Date(),
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+        isOnboardingRequirement: isOnboarding,
+        invitationId: invitationId,
+        createdBy: createdBy
+      }).returning();
+
+      return dbSubmission[0];
+    } catch (error) {
+      console.error("Failed to send form to employee:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send required onboarding forms to new employee
+   */
+  async sendOnboardingForms(invitationId: number, employeeId: number, createdBy: number): Promise<FormSubmission[]> {
+    try {
+      // Get invitation details
+      const invitation = await db.select()
+        .from(employeeInvitations)
+        .where(eq(employeeInvitations.id, invitationId))
+        .limit(1);
+
+      if (invitation.length === 0) {
+        throw new Error("Invitation not found");
+      }
+
+      // Get required onboarding templates
+      const requiredTemplateIds = invitation[0].requiredFormTemplates || [];
+      
+      if (requiredTemplateIds.length === 0) {
+        // If no specific templates in invitation, use all templates marked as required for onboarding
+        const requiredTemplates = await db.select()
+          .from(docusealTemplates)
+          .where(and(
+            eq(docusealTemplates.requiredForOnboarding, true),
+            eq(docusealTemplates.enabled, true)
+          ));
+        
+        const submissions: FormSubmission[] = [];
+        for (const template of requiredTemplates) {
+          const submission = await this.sendFormToEmployee(
+            employeeId, 
+            template.id, 
+            createdBy, 
+            true, 
+            invitationId
+          );
+          submissions.push(submission);
+        }
+        return submissions;
+      } else {
+        // Send specific templates from invitation
+        const templates = await db.select()
+          .from(docusealTemplates)
+          .where(and(
+            inArray(docusealTemplates.templateId, requiredTemplateIds),
+            eq(docusealTemplates.enabled, true)
+          ));
+        
+        const submissions: FormSubmission[] = [];
+        for (const template of templates) {
+          const submission = await this.sendFormToEmployee(
+            employeeId, 
+            template.id, 
+            createdBy, 
+            true, 
+            invitationId
+          );
+          submissions.push(submission);
+        }
+        return submissions;
+      }
+    } catch (error) {
+      console.error("Failed to send onboarding forms:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if all onboarding forms are completed
+   */
+  async areOnboardingFormsCompleted(invitationId: number): Promise<boolean> {
+    try {
+      const submissions = await db.select()
+        .from(formSubmissions)
+        .where(and(
+          eq(formSubmissions.invitationId, invitationId),
+          eq(formSubmissions.isOnboardingRequirement, true)
+        ));
+
+      if (submissions.length === 0) {
+        return true; // No forms required
+      }
+
+      // Check if all submissions are completed
+      return submissions.every(s => s.status === 'completed');
+    } catch (error) {
+      console.error("Failed to check onboarding form completion:", error);
+      return false;
+    }
+  }
+}
+
+// Export singleton instance
+export const docuSealService = new DocuSealService();

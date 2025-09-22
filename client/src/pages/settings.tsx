@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, Users, Bell, Shield, Edit, Trash2, Plus, Save, Key, Cloud, Database, CheckCircle, XCircle, ArrowUpCircle, Mail, Send, MailCheck } from "lucide-react";
+import { Settings as SettingsIcon, Users, Bell, Shield, Edit, Trash2, Plus, Save, Key, Cloud, Database, CheckCircle, XCircle, ArrowUpCircle, Mail, Send, MailCheck, FileSignature, RefreshCw, Link2 } from "lucide-react";
 import { Link } from "wouter";
 
 interface User {
@@ -96,6 +96,31 @@ interface SESTestResponse {
   details?: string;
 }
 
+interface DocusealConfiguration {
+  id?: number;
+  apiKey?: string;
+  environment?: string;
+  baseUrl?: string;
+  name?: string;
+  enabled?: boolean;
+  lastTestAt?: string;
+  lastTestSuccess?: boolean;
+  lastTestError?: string;
+}
+
+interface DocusealTemplate {
+  id: number;
+  templateId: string;
+  name: string;
+  description?: string;
+  enabled: boolean;
+  requiredForOnboarding: boolean;
+  category?: string;
+  sortOrder: number;
+  tags?: string[];
+  lastSyncedAt?: string;
+}
+
 export default function Settings() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -118,6 +143,16 @@ export default function Settings() {
   const [sesConfigDialogOpen, setSesConfigDialogOpen] = useState(false);
   const [testEmailDialogOpen, setTestEmailDialogOpen] = useState(false);
   const [testEmailAddress, setTestEmailAddress] = useState("");
+  const [docusealConfigDialogOpen, setDocusealConfigDialogOpen] = useState(false);
+  const [docusealFormData, setDocusealFormData] = useState({
+    apiKey: "",
+    environment: "production",
+    name: "DocuSeal Configuration",
+    baseUrl: "https://api.docuseal.co"
+  });
+  const [docusealTestLoading, setDocusealTestLoading] = useState(false);
+  const [docusealSyncLoading, setDocusealSyncLoading] = useState(false);
+  const [docusealTemplateDialogOpen, setDocusealTemplateDialogOpen] = useState(false);
   const [sesFormData, setSesFormData] = useState({
     accessKeyId: "",
     secretAccessKey: "",
@@ -155,6 +190,18 @@ export default function Settings() {
   const { data: sesConfig, isLoading: sesConfigLoading } = useQuery<SESConfiguration>({
     queryKey: ["/api/admin/ses-config"],
     enabled: isAdmin || user?.role === 'hr'
+  });
+
+  // DocuSeal Configuration Query (Admin only)
+  const { data: docusealConfig, isLoading: docusealConfigLoading } = useQuery<DocusealConfiguration>({
+    queryKey: ["/api/admin/docuseal-config"],
+    enabled: isAdmin
+  });
+
+  // DocuSeal Templates Query (Admin and HR users)
+  const { data: docusealTemplates = [], isLoading: docusealTemplatesLoading } = useQuery<DocusealTemplate[]>({
+    queryKey: ["/api/admin/docuseal-templates"],
+    enabled: (isAdmin || user?.role === 'hr') && !!docusealConfig
   });
 
   // Mock users query - in a real app this would fetch from /api/users
@@ -1253,6 +1300,198 @@ export default function Settings() {
           </CardContent>
         </Card>
 
+        {/* DocuSeal Forms Configuration Card */}
+        {isAdmin && (
+          <Card data-testid="card-docuseal-config">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <FileSignature className="h-5 w-5" />
+                  DocuSeal Forms Configuration
+                </span>
+                <div className="flex items-center gap-2">
+                  {docusealConfig && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          setDocusealSyncLoading(true);
+                          try {
+                            const response = await apiRequest("/api/admin/docuseal-templates/sync", {
+                              method: "POST"
+                            });
+                            toast({
+                              title: "Templates Synced",
+                              description: response.message
+                            });
+                            queryClient.invalidateQueries({ queryKey: ["/api/admin/docuseal-templates"] });
+                          } catch (error) {
+                            toast({
+                              title: "Sync Failed",
+                              description: "Failed to sync DocuSeal templates",
+                              variant: "destructive"
+                            });
+                          }
+                          setDocusealSyncLoading(false);
+                        }}
+                        disabled={docusealSyncLoading}
+                        data-testid="button-sync-templates"
+                      >
+                        {docusealSyncLoading ? (
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-4 w-4" />
+                        )}
+                        Sync Templates
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setDocusealTemplateDialogOpen(true)}
+                        data-testid="button-manage-templates"
+                      >
+                        Manage Templates
+                      </Button>
+                    </>
+                  )}
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => {
+                      if (docusealConfig) {
+                        setDocusealFormData({
+                          apiKey: "",
+                          environment: docusealConfig.environment || "production",
+                          name: docusealConfig.name || "DocuSeal Configuration",
+                          baseUrl: docusealConfig.baseUrl || "https://api.docuseal.co"
+                        });
+                      }
+                      setDocusealConfigDialogOpen(true);
+                    }}
+                    data-testid="button-configure-docuseal"
+                  >
+                    <SettingsIcon className="h-4 w-4" />
+                    {docusealConfig ? "Update" : "Configure"}
+                  </Button>
+                </div>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {docusealConfigLoading ? (
+                <div className="text-center py-8">
+                  <div className="inline-flex items-center gap-2 text-muted-foreground">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Loading configuration...
+                  </div>
+                </div>
+              ) : docusealConfig ? (
+                <div className="space-y-4">
+                  <div className="bg-secondary/20 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-medium flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                        DocuSeal Configured
+                      </h3>
+                      {docusealConfig.lastTestAt && (
+                        <Badge variant={docusealConfig.lastTestSuccess ? "secondary" : "destructive"}>
+                          {docusealConfig.lastTestSuccess ? "Connection Verified" : "Connection Failed"}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Environment:</span>
+                        <span data-testid="text-docuseal-environment">{docusealConfig.environment}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">API Key:</span>
+                        <span data-testid="text-docuseal-apikey">{docusealConfig.apiKey}</span>
+                      </div>
+                      {docusealConfig.lastTestAt && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Last Tested:</span>
+                          <span data-testid="text-docuseal-lasttest">
+                            {new Date(docusealConfig.lastTestAt).toLocaleString()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Template Summary */}
+                  {docusealTemplates.length > 0 && (
+                    <div className="bg-accent/10 rounded-lg p-4">
+                      <h3 className="text-sm font-medium mb-3">Template Summary</h3>
+                      <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div>
+                          <span className="text-muted-foreground block">Total Templates</span>
+                          <span className="text-xl font-semibold" data-testid="text-total-templates">
+                            {docusealTemplates.length}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block">Enabled</span>
+                          <span className="text-xl font-semibold" data-testid="text-enabled-templates">
+                            {docusealTemplates.filter((t: DocusealTemplate) => t.enabled).length}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block">Onboarding</span>
+                          <span className="text-xl font-semibold" data-testid="text-onboarding-templates">
+                            {docusealTemplates.filter((t: DocusealTemplate) => t.requiredForOnboarding).length}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={async () => {
+                      setDocusealTestLoading(true);
+                      try {
+                        const response = await apiRequest("/api/admin/docuseal-config/test", {
+                          method: "POST"
+                        });
+                        toast({
+                          title: "Connection Successful",
+                          description: response.message
+                        });
+                        queryClient.invalidateQueries({ queryKey: ["/api/admin/docuseal-config"] });
+                      } catch (error) {
+                        toast({
+                          title: "Connection Failed",
+                          description: "Failed to connect to DocuSeal API",
+                          variant: "destructive"
+                        });
+                      }
+                      setDocusealTestLoading(false);
+                    }}
+                    disabled={docusealTestLoading}
+                    data-testid="button-test-docuseal"
+                  >
+                    {docusealTestLoading ? (
+                      <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Link2 className="h-4 w-4 mr-2" />
+                    )}
+                    Test Connection
+                  </Button>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <FileSignature className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                  <p className="text-muted-foreground mb-4">
+                    Configure DocuSeal to enable document signing and form management
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* SES Configuration Dialog */}
         <Dialog open={sesConfigDialogOpen} onOpenChange={setSesConfigDialogOpen}>
           <DialogContent className="max-w-md">
@@ -1363,6 +1602,241 @@ export default function Settings() {
               >
                 <Send className="w-4 h-4 mr-2" />
                 {testSesEmailMutation.isPending ? "Sending..." : "Send Test Email"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* DocuSeal Configuration Dialog */}
+        <Dialog open={docusealConfigDialogOpen} onOpenChange={setDocusealConfigDialogOpen}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>
+                {docusealConfig ? "Update" : "Configure"} DocuSeal Integration
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="docuseal-apikey">API Key *</Label>
+                <Input
+                  id="docuseal-apikey"
+                  type="password"
+                  placeholder={docusealConfig ? "Enter new API key to update" : "Enter DocuSeal API key"}
+                  value={docusealFormData.apiKey}
+                  onChange={(e) => setDocusealFormData({ ...docusealFormData, apiKey: e.target.value })}
+                  data-testid="input-docuseal-apikey"
+                />
+                <p className="text-sm text-muted-foreground">
+                  Get your API key from your DocuSeal account settings
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="docuseal-environment">Environment</Label>
+                <select
+                  id="docuseal-environment"
+                  className="w-full p-2 border rounded-md"
+                  value={docusealFormData.environment}
+                  onChange={(e) => setDocusealFormData({ ...docusealFormData, environment: e.target.value })}
+                  data-testid="select-docuseal-environment"
+                >
+                  <option value="production">Production</option>
+                  <option value="sandbox">Sandbox</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="docuseal-name">Configuration Name</Label>
+                <Input
+                  id="docuseal-name"
+                  placeholder="e.g., Main DocuSeal Config"
+                  value={docusealFormData.name}
+                  onChange={(e) => setDocusealFormData({ ...docusealFormData, name: e.target.value })}
+                  data-testid="input-docuseal-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="docuseal-baseurl">Base URL (Optional)</Label>
+                <Input
+                  id="docuseal-baseurl"
+                  placeholder="https://api.docuseal.co"
+                  value={docusealFormData.baseUrl}
+                  onChange={(e) => setDocusealFormData({ ...docusealFormData, baseUrl: e.target.value })}
+                  data-testid="input-docuseal-baseurl"
+                />
+                <p className="text-sm text-muted-foreground">
+                  Leave empty to use the default DocuSeal API endpoint
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setDocusealConfigDialogOpen(false)}
+                data-testid="button-cancel-docuseal"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (!docusealFormData.apiKey && !docusealConfig) {
+                    toast({
+                      title: "Validation Error",
+                      description: "API key is required",
+                      variant: "destructive"
+                    });
+                    return;
+                  }
+
+                  try {
+                    const payload: any = { ...docusealFormData };
+                    if (!docusealFormData.apiKey) {
+                      delete payload.apiKey;
+                    }
+
+                    await apiRequest("/api/admin/docuseal-config", {
+                      method: "POST",
+                      body: JSON.stringify(payload)
+                    });
+
+                    toast({
+                      title: "Configuration Saved",
+                      description: "DocuSeal configuration has been saved successfully"
+                    });
+
+                    queryClient.invalidateQueries({ queryKey: ["/api/admin/docuseal-config"] });
+                    queryClient.invalidateQueries({ queryKey: ["/api/admin/docuseal-templates"] });
+                    setDocusealConfigDialogOpen(false);
+                    setDocusealFormData({
+                      apiKey: "",
+                      environment: "production",
+                      name: "DocuSeal Configuration",
+                      baseUrl: "https://api.docuseal.co"
+                    });
+                  } catch (error) {
+                    toast({
+                      title: "Configuration Failed",
+                      description: "Failed to save DocuSeal configuration",
+                      variant: "destructive"
+                    });
+                  }
+                }}
+                data-testid="button-save-docuseal"
+              >
+                Save Configuration
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* DocuSeal Templates Management Dialog */}
+        <Dialog open={docusealTemplateDialogOpen} onOpenChange={setDocusealTemplateDialogOpen}>
+          <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Manage DocuSeal Templates</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {docusealTemplatesLoading ? (
+                <div className="text-center py-8">
+                  <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2" />
+                  <p className="text-muted-foreground">Loading templates...</p>
+                </div>
+              ) : docusealTemplates.length === 0 ? (
+                <div className="text-center py-8">
+                  <FileSignature className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                  <p className="text-muted-foreground mb-4">
+                    No templates found. Click "Sync Templates" to fetch from DocuSeal.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {docusealTemplates.map((template) => (
+                    <div key={template.id} className="border rounded-lg p-4" data-testid={`template-${template.id}`}>
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1">
+                          <h4 className="font-medium">{template.name}</h4>
+                          {template.description && (
+                            <p className="text-sm text-muted-foreground mt-1">{template.description}</p>
+                          )}
+                          {template.category && (
+                            <Badge variant="outline" className="mt-2">{template.category}</Badge>
+                          )}
+                        </div>
+                        <Badge variant={template.enabled ? "secondary" : "outline"}>
+                          {template.enabled ? "Enabled" : "Disabled"}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center justify-between mt-3">
+                        <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              checked={template.enabled}
+                              onCheckedChange={async (checked) => {
+                                try {
+                                  await apiRequest(`/api/admin/docuseal-templates/${template.id}`, {
+                                    method: "PUT",
+                                    body: JSON.stringify({ enabled: checked })
+                                  });
+                                  queryClient.invalidateQueries({ queryKey: ["/api/admin/docuseal-templates"] });
+                                  toast({
+                                    title: "Template Updated",
+                                    description: `Template ${checked ? "enabled" : "disabled"} successfully`
+                                  });
+                                } catch (error) {
+                                  toast({
+                                    title: "Update Failed",
+                                    description: "Failed to update template",
+                                    variant: "destructive"
+                                  });
+                                }
+                              }}
+                              data-testid={`checkbox-enable-${template.id}`}
+                            />
+                            <Label className="text-sm">Enabled</Label>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              checked={template.requiredForOnboarding}
+                              onCheckedChange={async (checked) => {
+                                try {
+                                  await apiRequest(`/api/admin/docuseal-templates/${template.id}`, {
+                                    method: "PUT",
+                                    body: JSON.stringify({ requiredForOnboarding: checked })
+                                  });
+                                  queryClient.invalidateQueries({ queryKey: ["/api/admin/docuseal-templates"] });
+                                  toast({
+                                    title: "Template Updated",
+                                    description: `Template ${checked ? "marked as" : "removed from"} onboarding requirement`
+                                  });
+                                } catch (error) {
+                                  toast({
+                                    title: "Update Failed",
+                                    description: "Failed to update template",
+                                    variant: "destructive"
+                                  });
+                                }
+                              }}
+                              data-testid={`checkbox-onboarding-${template.id}`}
+                            />
+                            <Label className="text-sm">Required for Onboarding</Label>
+                          </div>
+                        </div>
+                        {template.lastSyncedAt && (
+                          <span className="text-xs text-muted-foreground">
+                            Last synced: {new Date(template.lastSyncedAt).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                onClick={() => setDocusealTemplateDialogOpen(false)}
+                data-testid="button-close-templates"
+              >
+                Close
               </Button>
             </div>
           </DialogContent>

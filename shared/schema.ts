@@ -327,6 +327,9 @@ export const employeeInvitations = pgTable("employee_invitations", {
   // Linked employee record
   employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Created employee record
   
+  // DocuSeal Forms Integration
+  requiredFormTemplates: text("required_form_templates").array(), // Array of template IDs required for onboarding
+  
   // Metadata
   metadata: jsonb("metadata") // Additional data (IP address, user agent, etc.)
 }, (table) => ({
@@ -394,6 +397,145 @@ export const emailReminders = pgTable("email_reminders", {
 }, (table) => ({
   invitationIdx: index("idx_email_reminders_invitation").on(table.invitationId),
   statusIdx: index("idx_email_reminders_status").on(table.status)
+}));
+
+/**
+ * DOCUSEAL CONFIGURATIONS TABLE
+ * 
+ * Stores DocuSeal API configuration for form management and e-signatures.
+ * Supports multiple environments with encrypted API keys for security.
+ * Only one configuration can be enabled at a time.
+ */
+export const docusealConfigurations = pgTable("docuseal_configurations", {
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  
+  // API Configuration
+  apiKey: varchar("api_key", { length: 500 }), // Encrypted DocuSeal API key
+  environment: varchar("environment", { length: 50 }).default("production"), // production | sandbox
+  baseUrl: varchar("base_url", { length: 255 }).default("https://api.docuseal.co"), // API base URL
+  
+  // Configuration settings
+  enabled: boolean("enabled").default(false).notNull(), // Whether this configuration is active
+  name: varchar("name", { length: 100 }), // Configuration name for identification
+  
+  // Metadata
+  createdAt: timestamp("created_at").defaultNow(), // When configuration was created
+  updatedAt: timestamp("updated_at").defaultNow(), // Last update time
+  updatedBy: integer("updated_by").references(() => users.id, { onDelete: "set null" }), // User who last updated
+  
+  // Testing and validation
+  lastTestAt: timestamp("last_test_at"), // When connection was last tested
+  lastTestSuccess: boolean("last_test_success"), // Whether last test was successful
+  lastTestError: text("last_test_error") // Error message from last test
+}, (table) => ({
+  enabledIdx: index("idx_docuseal_config_enabled").on(table.enabled)
+}));
+
+/**
+ * DOCUSEAL TEMPLATES TABLE
+ * 
+ * Caches DocuSeal form templates for quick access and management.
+ * Tracks which templates are required for employee onboarding.
+ * Syncs with DocuSeal API to keep template information up to date.
+ */
+export const docusealTemplates = pgTable("docuseal_templates", {
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  
+  // Template identification
+  templateId: varchar("template_id", { length: 100 }).notNull().unique(), // DocuSeal template UUID
+  name: varchar("name", { length: 255 }).notNull(), // Template name
+  description: text("description"), // Template description
+  
+  // Template settings
+  enabled: boolean("enabled").default(true).notNull(), // Whether template is available for use
+  requiredForOnboarding: boolean("required_for_onboarding").default(false).notNull(), // Must be completed during onboarding
+  category: varchar("category", { length: 100 }), // Template category (tax, compliance, policy, etc.)
+  
+  // Template metadata from DocuSeal
+  fields: jsonb("fields"), // Template field definitions
+  signerRoles: jsonb("signer_roles"), // Required signer roles and their properties
+  documentCount: integer("document_count"), // Number of documents in template
+  
+  // Sync tracking
+  lastSyncedAt: timestamp("last_synced_at"), // When template was last synced from DocuSeal
+  syncError: text("sync_error"), // Error message if sync failed
+  
+  // Display settings
+  sortOrder: integer("sort_order").default(0), // Display order in UI
+  tags: text("tags").array(), // Tags for filtering and organization
+  
+  // Metadata
+  createdAt: timestamp("created_at").defaultNow(), // When template was added
+  updatedAt: timestamp("updated_at").defaultNow() // Last update time
+}, (table) => ({
+  templateIdIdx: index("idx_docuseal_template_id").on(table.templateId),
+  enabledIdx: index("idx_docuseal_template_enabled").on(table.enabled),
+  onboardingIdx: index("idx_docuseal_template_onboarding").on(table.requiredForOnboarding),
+  categoryIdx: index("idx_docuseal_template_category").on(table.category)
+}));
+
+/**
+ * FORM SUBMISSIONS TABLE
+ * 
+ * Tracks form submissions sent to employees through DocuSeal.
+ * Manages submission status, completion tracking, and document storage.
+ * Links submissions to employees and templates for comprehensive tracking.
+ */
+export const formSubmissions = pgTable("form_submissions", {
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  
+  // Submission identification
+  submissionId: varchar("submission_id", { length: 100 }).notNull().unique(), // DocuSeal submission UUID
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }).notNull(), // Employee who needs to complete
+  templateId: integer("template_id").references(() => docusealTemplates.id, { onDelete: "restrict" }).notNull(), // Template used
+  
+  // Recipient information
+  recipientEmail: varchar("recipient_email", { length: 100 }).notNull(), // Email where form was sent
+  recipientName: varchar("recipient_name", { length: 100 }), // Name of recipient
+  recipientPhone: varchar("recipient_phone", { length: 20 }), // Phone number for SMS notifications
+  
+  // Submission status
+  status: varchar("status", { length: 50 }).default("pending").notNull(), // pending | sent | opened | in_progress | completed | expired | cancelled
+  sentAt: timestamp("sent_at"), // When form was sent to recipient
+  openedAt: timestamp("opened_at"), // When recipient first opened form
+  startedAt: timestamp("started_at"), // When recipient started filling form
+  completedAt: timestamp("completed_at"), // When form was fully completed and signed
+  expiresAt: timestamp("expires_at"), // Submission expiration date
+  
+  // Document tracking
+  documentsUrl: text("documents_url"), // URL to download completed documents
+  documentsDownloadedAt: timestamp("documents_downloaded_at"), // When documents were downloaded
+  documentsStorageKey: varchar("documents_storage_key", { length: 255 }), // S3 key if stored
+  
+  // Submission metadata
+  submissionData: jsonb("submission_data"), // Form field values submitted
+  ipAddress: varchar("ip_address", { length: 45 }), // IP address of submitter
+  userAgent: text("user_agent"), // Browser/device information
+  
+  // Reminder tracking
+  remindersSent: integer("reminders_sent").default(0), // Number of reminders sent
+  lastReminderAt: timestamp("last_reminder_at"), // When last reminder was sent
+  nextReminderAt: timestamp("next_reminder_at"), // When next reminder should be sent
+  
+  // Onboarding integration
+  isOnboardingRequirement: boolean("is_onboarding_requirement").default(false), // Part of onboarding process
+  invitationId: integer("invitation_id").references(() => employeeInvitations.id, { onDelete: "set null" }), // Link to invitation if onboarding
+  
+  // Audit fields
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }), // HR user who initiated
+  createdAt: timestamp("created_at").defaultNow(), // When submission was created
+  updatedAt: timestamp("updated_at").defaultNow(), // Last update time
+  
+  // Notes and comments
+  notes: text("notes") // Internal notes about submission
+}, (table) => ({
+  submissionIdIdx: index("idx_form_submission_id").on(table.submissionId),
+  employeeIdx: index("idx_form_submission_employee").on(table.employeeId),
+  templateIdx: index("idx_form_submission_template").on(table.templateId),
+  statusIdx: index("idx_form_submission_status").on(table.status),
+  onboardingIdx: index("idx_form_submission_onboarding").on(table.isOnboardingRequirement),
+  invitationIdx: index("idx_form_submission_invitation").on(table.invitationId),
+  expiresIdx: index("idx_form_submission_expires").on(table.expiresAt)
 }));
 
 /**
@@ -795,3 +937,42 @@ export type InsertSesConfiguration = z.infer<typeof insertSesConfigurationSchema
 // Types for email reminders
 export type EmailReminder = typeof emailReminders.$inferSelect;
 export type InsertEmailReminder = z.infer<typeof insertEmailReminderSchema>;
+
+// Insert schemas for DocuSeal
+export const insertDocusealConfigurationSchema = createInsertSchema(docusealConfigurations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastTestAt: true,
+  lastTestSuccess: true,
+  lastTestError: true
+});
+
+export const insertDocusealTemplateSchema = createInsertSchema(docusealTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastSyncedAt: true,
+  syncError: true
+});
+
+export const insertFormSubmissionSchema = createInsertSchema(formSubmissions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  sentAt: true,
+  openedAt: true,
+  startedAt: true,
+  completedAt: true,
+  documentsDownloadedAt: true,
+  lastReminderAt: true,
+  nextReminderAt: true
+});
+
+// Types for DocuSeal
+export type DocusealConfiguration = typeof docusealConfigurations.$inferSelect;
+export type InsertDocusealConfiguration = z.infer<typeof insertDocusealConfigurationSchema>;
+export type DocusealTemplate = typeof docusealTemplates.$inferSelect;
+export type InsertDocusealTemplate = z.infer<typeof insertDocusealTemplateSchema>;
+export type FormSubmission = typeof formSubmissions.$inferSelect;
+export type InsertFormSubmission = z.infer<typeof insertFormSubmissionSchema>;

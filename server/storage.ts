@@ -34,6 +34,9 @@ import {
   employeeInvitations,
   emailReminders,
   sesConfigurations,
+  docusealConfigurations,
+  docusealTemplates,
+  formSubmissions,
   type User, 
   type InsertUser,
   type Employee,
@@ -75,7 +78,13 @@ import {
   type EmailReminder,
   type InsertEmailReminder,
   type SesConfiguration,
-  type InsertSesConfiguration
+  type InsertSesConfiguration,
+  type DocusealConfiguration,
+  type InsertDocusealConfiguration,
+  type DocusealTemplate,
+  type InsertDocusealTemplate,
+  type FormSubmission,
+  type InsertFormSubmission
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, like, and, or, lte, sql, count } from "drizzle-orm";
@@ -285,6 +294,29 @@ export interface IStorage {
   // Email Reminder operations
   createEmailReminder(reminder: any): Promise<any>;
   getEmailRemindersByInvitationId(invitationId: number): Promise<any[]>;
+  
+  // DocuSeal Configuration operations
+  getDocusealConfiguration(): Promise<DocusealConfiguration | undefined>;
+  createDocusealConfiguration(config: InsertDocusealConfiguration): Promise<DocusealConfiguration>;
+  updateDocusealConfiguration(id: number, config: Partial<InsertDocusealConfiguration>): Promise<DocusealConfiguration>;
+  deleteDocusealConfiguration(id: number): Promise<void>;
+  
+  // DocuSeal Template operations
+  getDocusealTemplates(enabled?: boolean): Promise<DocusealTemplate[]>;
+  getDocusealTemplate(id: number): Promise<DocusealTemplate | undefined>;
+  createDocusealTemplate(template: InsertDocusealTemplate): Promise<DocusealTemplate>;
+  updateDocusealTemplate(id: number, template: Partial<InsertDocusealTemplate>): Promise<DocusealTemplate>;
+  deleteDocusealTemplate(id: number): Promise<void>;
+  getOnboardingTemplates(): Promise<DocusealTemplate[]>;
+  
+  // Form Submission operations
+  getFormSubmissions(employeeId: number): Promise<FormSubmission[]>;
+  getFormSubmission(id: number): Promise<FormSubmission | undefined>;
+  createFormSubmission(submission: InsertFormSubmission): Promise<FormSubmission>;
+  updateFormSubmission(id: number, submission: Partial<InsertFormSubmission>): Promise<FormSubmission>;
+  deleteFormSubmission(id: number): Promise<void>;
+  getFormSubmissionsByInvitation(invitationId: number): Promise<FormSubmission[]>;
+  getPendingFormSubmissions(): Promise<FormSubmission[]>;
   
   sessionStore: session.Store;
 }
@@ -1410,6 +1442,156 @@ export class DatabaseStorage implements IStorage {
       .from(emailReminders)
       .where(eq(emailReminders.invitationId, invitationId))
       .orderBy(desc(emailReminders.createdAt));
+  }
+
+  /**
+   * DocuSeal Configuration Operations
+   */
+  
+  async getDocusealConfiguration(): Promise<DocusealConfiguration | undefined> {
+    const [config] = await db.select()
+      .from(docusealConfigurations)
+      .where(eq(docusealConfigurations.enabled, true))
+      .limit(1);
+    return config;
+  }
+
+  async createDocusealConfiguration(config: InsertDocusealConfiguration): Promise<DocusealConfiguration> {
+    // Disable all other configurations first
+    await db.update(docusealConfigurations)
+      .set({ enabled: false });
+    
+    const [newConfig] = await db.insert(docusealConfigurations)
+      .values(config)
+      .returning();
+    return newConfig;
+  }
+
+  async updateDocusealConfiguration(id: number, config: Partial<InsertDocusealConfiguration>): Promise<DocusealConfiguration> {
+    // If enabling this config, disable all others
+    if (config.enabled === true) {
+      await db.update(docusealConfigurations)
+        .set({ enabled: false })
+        .where(eq(docusealConfigurations.enabled, true));
+    }
+    
+    const [updated] = await db.update(docusealConfigurations)
+      .set({ ...config, updatedAt: new Date() })
+      .where(eq(docusealConfigurations.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDocusealConfiguration(id: number): Promise<void> {
+    await db.delete(docusealConfigurations)
+      .where(eq(docusealConfigurations.id, id));
+  }
+
+  /**
+   * DocuSeal Template Operations
+   */
+  
+  async getDocusealTemplates(enabled?: boolean): Promise<DocusealTemplate[]> {
+    let query = db.select().from(docusealTemplates);
+    
+    if (enabled !== undefined) {
+      return await query.where(eq(docusealTemplates.enabled, enabled))
+        .orderBy(docusealTemplates.sortOrder, docusealTemplates.name);
+    }
+    
+    return await query.orderBy(docusealTemplates.sortOrder, docusealTemplates.name);
+  }
+
+  async getDocusealTemplate(id: number): Promise<DocusealTemplate | undefined> {
+    const [template] = await db.select()
+      .from(docusealTemplates)
+      .where(eq(docusealTemplates.id, id));
+    return template;
+  }
+
+  async createDocusealTemplate(template: InsertDocusealTemplate): Promise<DocusealTemplate> {
+    const [newTemplate] = await db.insert(docusealTemplates)
+      .values(template)
+      .returning();
+    return newTemplate;
+  }
+
+  async updateDocusealTemplate(id: number, template: Partial<InsertDocusealTemplate>): Promise<DocusealTemplate> {
+    const [updated] = await db.update(docusealTemplates)
+      .set({ ...template, updatedAt: new Date() })
+      .where(eq(docusealTemplates.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDocusealTemplate(id: number): Promise<void> {
+    await db.delete(docusealTemplates)
+      .where(eq(docusealTemplates.id, id));
+  }
+
+  async getOnboardingTemplates(): Promise<DocusealTemplate[]> {
+    return await db.select()
+      .from(docusealTemplates)
+      .where(and(
+        eq(docusealTemplates.enabled, true),
+        eq(docusealTemplates.requiredForOnboarding, true)
+      ))
+      .orderBy(docusealTemplates.sortOrder, docusealTemplates.name);
+  }
+
+  /**
+   * Form Submission Operations
+   */
+  
+  async getFormSubmissions(employeeId: number): Promise<FormSubmission[]> {
+    return await db.select()
+      .from(formSubmissions)
+      .where(eq(formSubmissions.employeeId, employeeId))
+      .orderBy(desc(formSubmissions.createdAt));
+  }
+
+  async getFormSubmission(id: number): Promise<FormSubmission | undefined> {
+    const [submission] = await db.select()
+      .from(formSubmissions)
+      .where(eq(formSubmissions.id, id));
+    return submission;
+  }
+
+  async createFormSubmission(submission: InsertFormSubmission): Promise<FormSubmission> {
+    const [newSubmission] = await db.insert(formSubmissions)
+      .values(submission)
+      .returning();
+    return newSubmission;
+  }
+
+  async updateFormSubmission(id: number, submission: Partial<InsertFormSubmission>): Promise<FormSubmission> {
+    const [updated] = await db.update(formSubmissions)
+      .set({ ...submission, updatedAt: new Date() })
+      .where(eq(formSubmissions.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteFormSubmission(id: number): Promise<void> {
+    await db.delete(formSubmissions)
+      .where(eq(formSubmissions.id, id));
+  }
+
+  async getFormSubmissionsByInvitation(invitationId: number): Promise<FormSubmission[]> {
+    return await db.select()
+      .from(formSubmissions)
+      .where(eq(formSubmissions.invitationId, invitationId))
+      .orderBy(desc(formSubmissions.createdAt));
+  }
+
+  async getPendingFormSubmissions(): Promise<FormSubmission[]> {
+    return await db.select()
+      .from(formSubmissions)
+      .where(and(
+        eq(formSubmissions.status, 'pending'),
+        lte(formSubmissions.expiresAt, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)) // Within 7 days of expiry
+      ))
+      .orderBy(formSubmissions.expiresAt);
   }
 }
 

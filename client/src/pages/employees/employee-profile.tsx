@@ -46,7 +46,8 @@ import {
   User,
   MapPinned,
   FileCheck,
-  UserPlus
+  UserPlus,
+  FileSignature
 } from "lucide-react";
 import type { Employee } from "@/lib/types";
 import { EducationsManager } from "@/components/entity-managers/educations-manager";
@@ -59,6 +60,7 @@ import { TaxFormsManager } from "@/components/entity-managers/tax-forms-manager"
 import { TrainingsManager } from "@/components/entity-managers/trainings-manager";
 import { PayerEnrollmentsManager } from "@/components/entity-managers/payer-enrollments-manager";
 import { IncidentLogsManager } from "@/components/entity-managers/incident-logs-manager";
+import { FormsManager } from "@/components/entity-managers/forms-manager";
 
 export default function EmployeeProfile() {
   const params = useParams();
@@ -586,6 +588,14 @@ export default function EmployeeProfile() {
                       Tax Forms
                     </TabsTrigger>
                     <TabsTrigger 
+                      value="forms"
+                      className="data-[state=active]:bg-primary/10 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-full px-6"
+                      data-testid="tab-forms"
+                    >
+                      <FileSignature className="w-4 h-4 mr-2" />
+                      Forms
+                    </TabsTrigger>
+                    <TabsTrigger 
                       value="payer"
                       className="data-[state=active]:bg-primary/10 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-full px-6"
                     >
@@ -645,6 +655,10 @@ export default function EmployeeProfile() {
                   
                   <TabsContent value="incidents" className="mt-0 animate-in fade-in-50 duration-300">
                     <IncidentLogsManager employeeId={employeeId} />
+                  </TabsContent>
+                  
+                  <TabsContent value="forms" className="mt-0 animate-in fade-in-50 duration-300">
+                    <FormsManager employeeId={employeeId} />
                   </TabsContent>
                 </div>
               </Tabs>

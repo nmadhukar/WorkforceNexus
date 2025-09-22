@@ -1965,6 +1965,429 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   /**
+   * DocuSeal Forms Configuration Routes
+   * 
+   * Endpoints for managing DocuSeal API integration for document signing.
+   * Supports configuration, template management, and form submissions.
+   */
+
+  /**
+   * GET /api/admin/docuseal-config
+   * Get current DocuSeal configuration
+   */
+  app.get('/api/admin/docuseal-config',
+    requireAuth,
+    requireRole(['admin']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const config = await storage.getDocusealConfiguration();
+        if (config) {
+          // Mask the API key for security
+          const maskedConfig = {
+            ...config,
+            apiKey: config.apiKey ? '••••••••' + config.apiKey.slice(-4) : null
+          };
+          res.json(maskedConfig);
+        } else {
+          res.json(null);
+        }
+      } catch (error) {
+        console.error('Error fetching DocuSeal configuration:', error);
+        res.status(500).json({ error: 'Failed to fetch DocuSeal configuration' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/admin/docuseal-config
+   * Create or update DocuSeal configuration
+   */
+  app.post('/api/admin/docuseal-config',
+    requireAuth,
+    requireRole(['admin']),
+    [
+      body('apiKey').notEmpty().withMessage('API key is required'),
+      body('environment').optional().isIn(['production', 'sandbox']).withMessage('Invalid environment'),
+      body('baseUrl').optional().isURL().withMessage('Invalid base URL'),
+      body('name').optional()
+    ],
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { apiKey, ...otherConfig } = req.body;
+        
+        // Encrypt the API key
+        const crypto = await import('crypto');
+        const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex').slice(0, 32);
+        const ENCRYPTION_IV_LENGTH = 16;
+        const iv = crypto.randomBytes(ENCRYPTION_IV_LENGTH);
+        const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
+        let encrypted = cipher.update(apiKey);
+        encrypted = Buffer.concat([encrypted, cipher.final()]);
+        const encryptedApiKey = iv.toString('hex') + ':' + encrypted.toString('hex');
+        
+        // Check if configuration exists
+        const existingConfig = await storage.getDocusealConfiguration();
+        
+        let savedConfig;
+        if (existingConfig) {
+          savedConfig = await storage.updateDocusealConfiguration(existingConfig.id, {
+            apiKey: encryptedApiKey,
+            ...otherConfig,
+            enabled: true,
+            updatedBy: req.user!.id
+          });
+        } else {
+          savedConfig = await storage.createDocusealConfiguration({
+            apiKey: encryptedApiKey,
+            ...otherConfig,
+            enabled: true,
+            updatedBy: req.user!.id
+          });
+        }
+        
+        // Reinitialize the service with new configuration
+        const { docuSealService } = await import('./services/docusealService');
+        await docuSealService.initialize();
+        
+        await logAudit(req, 1, null, { docusealConfigured: true });
+        res.json({ message: 'DocuSeal configuration saved successfully' });
+      } catch (error) {
+        console.error('Error saving DocuSeal configuration:', error);
+        res.status(500).json({ error: 'Failed to save DocuSeal configuration' });
+      }
+    }
+  );
+
+  /**
+   * DELETE /api/admin/docuseal-config/:id
+   * Delete DocuSeal configuration
+   */
+  app.delete('/api/admin/docuseal-config/:id',
+    requireAuth,
+    requireRole(['admin']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        await storage.deleteDocusealConfiguration(parseInt(req.params.id));
+        await logAudit(req, 3, null, { docusealConfigDeleted: true });
+        res.json({ message: 'DocuSeal configuration deleted successfully' });
+      } catch (error) {
+        console.error('Error deleting DocuSeal configuration:', error);
+        res.status(500).json({ error: 'Failed to delete DocuSeal configuration' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/admin/docuseal-config/test
+   * Test DocuSeal API connection
+   */
+  app.post('/api/admin/docuseal-config/test',
+    requireAuth,
+    requireRole(['admin']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { docuSealService } = await import('./services/docusealService');
+        const result = await docuSealService.testConnection();
+        
+        if (result.success) {
+          res.json({ message: result.message });
+        } else {
+          res.status(400).json({ error: result.message });
+        }
+      } catch (error) {
+        console.error('Error testing DocuSeal connection:', error);
+        res.status(500).json({ error: 'Failed to test DocuSeal connection' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/admin/docuseal-templates
+   * Get all DocuSeal templates
+   */
+  app.get('/api/admin/docuseal-templates',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const templates = await storage.getDocusealTemplates();
+        res.json(templates);
+      } catch (error) {
+        console.error('Error fetching DocuSeal templates:', error);
+        res.status(500).json({ error: 'Failed to fetch DocuSeal templates' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/admin/docuseal-templates/sync
+   * Sync templates from DocuSeal API
+   */
+  app.post('/api/admin/docuseal-templates/sync',
+    requireAuth,
+    requireRole(['admin']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { docuSealService } = await import('./services/docusealService');
+        const result = await docuSealService.syncTemplates();
+        await logAudit(req, 1, null, { templatesSynced: result.synced });
+        res.json(result);
+      } catch (error) {
+        console.error('Error syncing DocuSeal templates:', error);
+        res.status(500).json({ error: 'Failed to sync DocuSeal templates' });
+      }
+    }
+  );
+
+  /**
+   * PUT /api/admin/docuseal-templates/:id
+   * Update a DocuSeal template settings
+   */
+  app.put('/api/admin/docuseal-templates/:id',
+    requireAuth,
+    requireRole(['admin']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const templateId = parseInt(req.params.id);
+        const updated = await storage.updateDocusealTemplate(templateId, req.body);
+        await logAudit(req, 2, null, { templateUpdated: templateId });
+        res.json(updated);
+      } catch (error) {
+        console.error('Error updating DocuSeal template:', error);
+        res.status(500).json({ error: 'Failed to update DocuSeal template' });
+      }
+    }
+  );
+
+  /**
+   * Form Submission Routes
+   */
+
+  /**
+   * GET /api/forms/employee/:employeeId
+   * Get all form submissions for an employee
+   */
+  app.get('/api/forms/employee/:employeeId',
+    requireAuth,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.employeeId);
+        const submissions = await storage.getFormSubmissions(employeeId);
+        
+        // Include template details
+        const submissionsWithTemplates = await Promise.all(
+          submissions.map(async (submission) => {
+            const template = await storage.getDocusealTemplate(submission.templateId);
+            return {
+              ...submission,
+              templateName: template?.name || 'Unknown Template',
+              templateDescription: template?.description
+            };
+          })
+        );
+        
+        res.json(submissionsWithTemplates);
+      } catch (error) {
+        console.error('Error fetching form submissions:', error);
+        res.status(500).json({ error: 'Failed to fetch form submissions' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/forms/send
+   * Send a form to an employee
+   */
+  app.post('/api/forms/send',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    [
+      body('employeeId').isNumeric().withMessage('Employee ID is required'),
+      body('templateId').isNumeric().withMessage('Template ID is required')
+    ],
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { employeeId, templateId } = req.body;
+        const { docuSealService } = await import('./services/docusealService');
+        
+        const submission = await docuSealService.sendFormToEmployee(
+          employeeId,
+          templateId,
+          req.user!.id,
+          false
+        );
+        
+        await logAudit(req, 1, employeeId, { formSent: submission.id });
+        res.json(submission);
+      } catch (error) {
+        console.error('Error sending form:', error);
+        res.status(500).json({ error: 'Failed to send form' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/forms/submission/:id
+   * Get a specific form submission
+   */
+  app.get('/api/forms/submission/:id',
+    requireAuth,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const submissionId = parseInt(req.params.id);
+        const submission = await storage.getFormSubmission(submissionId);
+        
+        if (!submission) {
+          return res.status(404).json({ error: 'Form submission not found' });
+        }
+        
+        res.json(submission);
+      } catch (error) {
+        console.error('Error fetching form submission:', error);
+        res.status(500).json({ error: 'Failed to fetch form submission' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/forms/submission/:id/update-status
+   * Update form submission status from DocuSeal
+   */
+  app.post('/api/forms/submission/:id/update-status',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const submissionId = parseInt(req.params.id);
+        const submission = await storage.getFormSubmission(submissionId);
+        
+        if (!submission) {
+          return res.status(404).json({ error: 'Form submission not found' });
+        }
+        
+        const { docuSealService } = await import('./services/docusealService');
+        const updated = await docuSealService.updateSubmissionStatus(submission.submissionId);
+        res.json(updated);
+      } catch (error) {
+        console.error('Error updating submission status:', error);
+        res.status(500).json({ error: 'Failed to update submission status' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/forms/submission/:id/download
+   * Download completed form documents
+   */
+  app.get('/api/forms/submission/:id/download',
+    requireAuth,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const submissionId = parseInt(req.params.id);
+        const submission = await storage.getFormSubmission(submissionId);
+        
+        if (!submission) {
+          return res.status(404).json({ error: 'Form submission not found' });
+        }
+        
+        if (submission.status !== 'completed') {
+          return res.status(400).json({ error: 'Form is not yet completed' });
+        }
+        
+        const { docuSealService } = await import('./services/docusealService');
+        const documents = await docuSealService.downloadDocuments(submission.submissionId);
+        
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="form-${submission.id}.pdf"`);
+        res.send(documents);
+      } catch (error) {
+        console.error('Error downloading form documents:', error);
+        res.status(500).json({ error: 'Failed to download form documents' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/onboarding/forms
+   * Get required onboarding form templates
+   */
+  app.get('/api/onboarding/forms',
+    requireAuth,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const templates = await storage.getOnboardingTemplates();
+        res.json(templates);
+      } catch (error) {
+        console.error('Error fetching onboarding forms:', error);
+        res.status(500).json({ error: 'Failed to fetch onboarding forms' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/onboarding/forms/send
+   * Send onboarding forms to new employee
+   */
+  app.post('/api/onboarding/forms/send',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    [
+      body('invitationId').isNumeric().withMessage('Invitation ID is required'),
+      body('employeeId').isNumeric().withMessage('Employee ID is required')
+    ],
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { invitationId, employeeId } = req.body;
+        const { docuSealService } = await import('./services/docusealService');
+        
+        const submissions = await docuSealService.sendOnboardingForms(
+          invitationId,
+          employeeId,
+          req.user!.id
+        );
+        
+        await logAudit(req, 1, employeeId, { onboardingFormsSent: submissions.length });
+        res.json({
+          message: `Sent ${submissions.length} onboarding forms`,
+          submissions
+        });
+      } catch (error) {
+        console.error('Error sending onboarding forms:', error);
+        res.status(500).json({ error: 'Failed to send onboarding forms' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/onboarding/forms/status/:invitationId
+   * Check onboarding forms completion status
+   */
+  app.get('/api/onboarding/forms/status/:invitationId',
+    requireAuth,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const invitationId = parseInt(req.params.invitationId);
+        const { docuSealService } = await import('./services/docusealService');
+        const completed = await docuSealService.areOnboardingFormsCompleted(invitationId);
+        const submissions = await storage.getFormSubmissionsByInvitation(invitationId);
+        
+        res.json({
+          completed,
+          totalForms: submissions.length,
+          completedForms: submissions.filter(s => s.status === 'completed').length,
+          submissions
+        });
+      } catch (error) {
+        console.error('Error checking onboarding forms status:', error);
+        res.status(500).json({ error: 'Failed to check onboarding forms status' });
+      }
+    }
+  );
+
+  /**
    * Employee Invitation Management Routes
    * 
    * @description
