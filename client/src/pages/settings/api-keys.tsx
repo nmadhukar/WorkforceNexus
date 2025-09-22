@@ -145,16 +145,17 @@ export default function ApiKeysPage() {
   // Create API key mutation
   const createKeyMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest<NewKeyResponse>("/api/settings/api-keys", {
-        method: "POST",
-        body: JSON.stringify({
-          name: keyName,
-          permissions: selectedPermissions,
-          environment,
-          expiresInDays,
-          rateLimitPerHour: rateLimit,
-        }),
+      const response = await apiRequest("POST", "/api/settings/api-keys", {
+        name: keyName,
+        permissions: selectedPermissions,
+        environment,
+        expiresInDays,
+        rateLimitPerHour: rateLimit,
       });
+      if (!response.ok) {
+        throw new Error("Failed to create API key");
+      }
+      return response.json() as Promise<NewKeyResponse>;
     },
     onSuccess: (data) => {
       setNewKeyData(data);
@@ -183,9 +184,11 @@ export default function ApiKeysPage() {
   // Revoke API key mutation
   const revokeKeyMutation = useMutation({
     mutationFn: async (keyId: number) => {
-      return apiRequest(`/api/settings/api-keys/${keyId}`, {
-        method: "DELETE",
-      });
+      const response = await apiRequest("DELETE", `/api/settings/api-keys/${keyId}`);
+      if (!response.ok) {
+        throw new Error("Failed to revoke API key");
+      }
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/settings/api-keys"] });
@@ -208,13 +211,14 @@ export default function ApiKeysPage() {
   // Rotate API key mutation
   const rotateKeyMutation = useMutation({
     mutationFn: async (keyId: number) => {
-      return apiRequest<NewKeyResponse>(`/api/settings/api-keys/${keyId}/rotate`, {
-        method: "POST",
-        body: JSON.stringify({
-          gracePeriodHours: 24,
-          reason: "Manual rotation requested by user",
-        }),
+      const response = await apiRequest("POST", `/api/settings/api-keys/${keyId}/rotate`, {
+        gracePeriodHours: 24,
+        reason: "Manual rotation requested by user",
       });
+      if (!response.ok) {
+        throw new Error("Failed to rotate API key");
+      }
+      return response.json() as Promise<NewKeyResponse>;
     },
     onSuccess: (data) => {
       setNewKeyData(data);
