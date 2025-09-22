@@ -151,10 +151,10 @@ export default function Settings() {
     enabled: isAdmin
   });
 
-  // SES Configuration Query (Admin only)
+  // SES Configuration Query (Admin and HR users)
   const { data: sesConfig, isLoading: sesConfigLoading } = useQuery<SESConfiguration>({
     queryKey: ["/api/admin/ses-config"],
-    enabled: isAdmin
+    enabled: isAdmin || user?.role === 'hr'
   });
 
   // Mock users query - in a real app this would fetch from /api/users
@@ -1036,8 +1036,8 @@ export default function Settings() {
           </Card>
         )}
 
-        {/* Email Configuration (AWS SES) - Admin only */}
-        {isAdmin && (
+        {/* Email Configuration (AWS SES) - Admin and HR users */}
+        {(isAdmin || user?.role === 'hr') && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
