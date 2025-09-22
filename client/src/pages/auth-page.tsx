@@ -6,11 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Shield, Eye } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Users, Shield, Eye, Mail, CheckCircle } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function AuthPage() {
   const [, navigate] = useLocation();
   const { user, loginMutation, registerMutation } = useAuth();
+  const { toast } = useToast();
   const [loginData, setLoginData] = useState({ username: "", password: "" });
   const [registerData, setRegisterData] = useState({ 
     username: "", 
@@ -18,12 +21,30 @@ export default function AuthPage() {
     confirmPassword: "",
     role: "hr"
   });
+  const [isOnboarding, setIsOnboarding] = useState(false);
+  const [invitationToken, setInvitationToken] = useState<string | null>(null);
+  const [registrationSuccess, setRegistrationSuccess] = useState<{
+    message?: string;
+    formsSent?: number;
+  } | null>(null);
 
   useEffect(() => {
-    if (user) {
+    // Check for invitation token in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    if (token) {
+      setInvitationToken(token);
+      setIsOnboarding(true);
+      // Hide role selection for onboarding employees
+      setRegisterData(prev => ({ ...prev, role: 'viewer' }));
+    }
+  }, []);
+  
+  useEffect(() => {
+    if (user && !registrationSuccess) {
       navigate("/");
     }
-  }, [user, navigate]);
+  }, [user, navigate, registrationSuccess]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,12 +54,49 @@ export default function AuthPage() {
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
     if (registerData.password !== registerData.confirmPassword) {
+      toast({
+        title: "Password Mismatch",
+        description: "Passwords do not match. Please try again.",
+        variant: "destructive"
+      });
       return;
     }
-    registerMutation.mutate({
+    
+    const registrationData: any = {
       username: registerData.username,
       password: registerData.password,
-      role: registerData.role as "admin" | "hr" | "viewer"
+      role: isOnboarding ? "viewer" : (registerData.role as "admin" | "hr" | "viewer")
+    };
+    
+    if (invitationToken) {
+      registrationData.invitationToken = invitationToken;
+    }
+    
+    registerMutation.mutate(registrationData, {
+      onSuccess: (data: any) => {
+        if (data.isOnboarding) {
+          setRegistrationSuccess({
+            message: data.message,
+            formsSent: data.formsSent
+          });
+          toast({
+            title: "Registration Successful",
+            description: data.message,
+            duration: 10000
+          });
+          // Navigate to dashboard after delay to show message
+          setTimeout(() => {
+            navigate("/");
+          }, 5000);
+        }
+      },
+      onError: (error: any) => {
+        toast({
+          title: "Registration Failed",
+          description: error.error || error.message || "Failed to create account",
+          variant: "destructive"
+        });
+      }
     });
   };
 
@@ -57,7 +115,9 @@ export default function AuthPage() {
             </div>
             <div>
               <CardTitle className="text-2xl">HR Management System</CardTitle>
-              <CardDescription>Medical Staff Employee Portal</CardDescription>
+              <CardDescription>
+                {isOnboarding ? "Complete Your Employee Onboarding" : "Medical Staff Employee Portal"}
+              </CardDescription>
             </div>
           </CardHeader>
           
@@ -106,7 +166,38 @@ export default function AuthPage() {
               </TabsContent>
               
               <TabsContent value="register">
+                {registrationSuccess ? (
+                  <div className="space-y-4">
+                    <Alert className="border-green-200 bg-green-50">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <AlertDescription className="text-green-800">
+                        {registrationSuccess.message}
+                      </AlertDescription>
+                    </Alert>
+                    {registrationSuccess.formsSent && registrationSuccess.formsSent > 0 && (
+                      <Alert>
+                        <Mail className="h-4 w-4" />
+                        <AlertDescription>
+                          <strong>{registrationSuccess.formsSent} onboarding form(s)</strong> have been sent to your email.
+                          Please check your inbox and complete all required forms to finish your onboarding.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    <p className="text-sm text-muted-foreground text-center">
+                      Redirecting to dashboard...
+                    </p>
+                  </div>
+                ) : (
                 <form onSubmit={handleRegister} className="space-y-4" data-testid="register-form">
+                  {isOnboarding && (
+                    <Alert>
+                      <Mail className="h-4 w-4" />
+                      <AlertDescription>
+                        Welcome! Create your account to begin the onboarding process.
+                        Required forms will be sent to your email after registration.
+                      </AlertDescription>
+                    </Alert>
+                  )}
                   <div>
                     <Label htmlFor="register-username">Username</Label>
                     <Input
@@ -143,20 +234,22 @@ export default function AuthPage() {
                       data-testid="input-register-confirm-password"
                     />
                   </div>
-                  <div>
-                    <Label htmlFor="role">Role</Label>
-                    <select
-                      id="role"
-                      value={registerData.role}
-                      onChange={(e) => setRegisterData({ ...registerData, role: e.target.value })}
-                      className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                      data-testid="select-register-role"
-                    >
-                      <option value="hr">HR Staff</option>
-                      <option value="admin">Administrator</option>
-                      <option value="viewer">Viewer</option>
-                    </select>
-                  </div>
+                  {!isOnboarding && (
+                    <div>
+                      <Label htmlFor="role">Role</Label>
+                      <select
+                        id="role"
+                        value={registerData.role}
+                        onChange={(e) => setRegisterData({ ...registerData, role: e.target.value })}
+                        className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                        data-testid="select-register-role"
+                      >
+                        <option value="hr">HR Staff</option>
+                        <option value="admin">Administrator</option>
+                        <option value="viewer">Viewer</option>
+                      </select>
+                    </div>
+                  )}
                   <Button 
                     type="submit" 
                     className="w-full"
@@ -166,6 +259,7 @@ export default function AuthPage() {
                     {registerMutation.isPending ? "Creating Account..." : "Create Account"}
                   </Button>
                 </form>
+                )}
               </TabsContent>
             </Tabs>
           </CardContent>

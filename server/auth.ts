@@ -155,15 +155,17 @@ export function setupAuth(app: Express) {
    * @param {string} body.username.required - Unique username
    * @param {string} body.password.required - Password (min 8 characters recommended)
    * @param {string} body.role - User role: 'admin', 'hr', or 'viewer' (default: 'hr')
+   * @param {string} body.invitationToken - Invitation token for employee onboarding
    * 
-   * @returns {object} 201 - Created user object
-   * @returns {string} 400 - Username already exists
+   * @returns {object} 201 - Created user object with onboarding info
+   * @returns {string} 400 - Username already exists or invalid invitation
    * 
    * @example request
    * {
    *   "username": "john.doe",
    *   "password": "SecurePass123!",
-   *   "role": "hr"
+   *   "role": "hr",
+   *   "invitationToken": "abc123..."
    * }
    * 
    * @example response - 201
@@ -171,24 +173,136 @@ export function setupAuth(app: Express) {
    *   "id": 1,
    *   "username": "john.doe",
    *   "role": "hr",
-   *   "createdAt": "2024-01-20T10:00:00Z"
+   *   "createdAt": "2024-01-20T10:00:00Z",
+   *   "isOnboarding": true,
+   *   "formsSent": 3,
+   *   "message": "Account created successfully. Onboarding forms have been sent to your email."
    * }
    */
   app.post("/api/register", async (req, res, next) => {
-    const existingUser = await storage.getUserByUsername(req.body.username);
+    const { username, password, role, invitationToken } = req.body;
+    
+    // Check if username already exists
+    const existingUser = await storage.getUserByUsername(username);
     if (existingUser) {
       return res.status(400).send("Username already exists");
     }
 
-    const user = await storage.createUser({
-      username: req.body.username,
-      passwordHash: await hashPassword(req.body.password),
-      role: req.body.role || "hr",
-    });
+    let invitation = null;
+    let employee = null;
+    let formsSent = 0;
+    let isOnboarding = false;
+    
+    // If invitation token is provided, validate it
+    if (invitationToken) {
+      invitation = await storage.getInvitationByToken(invitationToken);
+      
+      if (!invitation) {
+        return res.status(400).json({ error: "Invalid invitation token" });
+      }
+      
+      if (invitation.status !== 'pending') {
+        return res.status(400).json({ error: "This invitation has already been used or has expired" });
+      }
+      
+      // Check if invitation has expired
+      if (new Date(invitation.expiresAt) < new Date()) {
+        await storage.updateInvitation(invitation.id, { status: 'expired' });
+        return res.status(400).json({ error: "This invitation has expired" });
+      }
+      
+      isOnboarding = true;
+    }
 
+    // Create user account
+    const user = await storage.createUser({
+      username: username,
+      passwordHash: await hashPassword(password),
+      role: invitationToken ? "viewer" : (role || "hr"), // Onboarding employees start as viewers
+    });
+    
+    // If this is an onboarding registration, create employee record and send forms
+    if (invitation) {
+      try {
+        // Create employee record linked to the invitation
+        employee = await storage.createEmployee({
+          firstName: invitation.firstName,
+          lastName: invitation.lastName,
+          personalEmail: invitation.email,
+          workEmail: invitation.email,
+          cellPhone: invitation.cellPhone,
+          status: 'onboarding',
+          onboardingStatus: 'registered',
+          invitationId: invitation.id,
+          userId: user.id
+        });
+        
+        // Update invitation status
+        await storage.updateInvitation(invitation.id, {
+          status: 'registered',
+          registeredAt: new Date(),
+          employeeId: employee.id
+        });
+        
+        // Try to send DocuSeal onboarding forms
+        try {
+          const { docuSealService } = await import('./services/docusealService');
+          
+          // Initialize DocuSeal service
+          const initialized = await docuSealService.initialize();
+          
+          if (initialized) {
+            // Send onboarding forms
+            const submissions = await docuSealService.sendOnboardingForms(
+              invitation.id,
+              employee.id,
+              user.id
+            );
+            
+            formsSent = submissions.length;
+            
+            // Update invitation with form status
+            await storage.updateInvitation(invitation.id, {
+              status: formsSent > 0 ? 'in_progress' : 'registered'
+            });
+            
+            console.log(`Sent ${formsSent} onboarding forms to ${invitation.email}`);
+          } else {
+            console.log("DocuSeal not configured - skipping form sending");
+          }
+        } catch (error) {
+          // Log error but don't fail registration
+          console.error("Failed to send onboarding forms:", error);
+        }
+      } catch (error) {
+        // If employee creation fails, clean up user and return error
+        console.error("Failed to create employee record:", error);
+        // Note: In production, you might want to delete the user here
+        return res.status(500).json({ error: "Failed to complete registration. Please contact support." });
+      }
+    }
+
+    // Log the user in
     req.login(user, (err) => {
       if (err) return next(err);
-      res.status(201).json(user);
+      
+      const response: any = {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        createdAt: user.createdAt,
+        isOnboarding: isOnboarding
+      };
+      
+      if (isOnboarding) {
+        response.employeeId = employee?.id;
+        response.formsSent = formsSent;
+        response.message = formsSent > 0 
+          ? `Account created successfully. ${formsSent} onboarding form(s) have been sent to ${invitation.email}. Please check your email to complete them.`
+          : "Account created successfully. You can now complete your employee profile.";
+      }
+      
+      res.status(201).json(response);
     });
   });
 

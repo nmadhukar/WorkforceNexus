@@ -93,12 +93,9 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
   // Send form mutation
   const sendFormMutation = useMutation({
     mutationFn: async (templateId: string) => {
-      return await apiRequest("/api/forms/send", {
-        method: "POST",
-        body: JSON.stringify({
-          employeeId,
-          templateId,
-        }),
+      return await apiRequest("POST", "/api/forms/send", {
+        employeeId,
+        templateId,
       });
     },
     onSuccess: () => {
@@ -122,9 +119,7 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
   // Resend form mutation
   const resendFormMutation = useMutation({
     mutationFn: async (submissionId: number) => {
-      return await apiRequest(`/api/forms/submissions/${submissionId}/resend`, {
-        method: "POST",
-      });
+      return await apiRequest("POST", `/api/forms/submissions/${submissionId}/resend`);
     },
     onSuccess: () => {
       toast({

@@ -52,7 +52,7 @@ import { fileURLToPath } from "url";
 import rateLimit from "express-rate-limit";
 import { s3Service, generateDocumentKey } from "./services/s3Service";
 import { db } from "./db";
-import { documents } from "@shared/schema";
+import { documents, users } from "@shared/schema";
 import { eq, or, sql, count } from "drizzle-orm";
 import { encrypt, decrypt, mask } from "./utils/encryption";
 
@@ -2405,7 +2405,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req: AuditRequest, res: Response) => {
       try {
         const invitations = await storage.getAllInvitations();
-        res.json(invitations);
+        
+        // Enhance invitations with form status
+        const invitationsWithFormStatus = await Promise.all(
+          invitations.map(async (invitation) => {
+            let formStatus = {
+              totalForms: 0,
+              completedForms: 0,
+              pendingForms: 0,
+              allFormsCompleted: false
+            };
+            
+            // Only check form status for invitations that have been registered
+            if (invitation.status === 'registered' || invitation.status === 'in_progress' || invitation.status === 'completed') {
+              try {
+                const submissions = await storage.getFormSubmissionsByInvitation(invitation.id);
+                const onboardingSubmissions = submissions.filter(s => s.isOnboardingRequirement);
+                
+                formStatus.totalForms = onboardingSubmissions.length;
+                formStatus.completedForms = onboardingSubmissions.filter(s => s.status === 'completed').length;
+                formStatus.pendingForms = formStatus.totalForms - formStatus.completedForms;
+                formStatus.allFormsCompleted = formStatus.totalForms > 0 && formStatus.pendingForms === 0;
+                
+                // Update invitation status if all forms are completed
+                if (formStatus.allFormsCompleted && invitation.status === 'in_progress') {
+                  await storage.updateInvitation(invitation.id, {
+                    status: 'completed',
+                    completedAt: new Date()
+                  });
+                  invitation.status = 'completed';
+                  invitation.completedAt = new Date();
+                }
+              } catch (error) {
+                console.error(`Failed to get form status for invitation ${invitation.id}:`, error);
+              }
+            }
+            
+            return {
+              ...invitation,
+              formStatus
+            };
+          })
+        );
+        
+        res.json(invitationsWithFormStatus);
       } catch (error) {
         console.error('Error fetching invitations:', error);
         res.status(500).json({ error: 'Failed to fetch invitations' });
@@ -2506,6 +2549,132 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error('Error creating invitation:', error);
         res.status(500).json({ error: 'Failed to create invitation' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/invitations/:id/form-status
+   * Get form submission status for a specific invitation
+   */
+  app.get('/api/invitations/:id/form-status',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateId,
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const invitationId = parseInt(req.params.id);
+        
+        // Get invitation
+        const invitation = await storage.getInvitationById(invitationId);
+        if (!invitation) {
+          return res.status(404).json({ error: 'Invitation not found' });
+        }
+        
+        // Get form submissions for this invitation
+        const submissions = await storage.getFormSubmissionsByInvitation(invitationId);
+        const onboardingSubmissions = submissions.filter(s => s.isOnboardingRequirement);
+        
+        // Calculate status
+        const formStatus = {
+          invitationId,
+          employeeId: invitation.employeeId,
+          totalForms: onboardingSubmissions.length,
+          completedForms: onboardingSubmissions.filter(s => s.status === 'completed').length,
+          pendingForms: 0,
+          inProgressForms: onboardingSubmissions.filter(s => s.status === 'in_progress' || s.status === 'opened').length,
+          allFormsCompleted: false,
+          submissions: onboardingSubmissions.map(s => ({
+            id: s.id,
+            templateId: s.templateId,
+            status: s.status,
+            sentAt: s.sentAt,
+            openedAt: s.openedAt,
+            completedAt: s.completedAt,
+            expiresAt: s.expiresAt
+          }))
+        };
+        
+        formStatus.pendingForms = formStatus.totalForms - formStatus.completedForms;
+        formStatus.allFormsCompleted = formStatus.totalForms > 0 && formStatus.pendingForms === 0;
+        
+        res.json(formStatus);
+      } catch (error) {
+        console.error('Error fetching form status:', error);
+        res.status(500).json({ error: 'Failed to fetch form status' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/invitations/:id/approve
+   * Approve completed onboarding and convert to full employee
+   */
+  app.post('/api/invitations/:id/approve',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateId,
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const invitationId = parseInt(req.params.id);
+        
+        // Get invitation
+        const invitation = await storage.getInvitationById(invitationId);
+        if (!invitation) {
+          return res.status(404).json({ error: 'Invitation not found' });
+        }
+        
+        if (!invitation.employeeId) {
+          return res.status(400).json({ error: 'Employee has not registered yet' });
+        }
+        
+        // Check if all forms are completed
+        const { docuSealService } = await import('./services/docusealService');
+        const formsCompleted = await docuSealService.areOnboardingFormsCompleted(invitationId);
+        
+        if (!formsCompleted) {
+          return res.status(400).json({ error: 'Not all onboarding forms have been completed' });
+        }
+        
+        // Update employee status
+        await storage.updateEmployee(invitation.employeeId, {
+          status: 'active',
+          onboardingStatus: 'completed',
+          onboardingCompletedAt: new Date(),
+          approvedAt: new Date(),
+          approvedBy: req.user!.id
+        });
+        
+        // Update invitation status
+        await storage.updateInvitation(invitationId, {
+          status: 'completed',
+          completedAt: new Date()
+        });
+        
+        // Update user role to give full access
+        const employee = await storage.getEmployee(invitation.employeeId);
+        if (employee?.userId) {
+          const user = await storage.getUser(employee.userId);
+          if (user && user.role === 'viewer') {
+            // Upgrade from viewer to hr role
+            await db.update(users)
+              .set({ role: 'hr' })
+              .where(eq(users.id, employee.userId));
+          }
+        }
+        
+        // Log audit
+        await logAudit(req, invitationId, invitation.employeeId, { action: 'onboarding_approved' });
+        
+        res.json({
+          message: 'Onboarding approved successfully',
+          employeeId: invitation.employeeId
+        });
+      } catch (error) {
+        console.error('Error approving onboarding:', error);
+        res.status(500).json({ error: 'Failed to approve onboarding' });
       }
     }
   );
