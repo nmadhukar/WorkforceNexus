@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, Users, Bell, Shield, Edit, Trash2, Plus, Save, Key, Cloud, Database, CheckCircle, XCircle, ArrowUpCircle } from "lucide-react";
+import { Settings as SettingsIcon, Users, Bell, Shield, Edit, Trash2, Plus, Save, Key, Cloud, Database, CheckCircle, XCircle, ArrowUpCircle, Mail, Send, MailCheck } from "lucide-react";
 import { Link } from "wouter";
 
 interface User {
@@ -81,6 +81,21 @@ interface S3MigrateResponse {
   message: string;
 }
 
+interface SESConfiguration {
+  configured: boolean;
+  enabled: boolean;
+  verified: boolean;
+  fromEmail?: string;
+  fromName?: string;
+  region?: string;
+  lastVerifiedAt?: string;
+}
+
+interface SESTestResponse {
+  message: string;
+  details?: string;
+}
+
 export default function Settings() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -98,6 +113,17 @@ export default function Settings() {
     region: "us-east-1",
     bucketName: "",
     endpoint: "",
+    enabled: true
+  });
+  const [sesConfigDialogOpen, setSesConfigDialogOpen] = useState(false);
+  const [testEmailDialogOpen, setTestEmailDialogOpen] = useState(false);
+  const [testEmailAddress, setTestEmailAddress] = useState("");
+  const [sesFormData, setSesFormData] = useState({
+    accessKeyId: "",
+    secretAccessKey: "",
+    region: "us-east-1",
+    fromEmail: "",
+    fromName: "HR Management System",
     enabled: true
   });
   const [newUser, setNewUser] = useState({
@@ -122,6 +148,12 @@ export default function Settings() {
   // S3 Configuration Query (Admin only)
   const { data: s3Config, isLoading: s3ConfigLoading } = useQuery<S3Configuration>({
     queryKey: ["/api/admin/s3-config"],
+    enabled: isAdmin
+  });
+
+  // SES Configuration Query (Admin only)
+  const { data: sesConfig, isLoading: sesConfigLoading } = useQuery<SESConfiguration>({
+    queryKey: ["/api/admin/ses-config"],
     enabled: isAdmin
   });
 
@@ -286,6 +318,68 @@ export default function Settings() {
     }
   });
 
+  // SES Configuration Mutations
+  const updateSesConfigMutation = useMutation({
+    mutationFn: (configData: typeof sesFormData) => 
+      apiRequest("POST", "/api/admin/ses-config", configData),
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "SES configuration saved successfully"
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/ses-config"] });
+      setSesConfigDialogOpen(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
+  const testSesEmailMutation = useMutation<SESTestResponse, Error, { testEmail: string }>({
+    mutationFn: async (data: { testEmail: string }) => {
+      const response = await apiRequest("POST", "/api/admin/ses-config/test", data);
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Success",
+        description: data.message || "Test email sent successfully",
+      });
+      setTestEmailDialogOpen(false);
+      setTestEmailAddress("");
+    },
+    onError: (error) => {
+      toast({
+        title: "Test Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
+  const verifySesEmailMutation = useMutation({
+    mutationFn: (email: string) => 
+      apiRequest("POST", "/api/admin/ses-config/verify", { email }),
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Verification email sent. Please check your inbox and click the verification link."
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/ses-config"] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Verification Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
   const handleCreateUser = () => {
     createUserMutation.mutate(newUser);
   };
@@ -325,6 +419,39 @@ export default function Settings() {
       });
     }
     setS3ConfigDialogOpen(true);
+  };
+
+  const handleOpenSesConfigDialog = () => {
+    // Pre-fill form with current configuration if exists
+    if (sesConfig && sesConfig.configured) {
+      setSesFormData({
+        accessKeyId: "", // Don't pre-fill sensitive data
+        secretAccessKey: "", // Don't pre-fill sensitive data
+        region: sesConfig.region || "us-east-1",
+        fromEmail: sesConfig.fromEmail || "",
+        fromName: sesConfig.fromName || "HR Management System",
+        enabled: sesConfig.enabled
+      });
+    }
+    setSesConfigDialogOpen(true);
+  };
+
+  const handleSaveSesConfig = () => {
+    updateSesConfigMutation.mutate(sesFormData);
+  };
+
+  const handleTestSesEmail = () => {
+    if (testEmailAddress) {
+      testSesEmailMutation.mutate({ testEmail: testEmailAddress });
+    }
+  };
+
+  const handleVerifySesEmail = () => {
+    if (sesConfig?.fromEmail) {
+      verifySesEmailMutation.mutate(sesConfig.fromEmail);
+    } else if (sesFormData.fromEmail) {
+      verifySesEmailMutation.mutate(sesFormData.fromEmail);
+    }
   };
 
   const getRoleBadge = (role: string) => {
@@ -909,6 +1036,147 @@ export default function Settings() {
           </Card>
         )}
 
+        {/* Email Configuration (AWS SES) - Admin only */}
+        {isAdmin && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Mail className="w-5 h-5 mr-2" />
+                Email Configuration (AWS SES)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {sesConfigLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* SES Configuration Status */}
+                  <div className="p-4 bg-muted/50 rounded-lg">
+                    <div className="flex items-center mb-3">
+                      {sesConfig?.configured ? (
+                        <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
+                      ) : (
+                        <XCircle className="w-5 h-5 text-destructive mr-2" />
+                      )}  
+                      <span className="font-medium">
+                        SES Email {sesConfig?.configured ? 'Configured' : 'Not Configured'}
+                      </span>
+                    </div>
+                    
+                    {sesConfig?.configured && (
+                      <div className="space-y-2 text-sm">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          <div>
+                            <span className="text-muted-foreground">From Email:</span>{' '}
+                            <span className="font-medium">{sesConfig?.fromEmail || 'Not set'}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Region:</span>{' '}
+                            <span className="font-medium">{sesConfig?.region || 'Not set'}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Status:</span>
+                          {sesConfig?.enabled ? (
+                            <Badge className="bg-green-500/10 text-green-500">Enabled</Badge>
+                          ) : (
+                            <Badge className="bg-yellow-500/10 text-yellow-500">Disabled</Badge>
+                          )}
+                          {sesConfig?.verified ? (
+                            <Badge className="bg-green-500/10 text-green-500">
+                              <MailCheck className="w-3 h-3 mr-1" />
+                              Verified
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-yellow-500/10 text-yellow-500">Unverified</Badge>
+                          )}
+                        </div>
+                        {sesConfig?.lastVerifiedAt && (
+                          <div>
+                            <span className="text-muted-foreground">Last Verified:</span>{' '}
+                            <span className="font-medium">
+                              {new Date(sesConfig.lastVerifiedAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Configuration Details */}
+                  {sesConfig?.configured && (
+                    <div>
+                      <Label className="text-base font-medium mb-2">Configuration Details</Label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm mt-2">
+                        <div className="p-2 bg-muted/30 rounded">
+                          <span className="text-muted-foreground">Access Key ID:</span>{' '}
+                          <span className="font-mono text-xs">****</span>
+                        </div>
+                        <div className="p-2 bg-muted/30 rounded">
+                          <span className="text-muted-foreground">Secret Access Key:</span>{' '}
+                          <span className="font-mono text-xs">****</span>
+                        </div>
+                        <div className="p-2 bg-muted/30 rounded">
+                          <span className="text-muted-foreground">From Name:</span>{' '}
+                          <span className="font-medium">{sesConfig?.fromName || 'HR Management System'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    <Button 
+                      onClick={handleOpenSesConfigDialog} 
+                      variant="outline"
+                      data-testid="button-configure-ses"
+                    >
+                      <SettingsIcon className="w-4 h-4 mr-2" />
+                      {sesConfig?.configured ? 'Update Configuration' : 'Configure SES'}
+                    </Button>
+                    
+                    {sesConfig?.configured && (
+                      <>
+                        <Button
+                          onClick={() => setTestEmailDialogOpen(true)}
+                          variant="secondary"
+                          data-testid="button-test-email"
+                        >
+                          <Send className="w-4 h-4 mr-2" />
+                          Test Email
+                        </Button>
+                        
+                        {!sesConfig?.verified && (
+                          <Button
+                            onClick={handleVerifySesEmail}
+                            variant="secondary"
+                            disabled={verifySesEmailMutation.isPending}
+                            data-testid="button-verify-email"
+                          >
+                            <MailCheck className="w-4 h-4 mr-2" />
+                            {verifySesEmailMutation.isPending ? 'Sending...' : 'Verify Email'}
+                          </Button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  
+                  {/* Configuration Help */}
+                  {!sesConfig?.configured && (
+                    <div className="mt-4 p-4 bg-muted/30 rounded-lg">
+                      <p className="text-sm font-medium mb-2">Email sending is not configured.</p>
+                      <p className="text-sm text-muted-foreground">
+                        Configure AWS SES to enable email invitations and notifications.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* API Keys Management */}
         <Card>
@@ -984,6 +1252,121 @@ export default function Settings() {
             </div>
           </CardContent>
         </Card>
+
+        {/* SES Configuration Dialog */}
+        <Dialog open={sesConfigDialogOpen} onOpenChange={setSesConfigDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Configure AWS SES Email</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="ses-region">AWS Region</Label>
+                <Input
+                  id="ses-region"
+                  value={sesFormData.region}
+                  onChange={(e) => setSesFormData(prev => ({ ...prev, region: e.target.value }))}
+                  placeholder="e.g., us-east-1"
+                  data-testid="input-ses-region"
+                />
+              </div>
+              <div>
+                <Label htmlFor="ses-access-key">AWS Access Key ID</Label>
+                <Input
+                  id="ses-access-key"
+                  type="password"
+                  value={sesFormData.accessKeyId}
+                  onChange={(e) => setSesFormData(prev => ({ ...prev, accessKeyId: e.target.value }))}
+                  placeholder="Enter AWS Access Key ID"
+                  data-testid="input-ses-access-key"
+                />
+              </div>
+              <div>
+                <Label htmlFor="ses-secret-key">AWS Secret Access Key</Label>
+                <Input
+                  id="ses-secret-key"
+                  type="password"
+                  value={sesFormData.secretAccessKey}
+                  onChange={(e) => setSesFormData(prev => ({ ...prev, secretAccessKey: e.target.value }))}
+                  placeholder="Enter AWS Secret Access Key"
+                  data-testid="input-ses-secret-key"
+                />
+              </div>
+              <div>
+                <Label htmlFor="ses-from-email">From Email Address</Label>
+                <Input
+                  id="ses-from-email"
+                  type="email"
+                  value={sesFormData.fromEmail}
+                  onChange={(e) => setSesFormData(prev => ({ ...prev, fromEmail: e.target.value }))}
+                  placeholder="noreply@yourdomain.com"
+                  data-testid="input-ses-from-email"
+                />
+              </div>
+              <div>
+                <Label htmlFor="ses-from-name">From Name</Label>
+                <Input
+                  id="ses-from-name"
+                  value={sesFormData.fromName}
+                  onChange={(e) => setSesFormData(prev => ({ ...prev, fromName: e.target.value }))}
+                  placeholder="HR Management System"
+                  data-testid="input-ses-from-name"
+                />
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="ses-enabled"
+                  checked={sesFormData.enabled}
+                  onCheckedChange={(checked) => setSesFormData(prev => ({ ...prev, enabled: !!checked }))}
+                  data-testid="checkbox-ses-enabled"
+                />
+                <Label htmlFor="ses-enabled">Enable email sending</Label>
+              </div>
+              <Button
+                onClick={handleSaveSesConfig}
+                disabled={updateSesConfigMutation.isPending || !sesFormData.accessKeyId || !sesFormData.secretAccessKey || !sesFormData.fromEmail}
+                className="w-full"
+                data-testid="button-save-ses-config"
+              >
+                {updateSesConfigMutation.isPending ? "Saving..." : "Save Configuration"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Test Email Dialog */}
+        <Dialog open={testEmailDialogOpen} onOpenChange={setTestEmailDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Send Test Email</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Enter an email address to send a test email and verify your SES configuration is working.
+              </p>
+              <div>
+                <Label htmlFor="test-email">Test Email Address</Label>
+                <Input
+                  id="test-email"
+                  type="email"
+                  value={testEmailAddress}
+                  onChange={(e) => setTestEmailAddress(e.target.value)}
+                  placeholder="test@example.com"
+                  data-testid="input-test-email"
+                />
+              </div>
+              <Button
+                onClick={handleTestSesEmail}
+                disabled={testSesEmailMutation.isPending || !testEmailAddress}
+                className="w-full"
+                data-testid="button-send-test-email"
+              >
+                <Send className="w-4 h-4 mr-2" />
+                {testSesEmailMutation.isPending ? "Sending..." : "Send Test Email"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Delete User Confirmation */}
         <AlertDialog open={deleteUserId !== null} onOpenChange={() => setDeleteUserId(null)}>
