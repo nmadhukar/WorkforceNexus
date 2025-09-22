@@ -691,6 +691,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
+  /**
+   * DELETE /api/documents/:id
+   * Delete a document by ID
+   */
+  app.delete('/api/documents/:id',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:documents'),
+    requireRole(['admin', 'hr']),
+    auditMiddleware('documents'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const documentId = parseInt(req.params.id);
+        
+        // Get the document first to delete the file
+        const document = await storage.getDocument(documentId);
+        
+        if (!document) {
+          return res.status(404).json({ error: 'Document not found' });
+        }
+        
+        // Delete the file from storage (S3 or local)
+        if (document.storageType === 's3' && document.storageKey) {
+          // Delete from S3
+          const deleteSuccess = await s3Service.deleteFile(document.storageKey, 's3');
+          if (!deleteSuccess) {
+            console.error('Failed to delete S3 file');
+          }
+        } else if (document.storageType === 'local') {
+          // Delete local file
+          const filePath = document.storageKey || document.filePath;
+          if (filePath && fs.existsSync(filePath)) {
+            try {
+              fs.unlinkSync(filePath);
+            } catch (error) {
+              console.error('Failed to delete local file:', error);
+            }
+          }
+        }
+        
+        // Delete the document record from database
+        await storage.deleteDocument(documentId);
+        
+        // Audit logging
+        await logAudit(req, documentId, document, null);
+        
+        res.status(200).json({ message: 'Document deleted successfully' });
+      } catch (error) {
+        console.error('Error deleting document:', error);
+        res.status(500).json({ error: 'Failed to delete document' });
+      }
+    }
+  );
+
   // Complete CRUD for Educations (adding PUT and DELETE)
   app.put('/api/educations/:id', 
     apiKeyAuth,
