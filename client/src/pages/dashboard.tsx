@@ -26,7 +26,12 @@ export default function Dashboard() {
   const [location, setLocation] = useLocation();
   
   const { data: stats } = useQuery<DashboardStats>({
-    queryKey: ["/api/dashboard/stats"]
+    queryKey: ["/api/dashboard/stats"],
+    queryFn: async () => {
+      const res = await fetch("/api/dashboard/stats", { credentials: "include" });
+      if (!res.ok) throw new Error('Failed to fetch dashboard stats');
+      return res.json();
+    }
   });
 
   const { data: activities = [] } = useQuery<RecentActivity[]>({
