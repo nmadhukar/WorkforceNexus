@@ -220,6 +220,22 @@ export interface IStorage {
     pendingDocs: number;
   }>;
   
+  // Dashboard operations
+  getDashboardStats(): Promise<{
+    totalEmployees: number;
+    activeLicenses: number;
+    expiringSoon: number;
+    complianceRate: number;
+  }>;
+  getRecentActivities(limit?: number): Promise<any[]>;
+  getDocumentStats(): Promise<{
+    licenses: number;
+    certifications: number;
+    taxForms: number;
+    other: number;
+    expiringSoon: number;
+  }>;
+  
   // Document operations
   getDocuments(options?: {
     limit?: number;
@@ -270,7 +286,7 @@ export interface IStorage {
   createEmailReminder(reminder: any): Promise<any>;
   getEmailRemindersByInvitationId(invitationId: number): Promise<any[]>;
   
-  sessionStore: session.SessionStore;
+  sessionStore: session.Store;
 }
 
 /**
@@ -293,7 +309,7 @@ export class DatabaseStorage implements IStorage {
   /**
    * Express session store for persistent sessions
    */
-  sessionStore: session.SessionStore;
+  sessionStore: session.Store;
 
   /**
    * Initialize database storage with PostgreSQL connection
@@ -939,6 +955,158 @@ export class DatabaseStorage implements IStorage {
       activeEmployees: activeResult.count,
       expiringSoon,
       pendingDocs: Math.floor(pendingDocsResult.count * 0.1) // Simulate 10% pending
+    };
+  }
+
+  /**
+   * Get dashboard statistics for main dashboard
+   */
+  async getDashboardStats(): Promise<{
+    totalEmployees: number;
+    activeLicenses: number;
+    expiringSoon: number;
+    complianceRate: number;
+  }> {
+    // Get total employees count
+    const [totalResult] = await db.select({ count: count() }).from(employees);
+    
+    // Get active licenses count (state + DEA licenses with active status)
+    const [stateActiveLicenses] = await db
+      .select({ count: count() })
+      .from(stateLicenses)
+      .where(eq(stateLicenses.status, 'active'));
+    
+    const [deaActiveLicenses] = await db
+      .select({ count: count() })
+      .from(deaLicenses)
+      .where(eq(deaLicenses.status, 'active'));
+    
+    const activeLicenses = stateActiveLicenses.count + deaActiveLicenses.count;
+    
+    // Get expiring soon count (30 days)
+    const expiringItems = await this.getExpiringItems(30);
+    
+    // Calculate compliance rate
+    // Count employees with all required documents
+    const [compliantEmployees] = await db
+      .select({ count: count() })
+      .from(employees)
+      .where(and(
+        sql`${employees.npiNumber} IS NOT NULL`,
+        sql`${employees.medicalLicenseNumber} IS NOT NULL`
+      ));
+    
+    const complianceRate = totalResult.count > 0 
+      ? Math.round((compliantEmployees.count / totalResult.count) * 100) 
+      : 0;
+    
+    return {
+      totalEmployees: totalResult.count,
+      activeLicenses,
+      expiringSoon: expiringItems.length,
+      complianceRate
+    };
+  }
+
+  /**
+   * Get recent activities from audit log
+   */
+  async getRecentActivities(limit: number = 10): Promise<any[]> {
+    const activities = await db
+      .select({
+        id: audits.id,
+        type: audits.action,
+        description: sql<string>`
+          CASE 
+            WHEN ${audits.action} = 'CREATE_EMPLOYEE' THEN 'New employee added'
+            WHEN ${audits.action} = 'UPDATE_EMPLOYEE' THEN 'Employee profile updated'
+            WHEN ${audits.action} = 'CREATE_DOCUMENT' THEN 'Document uploaded'
+            WHEN ${audits.action} = 'CREATE_LICENSE' THEN 'License added'
+            WHEN ${audits.action} = 'UPDATE_LICENSE' THEN 'License updated'
+            ELSE ${audits.action}
+          END
+        `,
+        entityType: audits.tableName,
+        entityId: audits.recordId,
+        timestamp: audits.changedAt,
+        userId: audits.changedBy
+      })
+      .from(audits)
+      .orderBy(desc(audits.changedAt))
+      .limit(limit);
+    
+    return activities;
+  }
+
+  /**
+   * Get document statistics by category
+   */
+  async getDocumentStats(): Promise<{
+    licenses: number;
+    certifications: number;
+    taxForms: number;
+    other: number;
+    expiringSoon: number;
+  }> {
+    // Count licenses
+    const [licenseDocs] = await db
+      .select({ count: count() })
+      .from(documents)
+      .where(or(
+        like(documents.documentType, '%License%'),
+        like(documents.documentType, '%license%')
+      ));
+    
+    // Count certifications
+    const [certDocs] = await db
+      .select({ count: count() })
+      .from(documents)
+      .where(or(
+        like(documents.documentType, '%Certification%'),
+        like(documents.documentType, '%certification%'),
+        like(documents.documentType, '%Certificate%'),
+        like(documents.documentType, '%certificate%')
+      ));
+    
+    // Count tax forms
+    const [taxDocs] = await db
+      .select({ count: count() })
+      .from(documents)
+      .where(or(
+        like(documents.documentType, '%I-9%'),
+        like(documents.documentType, '%W-4%'),
+        like(documents.documentType, '%W-2%'),
+        like(documents.documentType, '%1099%'),
+        like(documents.documentType, '%Tax%'),
+        like(documents.documentType, '%tax%')
+      ));
+    
+    // Count total documents
+    const [totalDocs] = await db
+      .select({ count: count() })
+      .from(documents);
+    
+    // Calculate other documents
+    const otherCount = totalDocs.count - licenseDocs.count - certDocs.count - taxDocs.count;
+    
+    // Count documents expiring soon (30 days)
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 30);
+    
+    const [expiringSoonDocs] = await db
+      .select({ count: count() })
+      .from(documents)
+      .where(and(
+        lte(documents.expirationDate, futureDate.toISOString().split('T')[0]),
+        sql`${documents.expirationDate} > CURRENT_DATE`
+      ));
+    
+    return {
+      licenses: licenseDocs.count,
+      certifications: certDocs.count,
+      taxForms: taxDocs.count,
+      other: Math.max(0, otherCount),
+      expiringSoon: expiringSoonDocs.count
     };
   }
 

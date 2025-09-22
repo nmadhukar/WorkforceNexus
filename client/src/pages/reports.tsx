@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/main-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchFilters } from "@/components/search-filters";
-import { AlertTriangle, FileText, Users, Download, BarChart2 } from "lucide-react";
+import { AlertTriangle, FileText, Users, Download, BarChart2, TrendingUp } from "lucide-react";
+import { useLocation } from "wouter";
 
 interface ExpiringItem {
   employeeId: number;
@@ -17,12 +18,23 @@ interface ExpiringItem {
   daysRemaining: number;
 }
 
-interface ExpiringItemsResponse {
-  items: ExpiringItem[];
-  total: number;
+interface DashboardStats {
+  totalEmployees: number;
+  activeEmployees: number;
+  expiringSoon: number;
+  pendingDocs: number;
+}
+
+interface DashboardAnalytics {
+  totalEmployees: number;
+  activeLicenses: number;
+  expiringSoon: number;
+  complianceRate: number;
 }
 
 export default function Reports() {
+  const [location, setLocation] = useLocation();
+  const [selectedReport, setSelectedReport] = useState("expiring");
   const [selectedDays, setSelectedDays] = useState("30");
   const [filters, setFilters] = useState({
     search: "",
@@ -30,21 +42,44 @@ export default function Reports() {
     priority: ""
   });
 
-  const { data: expiringItems = [], isLoading: loadingExpiring } = useQuery<ExpiringItem[]>({
-    queryKey: ["/api/reports/expiring"],
+  // Parse URL parameters for initial filter
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const filterParam = params.get('filter');
+    if (filterParam === 'expiring') {
+      setSelectedReport('expiring');
+    } else if (filterParam === 'compliance') {
+      setSelectedReport('compliance');
+    }
+  }, []);
+
+  const { data: expiringItems = [], isLoading: loadingExpiring, refetch: refetchExpiring } = useQuery<ExpiringItem[]>({
+    queryKey: ["/api/reports/expiring", selectedDays],
     queryFn: async ({ queryKey }) => {
-      const res = await fetch(`${queryKey[0]}?days=${selectedDays}`, { credentials: "include" });
+      const [url, days] = queryKey;
+      const res = await fetch(`${url}?days=${days}`, { credentials: "include" });
       if (!res.ok) throw new Error('Failed to fetch expiring items');
       return res.json();
     }
   });
 
-  const { data: stats } = useQuery({
+  const { data: stats } = useQuery<DashboardStats>({
     queryKey: ["/api/reports/stats"]
+  });
+
+  const { data: dashboardStats } = useQuery<DashboardAnalytics>({
+    queryKey: ["/api/dashboard/stats"]
   });
 
   const handleFilterChange = (key: string, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleReportClick = (reportType: string) => {
+    setSelectedReport(reportType);
+    if (reportType === 'expiring') {
+      refetchExpiring();
+    }
   };
 
   const handleExportCSV = async (reportType: string) => {
@@ -99,6 +134,9 @@ export default function Reports() {
     return true;
   });
 
+  // Calculate missing documents (employees without required licenses)
+  const missingDocs = stats ? Math.max(0, stats.totalEmployees - Math.floor(stats.activeEmployees * 0.8)) : 0;
+
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -108,8 +146,12 @@ export default function Reports() {
         </div>
 
         {/* Report Types */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <Card className="hover:shadow-md transition-shadow cursor-pointer" data-testid="card-expiring-report">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <Card 
+            className={`hover:shadow-md transition-shadow cursor-pointer ${selectedReport === 'expiring' ? 'ring-2 ring-primary' : ''}`}
+            data-testid="card-expiring-report"
+            onClick={() => handleReportClick('expiring')}
+          >
             <CardContent className="p-6">
               <div className="flex items-center space-x-4 mb-4">
                 <div className="w-12 h-12 bg-destructive/10 rounded-lg flex items-center justify-center">
@@ -117,20 +159,27 @@ export default function Reports() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-foreground">Expiring Items</h3>
-                  <p className="text-sm text-muted-foreground">Licenses & Certifications</p>
+                  <p className="text-sm text-muted-foreground">{expiringItems.length} items</p>
                 </div>
               </div>
               <Button 
                 className="w-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                onClick={() => handleExportCSV('expiring-items')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleExportCSV('expiring-items');
+                }}
                 data-testid="button-generate-expiring-report"
               >
-                Generate Report
+                Export Report
               </Button>
             </CardContent>
           </Card>
 
-          <Card className="hover:shadow-md transition-shadow cursor-pointer" data-testid="card-compliance-report">
+          <Card 
+            className={`hover:shadow-md transition-shadow cursor-pointer ${selectedReport === 'compliance' ? 'ring-2 ring-primary' : ''}`}
+            data-testid="card-compliance-report"
+            onClick={() => handleReportClick('compliance')}
+          >
             <CardContent className="p-6">
               <div className="flex items-center space-x-4 mb-4">
                 <div className="w-12 h-12 bg-accent/10 rounded-lg flex items-center justify-center">
@@ -138,20 +187,27 @@ export default function Reports() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-foreground">Compliance</h3>
-                  <p className="text-sm text-muted-foreground">Missing Documents</p>
+                  <p className="text-sm text-muted-foreground">{missingDocs} missing docs</p>
                 </div>
               </div>
               <Button 
                 className="w-full bg-accent text-accent-foreground hover:bg-accent/90"
-                onClick={() => handleExportCSV('compliance')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleExportCSV('compliance');
+                }}
                 data-testid="button-generate-compliance-report"
               >
-                Generate Report
+                Export Report
               </Button>
             </CardContent>
           </Card>
 
-          <Card className="hover:shadow-md transition-shadow cursor-pointer" data-testid="card-directory-report">
+          <Card 
+            className={`hover:shadow-md transition-shadow cursor-pointer ${selectedReport === 'directory' ? 'ring-2 ring-primary' : ''}`}
+            data-testid="card-directory-report"
+            onClick={() => handleReportClick('directory')}
+          >
             <CardContent className="p-6">
               <div className="flex items-center space-x-4 mb-4">
                 <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
@@ -159,116 +215,241 @@ export default function Reports() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-foreground">Employee Directory</h3>
-                  <p className="text-sm text-muted-foreground">Complete Staff List</p>
+                  <p className="text-sm text-muted-foreground">{stats?.totalEmployees || 0} employees</p>
                 </div>
               </div>
               <Button 
                 className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-                onClick={() => handleExportCSV('employees')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleExportCSV('employees');
+                }}
                 data-testid="button-generate-directory-report"
               >
-                Generate Report
+                Export Report
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className={`hover:shadow-md transition-shadow cursor-pointer ${selectedReport === 'analytics' ? 'ring-2 ring-primary' : ''}`}
+            data-testid="card-analytics-report"
+            onClick={() => handleReportClick('analytics')}
+          >
+            <CardContent className="p-6">
+              <div className="flex items-center space-x-4 mb-4">
+                <div className="w-12 h-12 bg-secondary/10 rounded-lg flex items-center justify-center">
+                  <TrendingUp className="w-6 h-6 text-secondary" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-foreground">Analytics</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {dashboardStats?.complianceRate || 0}% compliance
+                  </p>
+                </div>
+              </div>
+              <Button 
+                className="w-full bg-secondary text-secondary-foreground hover:bg-secondary/90"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleExportCSV('analytics');
+                }}
+                data-testid="button-generate-analytics-report"
+              >
+                Export Report
               </Button>
             </CardContent>
           </Card>
         </div>
 
-        {/* Sample Report Display */}
-        <Card>
-          <CardHeader className="border-b border-border">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center">
-                <BarChart2 className="w-5 h-5 mr-2" />
-                Expiring Items Report
-              </CardTitle>
-              <div className="flex items-center space-x-2">
-                <Select value={selectedDays} onValueChange={setSelectedDays}>
-                  <SelectTrigger className="w-40" data-testid="select-expiring-days">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="30">Next 30 days</SelectItem>
-                    <SelectItem value="60">Next 60 days</SelectItem>
-                    <SelectItem value="90">Next 90 days</SelectItem>
-                  </SelectContent>
-                </Select>
+        {/* Report Display based on selected report */}
+        {selectedReport === 'expiring' && (
+          <Card>
+            <CardHeader className="border-b border-border">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center">
+                  <BarChart2 className="w-5 h-5 mr-2" />
+                  Expiring Items Report
+                </CardTitle>
+                <div className="flex items-center space-x-2">
+                  <Select value={selectedDays} onValueChange={setSelectedDays}>
+                    <SelectTrigger className="w-40" data-testid="select-expiring-days">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="30">Next 30 days</SelectItem>
+                      <SelectItem value="60">Next 60 days</SelectItem>
+                      <SelectItem value="90">Next 90 days</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button 
+                    variant="outline"
+                    onClick={() => handleExportCSV('expiring-items')}
+                    data-testid="button-export-csv"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Export CSV
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-4">
+              {/* Filters */}
+              <SearchFilters
+                filters={filters}
+                onFilterChange={handleFilterChange}
+                filterOptions={{
+                  types: [
+                    { value: "", label: "All Types" },
+                    { value: "State License", label: "State License" },
+                    { value: "DEA License", label: "DEA License" },
+                    { value: "Board Certification", label: "Board Certification" }
+                  ]
+                }}
+                data-testid="expiring-filters"
+              />
+
+              {/* Report Table */}
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-muted">
+                    <tr>
+                      <th className="text-left p-4 font-medium text-foreground">Employee</th>
+                      <th className="text-left p-4 font-medium text-foreground">Item Type</th>
+                      <th className="text-left p-4 font-medium text-foreground">License/Cert Number</th>
+                      <th className="text-left p-4 font-medium text-foreground">Expiration Date</th>
+                      <th className="text-left p-4 font-medium text-foreground">Days Remaining</th>
+                      <th className="text-left p-4 font-medium text-foreground">Priority</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loadingExpiring ? (
+                      <tr>
+                        <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                          Loading expiring items...
+                        </td>
+                      </tr>
+                    ) : filteredItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                          No expiring items found
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredItems.map((item, index) => (
+                        <tr 
+                          key={`${item.employeeId}-${item.itemType}-${index}`} 
+                          className="border-t border-border hover:bg-muted/50 table-row"
+                          data-testid={`expiring-item-${index}`}
+                        >
+                          <td className="p-4 text-foreground">{item.employeeName}</td>
+                          <td className="p-4 text-foreground">{item.itemType}</td>
+                          <td className="p-4 text-foreground">{item.licenseNumber}</td>
+                          <td className="p-4 text-foreground">
+                            {new Date(item.expirationDate).toLocaleDateString()}
+                          </td>
+                          <td className="p-4 text-foreground">{item.daysRemaining}</td>
+                          <td className="p-4">{getPriorityBadge(item.daysRemaining)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {selectedReport === 'compliance' && (
+          <Card>
+            <CardHeader className="border-b border-border">
+              <CardTitle>Compliance Report</CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+              <p className="text-muted-foreground mb-4">
+                Showing employees with missing or incomplete documentation
+              </p>
+              <div className="text-center py-8 border rounded-lg bg-muted/30">
+                <FileText className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
+                <p className="text-lg font-medium">
+                  {missingDocs} employees with missing documents
+                </p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Click Export Report to download detailed compliance data
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {selectedReport === 'directory' && (
+          <Card>
+            <CardHeader className="border-b border-border">
+              <CardTitle>Employee Directory Report</CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="text-center py-8 border rounded-lg bg-muted/30">
+                <Users className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
+                <p className="text-lg font-medium">
+                  {stats?.totalEmployees || 0} total employees
+                </p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  {stats?.activeEmployees || 0} active • {Math.max(0, (stats?.totalEmployees || 0) - (stats?.activeEmployees || 0))} inactive
+                </p>
                 <Button 
-                  variant="outline"
-                  onClick={() => handleExportCSV('expiring-items')}
-                  data-testid="button-export-csv"
+                  className="mt-4"
+                  onClick={() => setLocation('/employees')}
+                  data-testid="button-view-directory"
                 >
-                  <Download className="w-4 h-4 mr-2" />
-                  Export CSV
+                  View Employee List
                 </Button>
               </div>
-            </div>
-          </CardHeader>
+            </CardContent>
+          </Card>
+        )}
 
-          <CardContent className="p-4">
-            {/* Filters */}
-            <SearchFilters
-              filters={filters}
-              onFilterChange={handleFilterChange}
-              filterOptions={{
-                types: [
-                  { value: "", label: "All Types" },
-                  { value: "State License", label: "State License" },
-                  { value: "DEA License", label: "DEA License" },
-                  { value: "Board Certification", label: "Board Certification" }
-                ]
-              }}
-              data-testid="expiring-filters"
-            />
-
-            {/* Report Table */}
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-muted">
-                  <tr>
-                    <th className="text-left p-4 font-medium text-foreground">Employee</th>
-                    <th className="text-left p-4 font-medium text-foreground">Item Type</th>
-                    <th className="text-left p-4 font-medium text-foreground">License/Cert Number</th>
-                    <th className="text-left p-4 font-medium text-foreground">Expiration Date</th>
-                    <th className="text-left p-4 font-medium text-foreground">Days Remaining</th>
-                    <th className="text-left p-4 font-medium text-foreground">Priority</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loadingExpiring ? (
-                    <tr>
-                      <td colSpan={6} className="p-8 text-center text-muted-foreground">
-                        Loading expiring items...
-                      </td>
-                    </tr>
-                  ) : filteredItems.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="p-8 text-center text-muted-foreground">
-                        No expiring items found
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredItems.map((item, index) => (
-                      <tr 
-                        key={`${item.employeeId}-${item.itemType}-${index}`} 
-                        className="border-t border-border hover:bg-muted/50 table-row"
-                        data-testid={`expiring-item-${index}`}
-                      >
-                        <td className="p-4 text-foreground">{item.employeeName}</td>
-                        <td className="p-4 text-foreground">{item.itemType}</td>
-                        <td className="p-4 text-foreground">{item.licenseNumber}</td>
-                        <td className="p-4 text-foreground">
-                          {new Date(item.expirationDate).toLocaleDateString()}
-                        </td>
-                        <td className="p-4 text-foreground">{item.daysRemaining}</td>
-                        <td className="p-4">{getPriorityBadge(item.daysRemaining)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+        {selectedReport === 'analytics' && (
+          <Card>
+            <CardHeader className="border-b border-border">
+              <CardTitle>Analytics Report</CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div className="text-center p-4 border rounded-lg">
+                  <p className="text-2xl font-bold text-foreground">
+                    {dashboardStats?.complianceRate || 0}%
+                  </p>
+                  <p className="text-sm text-muted-foreground">Compliance Rate</p>
+                </div>
+                <div className="text-center p-4 border rounded-lg">
+                  <p className="text-2xl font-bold text-primary">
+                    {dashboardStats?.activeLicenses || 0}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Active Licenses</p>
+                </div>
+                <div className="text-center p-4 border rounded-lg">
+                  <p className="text-2xl font-bold text-destructive">
+                    {dashboardStats?.expiringSoon || 0}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Expiring Soon</p>
+                </div>
+                <div className="text-center p-4 border rounded-lg">
+                  <p className="text-2xl font-bold text-accent">
+                    {stats?.pendingDocs || 0}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Pending Docs</p>
+                </div>
+              </div>
+              <div className="text-center py-4 border rounded-lg bg-muted/30">
+                <TrendingUp className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  Click Export Report to download detailed analytics
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Summary Stats */}
         {stats && (

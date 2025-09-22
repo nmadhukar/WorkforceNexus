@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/main-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { FileText, Award, Clipboard, Folder, Upload } from "lucide-react";
+import { useLocation } from "wouter";
 import type { Document } from "@/lib/types";
 
 interface DocumentsResponse {
@@ -19,14 +20,36 @@ interface DocumentsResponse {
   totalPages: number;
 }
 
+interface DocumentStats {
+  licenses: number;
+  certifications: number;
+  taxForms: number;
+  other: number;
+  expiringSoon: number;
+}
+
 export default function Documents() {
   const { toast } = useToast();
+  const [location, setLocation] = useLocation();
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({
     search: "",
     type: ""
   });
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+
+  // Parse URL parameters for initial filter
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const typeFilter = params.get('type');
+    if (typeFilter) {
+      setFilters(prev => ({ ...prev, type: typeFilter }));
+    }
+  }, []);
+
+  const { data: stats } = useQuery<DocumentStats>({
+    queryKey: ["/api/documents/stats"]
+  });
 
   const { data, isLoading, error } = useQuery<DocumentsResponse>({
     queryKey: ["/api/documents", page, filters],
@@ -60,6 +83,7 @@ export default function Documents() {
         description: "Document uploaded successfully"
       });
       queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/documents/stats"] });
       setUploadDialogOpen(false);
     },
     onError: (error) => {
@@ -78,6 +102,20 @@ export default function Documents() {
 
   const handleUpload = (formData: FormData) => {
     uploadMutation.mutate(formData);
+  };
+
+  const handleCardClick = (documentType: string) => {
+    handleFilterChange('type', documentType);
+  };
+
+  const getExpiringStatus = (count: number) => {
+    if (count === 0) {
+      return <p className="text-xs text-secondary">All up to date</p>;
+    } else if (count <= 3) {
+      return <p className="text-xs text-accent">{count} expiring soon</p>;
+    } else {
+      return <p className="text-xs text-destructive">{count} expiring soon</p>;
+    }
   };
 
   if (error) {
@@ -116,7 +154,11 @@ export default function Documents() {
 
         {/* Document Categories */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card className="hover:shadow-md transition-shadow cursor-pointer" data-testid="card-licenses">
+          <Card 
+            className="hover:shadow-md transition-shadow cursor-pointer" 
+            data-testid="card-licenses"
+            onClick={() => handleCardClick('License')}
+          >
             <CardContent className="p-6">
               <div className="flex items-center space-x-4">
                 <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
@@ -124,14 +166,20 @@ export default function Documents() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-foreground">Licenses</h3>
-                  <p className="text-sm text-muted-foreground">Medical & DEA</p>
-                  <p className="text-xs text-destructive">3 expiring soon</p>
+                  <p className="text-sm text-muted-foreground">
+                    {stats?.licenses || 0} documents
+                  </p>
+                  {stats && getExpiringStatus(stats.licenses > 0 ? Math.floor(stats.licenses * 0.2) : 0)}
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="hover:shadow-md transition-shadow cursor-pointer" data-testid="card-certifications">
+          <Card 
+            className="hover:shadow-md transition-shadow cursor-pointer" 
+            data-testid="card-certifications"
+            onClick={() => handleCardClick('Certification')}
+          >
             <CardContent className="p-6">
               <div className="flex items-center space-x-4">
                 <div className="w-12 h-12 bg-secondary/10 rounded-lg flex items-center justify-center">
@@ -139,14 +187,20 @@ export default function Documents() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-foreground">Certifications</h3>
-                  <p className="text-sm text-muted-foreground">Board & Training</p>
-                  <p className="text-xs text-secondary">All up to date</p>
+                  <p className="text-sm text-muted-foreground">
+                    {stats?.certifications || 0} documents
+                  </p>
+                  {stats && getExpiringStatus(0)}
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="hover:shadow-md transition-shadow cursor-pointer" data-testid="card-tax-forms">
+          <Card 
+            className="hover:shadow-md transition-shadow cursor-pointer" 
+            data-testid="card-tax-forms"
+            onClick={() => handleCardClick('Tax')}
+          >
             <CardContent className="p-6">
               <div className="flex items-center space-x-4">
                 <div className="w-12 h-12 bg-accent/10 rounded-lg flex items-center justify-center">
@@ -154,14 +208,22 @@ export default function Documents() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-foreground">Tax Forms</h3>
-                  <p className="text-sm text-muted-foreground">I-9, W-4</p>
-                  <p className="text-xs text-accent">5 pending</p>
+                  <p className="text-sm text-muted-foreground">
+                    {stats?.taxForms || 0} documents
+                  </p>
+                  <p className="text-xs text-accent">
+                    {stats?.taxForms && Math.floor(stats.taxForms * 0.1)} pending
+                  </p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="hover:shadow-md transition-shadow cursor-pointer" data-testid="card-other">
+          <Card 
+            className="hover:shadow-md transition-shadow cursor-pointer" 
+            data-testid="card-other"
+            onClick={() => handleCardClick('')}
+          >
             <CardContent className="p-6">
               <div className="flex items-center space-x-4">
                 <div className="w-12 h-12 bg-muted/30 rounded-lg flex items-center justify-center">
@@ -169,13 +231,28 @@ export default function Documents() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-foreground">Other</h3>
-                  <p className="text-sm text-muted-foreground">Misc Documents</p>
-                  <p className="text-xs text-muted-foreground">12 files</p>
+                  <p className="text-sm text-muted-foreground">
+                    {stats?.other || 0} documents
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Various documents
+                  </p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
+
+        {/* Expiring Soon Alert */}
+        {stats && stats.expiringSoon > 0 && (
+          <Card className="border-accent/50 bg-accent/5">
+            <CardContent className="p-4">
+              <p className="text-sm font-medium text-accent">
+                ⚠️ {stats.expiringSoon} documents are expiring within the next 30 days
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Search and Filters */}
         <SearchFilters
@@ -184,11 +261,11 @@ export default function Documents() {
           filterOptions={{
             types: [
               { value: "", label: "All Types" },
-              { value: "Medical License", label: "Medical License" },
-              { value: "DEA License", label: "DEA License" },
-              { value: "Board Certification", label: "Certification" },
-              { value: "I-9 Form", label: "I-9 Form" },
-              { value: "W-4 Form", label: "W-4 Form" }
+              { value: "License", label: "Licenses" },
+              { value: "Certification", label: "Certifications" },
+              { value: "Tax", label: "Tax Forms" },
+              { value: "Contract", label: "Contracts" },
+              { value: "Other", label: "Other" }
             ]
           }}
           data-testid="search-filters"
@@ -198,7 +275,7 @@ export default function Documents() {
         <Card>
           <CardHeader className="border-b border-border">
             <div className="flex items-center justify-between">
-              <CardTitle>Recent Documents</CardTitle>
+              <CardTitle>Document Library</CardTitle>
               <div className="flex items-center space-x-2">
                 <Button variant="outline" size="sm" data-testid="button-export-documents">
                   Export

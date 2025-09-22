@@ -244,7 +244,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('read:employees'), 
     validatePagination(), 
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 10;
@@ -286,7 +286,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('read:employees'), 
     validateId(), 
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const employee = await storage.getEmployee(parseInt(req.params.id));
         if (!employee) {
@@ -317,7 +317,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     auditMiddleware('employees'),
     validateEmployee(), 
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const encryptedData = encryptSensitiveFields(req.body);
         const employee = await storage.createEmployee(encryptedData);
@@ -349,7 +349,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     validateId(),
     validateEmployee(), 
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         const oldEmployee = await storage.getEmployee(id);
@@ -387,7 +387,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     auditMiddleware('employees'),
     validateId(), 
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         const oldEmployee = await storage.getEmployee(id);
@@ -414,7 +414,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('read:employees'), 
     validateId(), 
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const educations = await storage.getEmployeeEducations(parseInt(req.params.id));
         res.json(educations);
@@ -433,7 +433,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     auditMiddleware('educations'),
     validateEducation(), 
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const education = await storage.createEducation({
           ...req.body,
@@ -455,7 +455,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     apiKeyAuth,
     requireAnyAuth,
     requirePermission('read:licenses'), validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const licenses = await storage.getEmployeeStateLicenses(parseInt(req.params.id));
         res.json(licenses);
@@ -471,7 +471,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:licenses'),
     requireRole(['admin', 'hr']), auditMiddleware('state_licenses'),
     validateLicense(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const license = await storage.createStateLicense({
           ...req.body,
@@ -490,7 +490,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     apiKeyAuth,
     requireAnyAuth,
     requirePermission('read:licenses'), validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const licenses = await storage.getEmployeeDeaLicenses(parseInt(req.params.id));
         res.json(licenses);
@@ -506,7 +506,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:licenses'),
     requireRole(['admin', 'hr']), auditMiddleware('dea_licenses'),
     validateLicense(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const license = await storage.createDeaLicense({
           ...req.body,
@@ -527,7 +527,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('read:documents'), 
     validatePagination(), 
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 10;
@@ -560,7 +560,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:documents'), 
     requireRole(['admin', 'hr']),
     upload.single('document'),
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         if (!req.file) {
           return res.status(400).json({ error: 'No file uploaded' });
@@ -642,7 +642,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     apiKeyAuth,
     requireAnyAuth,
     requirePermission('read:documents'),
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const documentId = parseInt(req.params.id);
         const document = await storage.getDocument(documentId);
@@ -698,7 +698,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('educations'),
     validateId(), validateEducation(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         const oldEducation = await storage.getEmployeeEducations(id);
@@ -717,7 +717,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('educations'),
     validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         await storage.deleteEducation(id);
@@ -736,7 +736,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:licenses'),
     requireRole(['admin', 'hr']), auditMiddleware('state_licenses'),
     validateId(), validateLicense(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         const license = await storage.updateStateLicense(id, req.body);
@@ -754,7 +754,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:licenses'),
     requireRole(['admin', 'hr']), auditMiddleware('state_licenses'),
     validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         await storage.deleteStateLicense(id);
@@ -773,7 +773,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:licenses'),
     requireRole(['admin', 'hr']), auditMiddleware('dea_licenses'),
     validateId(), validateLicense(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         const license = await storage.updateDeaLicense(id, req.body);
@@ -791,7 +791,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:licenses'),
     requireRole(['admin', 'hr']), auditMiddleware('dea_licenses'),
     validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         await storage.deleteDeaLicense(id);
@@ -808,7 +808,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     apiKeyAuth,
     requireAnyAuth,
     requirePermission('read:employees'), validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const employments = await storage.getEmployeeEmployments(parseInt(req.params.id));
         res.json(employments);
@@ -824,7 +824,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('employments'),
     validateEmployment(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const employment = await storage.createEmployment({
           ...req.body,
@@ -844,7 +844,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('employments'),
     validateId(), validateEmployment(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         const employment = await storage.updateEmployment(id, req.body);
@@ -862,7 +862,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('employments'),
     validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         await storage.deleteEmployment(id);
@@ -879,7 +879,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     apiKeyAuth,
     requireAnyAuth,
     requirePermission('read:employees'), validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const references = await storage.getEmployeePeerReferences(parseInt(req.params.id));
         res.json(references);
@@ -895,7 +895,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('peer_references'),
     validatePeerReference(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const reference = await storage.createPeerReference({
           ...req.body,
@@ -915,7 +915,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('peer_references'),
     validateId(), validatePeerReference(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         const reference = await storage.updatePeerReference(id, req.body);
@@ -933,7 +933,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('peer_references'),
     validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         await storage.deletePeerReference(id);
@@ -950,7 +950,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     apiKeyAuth,
     requireAnyAuth,
     requirePermission('read:employees'), validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const certifications = await storage.getEmployeeBoardCertifications(parseInt(req.params.id));
         res.json(certifications);
@@ -966,7 +966,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('board_certifications'),
     validateBoardCertification(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const certification = await storage.createBoardCertification({
           ...req.body,
@@ -986,7 +986,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('board_certifications'),
     validateId(), validateBoardCertification(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         const certification = await storage.updateBoardCertification(id, req.body);
@@ -1004,7 +1004,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('board_certifications'),
     validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         await storage.deleteBoardCertification(id);
@@ -1021,7 +1021,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     apiKeyAuth,
     requireAnyAuth,
     requirePermission('read:employees'), validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const contacts = await storage.getEmployeeEmergencyContacts(parseInt(req.params.id));
         res.json(contacts);
@@ -1037,7 +1037,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('emergency_contacts'),
     validateEmergencyContact(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const contact = await storage.createEmergencyContact({
           ...req.body,
@@ -1057,7 +1057,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('emergency_contacts'),
     validateId(), validateEmergencyContact(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         const contact = await storage.updateEmergencyContact(id, req.body);
@@ -1075,7 +1075,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('emergency_contacts'),
     validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         await storage.deleteEmergencyContact(id);
@@ -1092,7 +1092,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     apiKeyAuth,
     requireAnyAuth,
     requirePermission('read:employees'), validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const forms = await storage.getEmployeeTaxForms(parseInt(req.params.id));
         res.json(forms);
@@ -1108,7 +1108,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('tax_forms'),
     validateTaxForm(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const form = await storage.createTaxForm({
           ...req.body,
@@ -1128,7 +1128,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('tax_forms'),
     validateId(), validateTaxForm(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         const form = await storage.updateTaxForm(id, req.body);
@@ -1146,7 +1146,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('tax_forms'),
     validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         await storage.deleteTaxForm(id);
@@ -1163,7 +1163,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     apiKeyAuth,
     requireAnyAuth,
     requirePermission('read:employees'), validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const trainings = await storage.getEmployeeTrainings(parseInt(req.params.id));
         res.json(trainings);
@@ -1179,7 +1179,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('trainings'),
     validateTraining(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const training = await storage.createTraining({
           ...req.body,
@@ -1199,7 +1199,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('trainings'),
     validateId(), validateTraining(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         const training = await storage.updateTraining(id, req.body);
@@ -1217,7 +1217,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('trainings'),
     validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         await storage.deleteTraining(id);
@@ -1234,7 +1234,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     apiKeyAuth,
     requireAnyAuth,
     requirePermission('read:employees'), validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const enrollments = await storage.getEmployeePayerEnrollments(parseInt(req.params.id));
         res.json(enrollments);
@@ -1250,7 +1250,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('payer_enrollments'),
     validatePayerEnrollment(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const enrollment = await storage.createPayerEnrollment({
           ...req.body,
@@ -1270,7 +1270,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('payer_enrollments'),
     validateId(), validatePayerEnrollment(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         const enrollment = await storage.updatePayerEnrollment(id, req.body);
@@ -1288,7 +1288,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('payer_enrollments'),
     validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         await storage.deletePayerEnrollment(id);
@@ -1305,7 +1305,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     apiKeyAuth,
     requireAnyAuth,
     requirePermission('read:employees'), validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const logs = await storage.getEmployeeIncidentLogs(parseInt(req.params.id));
         res.json(logs);
@@ -1321,7 +1321,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('incident_logs'),
     validateIncidentLog(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const log = await storage.createIncidentLog({
           ...req.body,
@@ -1341,7 +1341,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('incident_logs'),
     validateId(), validateIncidentLog(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         const log = await storage.updateIncidentLog(id, req.body);
@@ -1359,7 +1359,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']), auditMiddleware('incident_logs'),
     validateId(), handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
         await storage.deleteIncidentLog(id);
@@ -1376,7 +1376,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     apiKeyAuth,
     requireAnyAuth,
     requirePermission('read:reports'),
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const days = parseInt(req.query.days as string) || 30;
         const expiringItems = await storage.getExpiringItems(days);
@@ -1392,13 +1392,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
     apiKeyAuth,
     requireAnyAuth,
     requirePermission('read:reports'),
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const stats = await storage.getEmployeeStats();
         res.json(stats);
       } catch (error) {
         console.error('Error fetching stats:', error);
         res.status(500).json({ error: 'Failed to fetch stats' });
+      }
+    }
+  );
+
+  // Dashboard routes - accessible via API key or session
+  app.get('/api/dashboard/stats',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('read:reports'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const stats = await storage.getDashboardStats();
+        res.json(stats);
+      } catch (error) {
+        console.error('Error fetching dashboard stats:', error);
+        res.status(500).json({ error: 'Failed to fetch dashboard stats' });
+      }
+    }
+  );
+
+  app.get('/api/dashboard/activities',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('read:audits'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const limit = parseInt(req.query.limit as string) || 10;
+        const activities = await storage.getRecentActivities(limit);
+        res.json(activities);
+      } catch (error) {
+        console.error('Error fetching activities:', error);
+        res.status(500).json({ error: 'Failed to fetch activities' });
+      }
+    }
+  );
+
+  app.get('/api/dashboard/expirations',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('read:reports'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const days = parseInt(req.query.days as string) || 30;
+        const expirations = await storage.getExpiringItems(days);
+        res.json(expirations);
+      } catch (error) {
+        console.error('Error fetching expirations:', error);
+        res.status(500).json({ error: 'Failed to fetch expirations' });
+      }
+    }
+  );
+
+  app.get('/api/documents/stats',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('read:documents'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const stats = await storage.getDocumentStats();
+        res.json(stats);
+      } catch (error) {
+        console.error('Error fetching document stats:', error);
+        res.status(500).json({ error: 'Failed to fetch document stats' });
       }
     }
   );
@@ -1411,7 +1474,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireRole(['admin', 'hr']),
     validatePagination(), 
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 25;
@@ -1443,7 +1506,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/cron/check-expirations', 
     requireAuth, 
     requireRole(['admin']),
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const expiringItems = await manualExpirationCheck();
         res.json({
@@ -1474,7 +1537,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/admin/s3-config',
     requireAuth,
     requireRole(['admin']),
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         // Get current configuration from database
         const config = await storage.getS3Configuration();
@@ -1539,7 +1602,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       body('enabled').isBoolean().withMessage('Enabled must be a boolean')
     ],
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const { accessKeyId, secretAccessKey, region, bucketName, endpoint, enabled = true } = req.body;
         
@@ -1561,14 +1624,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await s3Service.refreshConfiguration();
         
         // Log the configuration change
-        await logAudit(
-          's3_configuration',
-          updatedConfig.id,
-          'UPDATE',
-          null,
-          null,
-          { userId: req.user!.id, action: 'S3 configuration updated' }
-        );
+        await logAudit(req, updatedConfig.id, null, updatedConfig);
         
         res.json({
           message: 'S3 configuration updated successfully',
@@ -1600,7 +1656,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       body('bucketName').notEmpty().withMessage('S3 Bucket Name is required')
     ],
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const { accessKeyId, secretAccessKey, region, bucketName, endpoint } = req.body;
         
@@ -1671,7 +1727,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/admin/s3-config/migrate',
     requireAuth,
     requireRole(['admin']),
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         // Check if environment variables are set
         const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
@@ -1738,7 +1794,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/admin/ses-config',
     requireAuth,
     requireRole(['admin', 'hr']),
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const { sesService } = await import('./services/sesService');
         const status = await sesService.getConfigurationStatus();
@@ -1765,7 +1821,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       body('fromName').optional()
     ],
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const { sesService } = await import('./services/sesService');
         const config = {
@@ -1776,15 +1832,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const success = await sesService.saveConfiguration(config);
         
         if (success) {
-          await logAudit({
-            userId: req.user!.id,
-            action: 'UPDATE_SES_CONFIG',
-            entityType: 'settings',
-            entityId: 1,
-            changes: { configured: true },
-            ipAddress: req.ip || 'unknown',
-            userAgent: req.get('User-Agent') || 'unknown'
-          });
+          await logAudit(req, 1, null, { configured: true });
           
           res.json({ message: 'SES configuration saved successfully' });
         } else {
@@ -1808,7 +1856,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       body('testEmail').isEmail().withMessage('Valid test email is required')
     ],
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const { sesService } = await import('./services/sesService');
         const result = await sesService.testConfiguration(req.body.testEmail);
@@ -1842,7 +1890,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       body('email').isEmail().withMessage('Valid email is required')
     ],
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const { sesService } = await import('./services/sesService');
         const success = await sesService.verifyEmailAddress(req.body.email);
@@ -1877,7 +1925,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/invitations',
     requireAuth,
     requireRole(['admin', 'hr']),
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const invitations = await storage.getAllInvitations();
         res.json(invitations);
@@ -1902,7 +1950,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       body('cellPhone').optional().isMobilePhone('any')
     ],
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const { firstName, lastName, email, cellPhone } = req.body;
         
@@ -1965,15 +2013,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         // Log audit
-        await logAudit({
-          userId: req.user!.id,
-          action: 'CREATE_INVITATION',
-          entityType: 'invitation',
-          entityId: invitation.id,
-          changes: { email, firstName, lastName },
-          ipAddress: req.ip || 'unknown',
-          userAgent: req.get('User-Agent') || 'unknown'
-        });
+        await logAudit(req, invitation.id, null, { email, firstName, lastName });
         
         res.status(201).json({
           message: 'Invitation created and email sent successfully',
@@ -2002,7 +2042,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireRole(['admin', 'hr']),
     validateId,
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const invitationId = parseInt(req.params.id);
         const invitation = await storage.getInvitationById(invitationId);
@@ -2064,7 +2104,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireRole(['admin', 'hr']),
     validateId,
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const invitationId = parseInt(req.params.id);
         const invitation = await storage.getInvitationById(invitationId);
@@ -2081,15 +2121,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         await storage.updateInvitation(invitationId, { status: 'expired' });
         
-        await logAudit({
-          userId: req.user!.id,
-          action: 'CANCEL_INVITATION',
-          entityType: 'invitation',
-          entityId: invitationId,
-          changes: { status: 'expired' },
-          ipAddress: req.ip || 'unknown',
-          userAgent: req.get('User-Agent') || 'unknown'
-        });
+        await logAudit(req, invitationId, null, { status: 'expired' });
         
         res.json({ message: 'Invitation cancelled successfully' });
       } catch (error) {
@@ -2173,7 +2205,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       body('rateLimitPerHour').optional().isInt({ min: 10, max: 10000 }).withMessage('Rate limit must be 10-10000')
     ],
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const {
           name,
@@ -2187,7 +2219,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Validate permissions
         const validPermissions = Object.values(API_KEY_PERMISSIONS);
         const invalidPermissions = permissions.filter(
-          (p: string) => p !== '*' && !validPermissions.includes(p)
+          (p: string) => p !== '*' && !validPermissions.includes(p as any)
         );
         
         if (invalidPermissions.length > 0) {
@@ -2219,14 +2251,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         
         // Log the creation to audit log
-        await logAudit(
-          'api_keys',
-          apiKey.id,
-          'CREATE',
-          null,
-          null,
-          apiKey
-        );
+        await logAudit(req, apiKey.id, null, apiKey);
         
         // Return the key data WITH the raw key (only time it's shown!)
         res.status(201).json({
@@ -2262,7 +2287,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireAuth,
     validateId(),
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const keyId = parseInt(req.params.id);
         
@@ -2276,14 +2301,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.revokeApiKey(keyId);
         
         // Log the revocation
-        await logAudit(
-          'api_keys',
-          keyId,
-          'REVOKE',
-          key,
-          null,
-          { revokedBy: req.user!.id }
-        );
+        await logAudit(req, keyId, key, null);
         
         res.json({ message: 'API key revoked successfully' });
       } catch (error) {
@@ -2310,7 +2328,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     apiKeyLimiter,
     validateId(),
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const keyId = parseInt(req.params.id);
         const { gracePeriodHours = 24, reason = 'Manual rotation' } = req.body;
@@ -2338,7 +2356,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           expiresAt: oldKey.expiresAt,
           environment: oldKey.environment,
           rateLimitPerHour: oldKey.rateLimitPerHour,
-          metadata: oldKey.metadata
+          metadata: (oldKey.metadata || {}) as Record<string, any>
         });
         
         // Calculate grace period end
@@ -2362,14 +2380,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }, gracePeriodHours * 60 * 60 * 1000);
         
         // Log the rotation
-        await logAudit(
-          'api_key_rotations',
-          newKey.id,
-          'ROTATE',
-          oldKey,
-          newKey,
-          { gracePeriodHours, reason }
-        );
+        await logAudit(req, newKey.id, oldKey, newKey);
         
         res.json({
           id: newKey.id,
@@ -2401,7 +2412,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireAuth,
     validateId(),
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const keyId = parseInt(req.params.id);
         
@@ -2469,7 +2480,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     apiKeyAuth,
     requireAnyAuth,
     requirePermission('read:employees'),
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         // Get document storage statistics from the storage layer
         const stats = await storage.getDocumentStorageStats();
@@ -2515,7 +2526,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     apiKeyAuth,
     requireAnyAuth,
     requirePermission('admin'),
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const { batchSize = 10, dryRun = false } = req.body;
         const limitedBatchSize = Math.min(batchSize, 100);
@@ -2636,14 +2647,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Log migration audit
         if (!dryRun && results.migrated.length > 0) {
-          await logAudit(
-            req,
-            0,
-            'MIGRATE_TO_S3',
-            { documentCount: localDocuments.length },
-            results,
-            {}
-          );
+          await logAudit(req, 0, { documentCount: localDocuments.length }, results);
         }
         
         res.json({
@@ -2679,7 +2683,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePermission('read:documents'),
     validateId(),
     handleValidationErrors,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const documentId = parseInt(req.params.id);
         const expiresIn = Math.min(
@@ -2724,7 +2728,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // CSV Export routes
   app.get('/api/export/employees', 
     requireAuth,
-    async (req: AuditRequest, res) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         const result = await storage.getEmployees({ limit: 10000, offset: 0 });
         
