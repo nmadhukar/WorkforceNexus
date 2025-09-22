@@ -1,0 +1,27 @@
+Warning: validateDOMNesting(...): <div> cannot appear as a descendant of &lt;p&gt;.
+    at div
+    at Badge (https://5ff369b2-eaf4-4503-8e2b-271800e31a87-00-qar9y39ifg0y.riker.replit.dev/src/components/ui/badge.tsx:35:18)
+    at p
+    at div
+    at div
+    at div
+    at div
+    at _c9 (https://5ff369b2-eaf4-4503-8e2b-271800e31a87-00-qar9y39ifg0y.riker.replit.dev/src/components/ui/card.tsx:114:12)
+    at div
+    at _c (https://5ff369b2-eaf4-4503-8e2b-271800e31a87-00-qar9y39ifg0y.riker.replit.dev/src/components/ui/card.tsx:20:11)
+    at div
+    at div
+    at main
+    at div
+    at div
+    at MainLayout (https://5ff369b2-eaf4-4503-8e2b-271800e31a87-00-qar9y39ifg0y.riker.replit.dev/src/components/layout/main-layout.tsx:19:30)
+    at Settings (https://5ff369b2-eaf4-4503-8e2b-271800e31a87-00-qar9y39ifg0y.riker.replit.dev/src/pages/settings.tsx:36:20)
+    at Route (https://5ff369b2-eaf4-4503-8e2b-271800e31a87-00-qar9y39ifg0y.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=4414cd3b:323:16)
+    at ProtectedRoute (https://5ff369b2-eaf4-4503-8e2b-271800e31a87-00-qar9y39ifg0y.riker.replit.dev/src/lib/protected-route.tsx:22:3)
+    at Switch (https://5ff369b2-eaf4-4503-8e2b-271800e31a87-00-qar9y39ifg0y.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=4414cd3b:379:17)
+    at Router
+    at Provider (https://5ff369b2-eaf4-4503-8e2b-271800e31a87-00-qar9y39ifg0y.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=4414cd3b:38:15)
+    at TooltipProvider (https://5ff369b2-eaf4-4503-8e2b-271800e31a87-00-qar9y39ifg0y.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=4414cd3b:64:5)
+    at AuthProvider (https://5ff369b2-eaf4-4503-8e2b-271800e31a87-00-qar9y39ifg0y.riker.replit.dev/src/hooks/use-auth.tsx:26:32)
+    at QueryClientProvider (https://5ff369b2-eaf4-4503-8e2b-271800e31a87-00-qar9y39ifg0y.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=4414cd3b:2805:3)
+    at App

@@ -1318,12 +1318,11 @@ export default function Settings() {
                         onClick={async () => {
                           setDocusealSyncLoading(true);
                           try {
-                            const response = await apiRequest("/api/admin/docuseal-templates/sync", {
-                              method: "POST"
-                            });
+                            const response = await apiRequest("POST", "/api/admin/docuseal-templates/sync");
+                            const data = await response.json();
                             toast({
                               title: "Templates Synced",
-                              description: response.message
+                              description: data.message || "Templates synced successfully"
                             });
                             queryClient.invalidateQueries({ queryKey: ["/api/admin/docuseal-templates"] });
                           } catch (error) {
@@ -1452,12 +1451,11 @@ export default function Settings() {
                     onClick={async () => {
                       setDocusealTestLoading(true);
                       try {
-                        const response = await apiRequest("/api/admin/docuseal-config/test", {
-                          method: "POST"
-                        });
+                        const response = await apiRequest("POST", "/api/admin/docuseal-config/test");
+                        const data = await response.json();
                         toast({
                           title: "Connection Successful",
-                          description: response.message
+                          description: data.message || "DocuSeal API connection verified"
                         });
                         queryClient.invalidateQueries({ queryKey: ["/api/admin/docuseal-config"] });
                       } catch (error) {
@@ -1692,10 +1690,7 @@ export default function Settings() {
                       delete payload.apiKey;
                     }
 
-                    await apiRequest("/api/admin/docuseal-config", {
-                      method: "POST",
-                      body: JSON.stringify(payload)
-                    });
+                    await apiRequest("POST", "/api/admin/docuseal-config", payload);
 
                     toast({
                       title: "Configuration Saved",
@@ -1771,10 +1766,7 @@ export default function Settings() {
                               checked={template.enabled}
                               onCheckedChange={async (checked) => {
                                 try {
-                                  await apiRequest(`/api/admin/docuseal-templates/${template.id}`, {
-                                    method: "PUT",
-                                    body: JSON.stringify({ enabled: checked })
-                                  });
+                                  await apiRequest("PUT", `/api/admin/docuseal-templates/${template.id}`, { enabled: checked });
                                   queryClient.invalidateQueries({ queryKey: ["/api/admin/docuseal-templates"] });
                                   toast({
                                     title: "Template Updated",
@@ -1797,10 +1789,7 @@ export default function Settings() {
                               checked={template.requiredForOnboarding}
                               onCheckedChange={async (checked) => {
                                 try {
-                                  await apiRequest(`/api/admin/docuseal-templates/${template.id}`, {
-                                    method: "PUT",
-                                    body: JSON.stringify({ requiredForOnboarding: checked })
-                                  });
+                                  await apiRequest("PUT", `/api/admin/docuseal-templates/${template.id}`, { requiredForOnboarding: checked });
                                   queryClient.invalidateQueries({ queryKey: ["/api/admin/docuseal-templates"] });
                                   toast({
                                     title: "Template Updated",
