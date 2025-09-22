@@ -512,7 +512,7 @@ export default function EmployeeProfile() {
             </Card>
           </div>
 
-          {/* Enhanced Tabs Section */}
+          {/* Enhanced Tabs Section with Vertical Navigation */}
           <Card className="shadow-sm border-muted/50">
             <CardHeader className="bg-gradient-to-r from-muted/20 to-transparent border-b">
               <CardTitle className="text-xl flex items-center">
@@ -521,98 +521,98 @@ export default function EmployeeProfile() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <Tabs defaultValue="education" className="w-full">
-                <ScrollArea className="w-full border-b">
-                  <TabsList className="w-full justify-start h-14 bg-transparent rounded-none p-0">
+              <Tabs defaultValue="education" className="flex w-full" orientation="vertical">
+                <div className="w-64 border-r bg-muted/5">
+                  <TabsList className="flex flex-col h-full w-full bg-transparent rounded-none p-2 gap-1">
                     <TabsTrigger 
                       value="education"
-                      className="data-[state=active]:bg-primary/10 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-full px-6"
+                      className="w-full justify-start data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-l-2 data-[state=active]:border-primary rounded-md h-10 px-3 hover:bg-muted/50 transition-colors"
                     >
-                      <GraduationCap className="w-4 h-4 mr-2" />
-                      Education
+                      <GraduationCap className="w-4 h-4 mr-3 flex-shrink-0" />
+                      <span className="text-left">Education</span>
                     </TabsTrigger>
                     <TabsTrigger 
                       value="employment"
-                      className="data-[state=active]:bg-primary/10 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-full px-6"
+                      className="w-full justify-start data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-l-2 data-[state=active]:border-primary rounded-md h-10 px-3 hover:bg-muted/50 transition-colors"
                     >
-                      <Briefcase className="w-4 h-4 mr-2" />
-                      Employment
+                      <Briefcase className="w-4 h-4 mr-3 flex-shrink-0" />
+                      <span className="text-left">Employment History</span>
                     </TabsTrigger>
                     <TabsTrigger 
                       value="state-licenses"
-                      className="data-[state=active]:bg-primary/10 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-full px-6"
+                      className="w-full justify-start data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-l-2 data-[state=active]:border-primary rounded-md h-10 px-3 hover:bg-muted/50 transition-colors"
                     >
-                      <Shield className="w-4 h-4 mr-2" />
-                      State Licenses
+                      <Shield className="w-4 h-4 mr-3 flex-shrink-0" />
+                      <span className="text-left">State Licenses</span>
                     </TabsTrigger>
                     <TabsTrigger 
                       value="dea-licenses"
-                      className="data-[state=active]:bg-primary/10 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-full px-6"
+                      className="w-full justify-start data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-l-2 data-[state=active]:border-primary rounded-md h-10 px-3 hover:bg-muted/50 transition-colors"
                     >
-                      <Shield className="w-4 h-4 mr-2" />
-                      DEA Licenses
+                      <Shield className="w-4 h-4 mr-3 flex-shrink-0" />
+                      <span className="text-left">DEA Licenses</span>
                     </TabsTrigger>
                     <TabsTrigger 
                       value="certifications"
-                      className="data-[state=active]:bg-primary/10 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-full px-6"
+                      className="w-full justify-start data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-l-2 data-[state=active]:border-primary rounded-md h-10 px-3 hover:bg-muted/50 transition-colors"
                     >
-                      <Award className="w-4 h-4 mr-2" />
-                      Certifications
+                      <Award className="w-4 h-4 mr-3 flex-shrink-0" />
+                      <span className="text-left">Board Certifications</span>
                     </TabsTrigger>
                     <TabsTrigger 
                       value="trainings"
-                      className="data-[state=active]:bg-primary/10 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-full px-6"
+                      className="w-full justify-start data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-l-2 data-[state=active]:border-primary rounded-md h-10 px-3 hover:bg-muted/50 transition-colors"
                     >
-                      <GraduationCap className="w-4 h-4 mr-2" />
-                      Training
+                      <GraduationCap className="w-4 h-4 mr-3 flex-shrink-0" />
+                      <span className="text-left">Training & Courses</span>
                     </TabsTrigger>
                     <TabsTrigger 
                       value="references"
-                      className="data-[state=active]:bg-primary/10 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-full px-6"
+                      className="w-full justify-start data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-l-2 data-[state=active]:border-primary rounded-md h-10 px-3 hover:bg-muted/50 transition-colors"
                     >
-                      <UserCheck className="w-4 h-4 mr-2" />
-                      References
+                      <UserCheck className="w-4 h-4 mr-3 flex-shrink-0" />
+                      <span className="text-left">Peer References</span>
                     </TabsTrigger>
                     <TabsTrigger 
                       value="emergency"
-                      className="data-[state=active]:bg-primary/10 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-full px-6"
+                      className="w-full justify-start data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-l-2 data-[state=active]:border-primary rounded-md h-10 px-3 hover:bg-muted/50 transition-colors"
                     >
-                      <Users className="w-4 h-4 mr-2" />
-                      Emergency
+                      <Users className="w-4 h-4 mr-3 flex-shrink-0" />
+                      <span className="text-left">Emergency Contacts</span>
                     </TabsTrigger>
                     <TabsTrigger 
                       value="tax"
-                      className="data-[state=active]:bg-primary/10 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-full px-6"
+                      className="w-full justify-start data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-l-2 data-[state=active]:border-primary rounded-md h-10 px-3 hover:bg-muted/50 transition-colors"
                     >
-                      <FileText className="w-4 h-4 mr-2" />
-                      Tax Forms
+                      <FileText className="w-4 h-4 mr-3 flex-shrink-0" />
+                      <span className="text-left">Tax Forms</span>
                     </TabsTrigger>
                     <TabsTrigger 
                       value="forms"
-                      className="data-[state=active]:bg-primary/10 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-full px-6"
+                      className="w-full justify-start data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-l-2 data-[state=active]:border-primary rounded-md h-10 px-3 hover:bg-muted/50 transition-colors"
                       data-testid="tab-forms"
                     >
-                      <FileSignature className="w-4 h-4 mr-2" />
-                      Forms
+                      <FileSignature className="w-4 h-4 mr-3 flex-shrink-0" />
+                      <span className="text-left">DocuSeal Forms</span>
                     </TabsTrigger>
                     <TabsTrigger 
                       value="payer"
-                      className="data-[state=active]:bg-primary/10 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-full px-6"
+                      className="w-full justify-start data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-l-2 data-[state=active]:border-primary rounded-md h-10 px-3 hover:bg-muted/50 transition-colors"
                     >
-                      <CreditCard className="w-4 h-4 mr-2" />
-                      Payer
+                      <CreditCard className="w-4 h-4 mr-3 flex-shrink-0" />
+                      <span className="text-left">Payer Enrollments</span>
                     </TabsTrigger>
                     <TabsTrigger 
                       value="incidents"
-                      className="data-[state=active]:bg-primary/10 data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none h-full px-6"
+                      className="w-full justify-start data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-l-2 data-[state=active]:border-primary rounded-md h-10 px-3 hover:bg-muted/50 transition-colors"
                     >
-                      <AlertTriangle className="w-4 h-4 mr-2" />
-                      Incidents
+                      <AlertTriangle className="w-4 h-4 mr-3 flex-shrink-0" />
+                      <span className="text-left">Incident Reports</span>
                     </TabsTrigger>
                   </TabsList>
-                </ScrollArea>
+                </div>
                 
-                <div className="p-6">
+                <div className="flex-1 p-6 min-h-[500px]">
                   <TabsContent value="education" className="mt-0 animate-in fade-in-50 duration-300">
                     <EducationsManager employeeId={employeeId} />
                   </TabsContent>
