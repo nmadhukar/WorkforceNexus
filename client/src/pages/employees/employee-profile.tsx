@@ -521,9 +521,13 @@ export default function EmployeeProfile() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <Tabs defaultValue="education" className="flex w-full" orientation="vertical">
-                <div className="w-64 border-r bg-muted/5">
-                  <TabsList className="flex flex-col h-full w-full bg-transparent rounded-none p-2 gap-1">
+              <Tabs defaultValue="education" className="flex flex-col lg:flex-row w-full" orientation="vertical">
+                {/* Desktop: Vertical sidebar, Mobile: Collapsible navigation */}
+                <div className="lg:w-64 w-full lg:border-r border-b lg:border-b-0 bg-muted/5">
+                  <div className="lg:hidden p-3 border-b bg-muted/10">
+                    <p className="text-sm font-medium text-muted-foreground">Navigate Sections</p>
+                  </div>
+                  <TabsList className="flex flex-col h-full w-full bg-transparent rounded-none p-2 gap-1 max-h-[400px] lg:max-h-full overflow-y-auto lg:overflow-visible">
                     <TabsTrigger 
                       value="education"
                       className="w-full justify-start data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-l-2 data-[state=active]:border-primary rounded-md h-10 px-3 hover:bg-muted/50 transition-colors"
@@ -612,7 +616,7 @@ export default function EmployeeProfile() {
                   </TabsList>
                 </div>
                 
-                <div className="flex-1 p-6 min-h-[500px]">
+                <div className="flex-1 p-4 lg:p-6 min-h-[500px]">
                   <TabsContent value="education" className="mt-0 animate-in fade-in-50 duration-300">
                     <EducationsManager employeeId={employeeId} />
                   </TabsContent>
