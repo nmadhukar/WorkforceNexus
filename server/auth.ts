@@ -55,7 +55,7 @@ const scryptAsync = promisify(scrypt);
  * const hashedPassword = await hashPassword('mySecurePassword123');
  * // Returns: "a3f5b2...e8d9.1a2b3c...f9e8"
  */
-async function hashPassword(password: string) {
+export async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
   const buf = (await scryptAsync(password, salt, 64)) as Buffer;
   return `${buf.toString("hex")}.${salt}`;
@@ -79,7 +79,7 @@ async function hashPassword(password: string) {
  *   // Password is correct
  * }
  */
-async function comparePasswords(supplied: string, stored: string) {
+export async function comparePasswords(supplied: string, stored: string) {
   const [hashed, salt] = stored.split(".");
   const hashedBuf = Buffer.from(hashed, "hex");
   const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;

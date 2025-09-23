@@ -188,6 +188,113 @@ export const validateIncidentLog = (): ValidationChain[] => [
 ];
 
 /**
+ * Validate user data for creation and updates (admin operations)
+ * 
+ * @function validateUser
+ * @returns {ValidationChain[]} Array of validation rules
+ * 
+ * @description Validates user management operations including:
+ * - username: Required, 3-50 characters, alphanumeric + underscore/dot
+ * - email: Optional but if provided must be valid email format
+ * - role: Must be one of admin, hr, viewer
+ * - status: Must be one of active, suspended, locked, disabled
+ */
+export const validateUser = (): ValidationChain[] => [
+  body('username')
+    .optional()
+    .isLength({ min: 3, max: 50 })
+    .withMessage('Username must be 3-50 characters')
+    .matches(/^[a-zA-Z0-9._]+$/)
+    .withMessage('Username can only contain letters, numbers, dots and underscores'),
+  body('email')
+    .optional({ checkFalsy: true })
+    .isEmail()
+    .withMessage('Valid email is required'),
+  body('role')
+    .optional()
+    .isIn(['admin', 'hr', 'viewer'])
+    .withMessage('Role must be admin, hr, or viewer'),
+  body('status')
+    .optional()
+    .isIn(['active', 'suspended', 'locked', 'disabled'])
+    .withMessage('Status must be active, suspended, locked, or disabled')
+];
+
+/**
+ * Validate user status update
+ * 
+ * @function validateUserStatus
+ * @returns {ValidationChain[]} Array of validation rules
+ */
+export const validateUserStatus = (): ValidationChain[] => [
+  body('status')
+    .isIn(['active', 'suspended', 'locked', 'disabled'])
+    .withMessage('Status must be active, suspended, locked, or disabled')
+];
+
+/**
+ * Validate password change request
+ * 
+ * @function validatePasswordChange
+ * @returns {ValidationChain[]} Array of validation rules
+ */
+export const validatePasswordChange = (): ValidationChain[] => [
+  body('currentPassword')
+    .notEmpty()
+    .withMessage('Current password is required'),
+  body('newPassword')
+    .isLength({ min: 8 })
+    .withMessage('New password must be at least 8 characters')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
+    .withMessage('New password must contain uppercase, lowercase, number, and special character'),
+  body('confirmPassword')
+    .custom((value, { req }) => {
+      if (value !== req.body.newPassword) {
+        throw new Error('Password confirmation does not match');
+      }
+      return true;
+    })
+];
+
+/**
+ * Validate password reset request
+ * 
+ * @function validatePasswordReset
+ * @returns {ValidationChain[]} Array of validation rules
+ */
+export const validatePasswordReset = (): ValidationChain[] => [
+  body('email')
+    .isEmail()
+    .withMessage('Valid email is required')
+];
+
+/**
+ * Validate password reset confirmation
+ * 
+ * @function validatePasswordResetConfirm
+ * @returns {ValidationChain[]} Array of validation rules
+ */
+export const validatePasswordResetConfirm = (): ValidationChain[] => [
+  body('token')
+    .notEmpty()
+    .withMessage('Reset token is required')
+    .isLength({ min: 32 })
+    .withMessage('Invalid token format'),
+  body('newPassword')
+    .isLength({ min: 8 })
+    .withMessage('New password must be at least 8 characters')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
+    .withMessage('New password must contain uppercase, lowercase, number, and special character'),
+  body('confirmPassword')
+    .custom((value, { req }) => {
+      if (value !== req.body.newPassword) {
+        throw new Error('Password confirmation does not match');
+      }
+      return true;
+    })
+];
+
+/**
  * Middleware to handle validation errors
  * 
  * @function handleValidationErrors

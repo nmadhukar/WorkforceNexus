@@ -31,6 +31,11 @@ import {
   validateTraining,
   validatePayerEnrollment,
   validateIncidentLog,
+  validateUser,
+  validateUserStatus,
+  validatePasswordChange,
+  validatePasswordReset,
+  validatePasswordResetConfirm,
   handleValidationErrors 
 } from "./middleware/validation";
 import { 
@@ -55,6 +60,15 @@ import { db } from "./db";
 import { documents, users } from "@shared/schema";
 import { eq, or, sql, count } from "drizzle-orm";
 import { encrypt, decrypt, mask } from "./utils/encryption";
+import crypto from "crypto";
+
+// Import password hashing utilities from auth module
+import { hashPassword, comparePasswords } from "./auth";
+
+// Generate secure password reset token
+const generateResetToken = (): string => {
+  return crypto.randomBytes(32).toString('base64url');
+};
 
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -78,6 +92,16 @@ const apiKeyLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 5, // limit each IP to 5 requests per hour
   message: 'Too many API key requests, please try again later'
+});
+
+/**
+ * Rate limiter for password reset endpoints
+ * Strict limits: 5 attempts per 15 minutes for security
+ */
+const passwordResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // limit each IP to 5 requests per windowMs
+  message: 'Too many password reset attempts, please try again later'
 });
 
 /**
@@ -248,6 +272,454 @@ export async function registerRoutes(app: Express): Promise<Server> {
    *   "totalPages": 5
    * }
    */
+  // ============================================================================
+  // USER MANAGEMENT ENDPOINTS
+  // ============================================================================
+  
+  /**
+   * GET /api/admin/users
+   * List all users with filtering and pagination (admin only)
+   */
+  app.get('/api/admin/users', 
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('read:users'), 
+    requireRole(['admin']),
+    validatePagination(), 
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 10;
+        const offset = (page - 1) * limit;
+        
+        const result = await storage.getAllUsers({
+          limit,
+          offset,
+          search: req.query.search as string,
+          role: req.query.role as string,
+          status: req.query.status as string
+        });
+        
+        // Remove sensitive fields from response
+        const safeUsers = result.users.map(user => ({
+          id: user.id,
+          username: user.username,
+          role: user.role,
+          status: user.status,
+          email: user.email,
+          createdAt: user.createdAt,
+          lastLoginAt: user.lastLoginAt,
+          failedLoginAttempts: user.failedLoginAttempts,
+          lockedUntil: user.lockedUntil
+        }));
+        
+        res.json({
+          users: safeUsers,
+          total: result.total,
+          page,
+          totalPages: Math.ceil(result.total / limit)
+        });
+      } catch (error) {
+        console.error('Error fetching users:', error);
+        res.status(500).json({ error: 'Failed to fetch users' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/admin/users/:id
+   * Get specific user details (admin only)
+   */
+  app.get('/api/admin/users/:id', 
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('read:users'), 
+    requireRole(['admin']),
+    validateId(), 
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const user = await storage.getUser(parseInt(req.params.id));
+        if (!user) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+        
+        // Remove sensitive fields
+        const safeUser = {
+          id: user.id,
+          username: user.username,
+          role: user.role,
+          status: user.status,
+          email: user.email,
+          createdAt: user.createdAt,
+          lastLoginAt: user.lastLoginAt,
+          failedLoginAttempts: user.failedLoginAttempts,
+          lockedUntil: user.lockedUntil
+        };
+        
+        res.json(safeUser);
+      } catch (error) {
+        console.error('Error fetching user:', error);
+        res.status(500).json({ error: 'Failed to fetch user' });
+      }
+    }
+  );
+
+  /**
+   * PUT /api/admin/users/:id
+   * Update user details (username, email, role) (admin only)
+   */
+  app.put('/api/admin/users/:id', 
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:users'), 
+    requireRole(['admin']),
+    auditMiddleware('users'),
+    validateId(),
+    validateUser(), 
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const id = parseInt(req.params.id);
+        const currentUser = req.user;
+        
+        // Prevent admin from changing their own role or status
+        if (currentUser && currentUser.id === id) {
+          if (req.body.role !== undefined || req.body.status !== undefined) {
+            return res.status(403).json({ error: 'Cannot change your own role or status' });
+          }
+        }
+        
+        const oldUser = await storage.getUser(id);
+        if (!oldUser) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+        
+        // Filter out undefined values and passwordHash
+        const updates = Object.fromEntries(
+          Object.entries(req.body).filter(([_, value]) => value !== undefined)
+        );
+        delete updates.passwordHash;
+        
+        const user = await storage.updateUser(id, updates);
+        await logAudit(req, id, oldUser, user);
+        
+        // Remove sensitive fields
+        const safeUser = {
+          id: user.id,
+          username: user.username,
+          role: user.role,
+          status: user.status,
+          email: user.email,
+          createdAt: user.createdAt,
+          lastLoginAt: user.lastLoginAt,
+          failedLoginAttempts: user.failedLoginAttempts,
+          lockedUntil: user.lockedUntil
+        };
+        
+        res.json(safeUser);
+      } catch (error) {
+        console.error('Error updating user:', error);
+        res.status(500).json({ error: 'Failed to update user' });
+      }
+    }
+  );
+
+  /**
+   * DELETE /api/admin/users/:id
+   * Delete user (admin only, prevent deletion of user ID 1)
+   */
+  app.delete('/api/admin/users/:id', 
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('delete:users'), 
+    requireRole(['admin']),
+    auditMiddleware('users'),
+    validateId(), 
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const id = parseInt(req.params.id);
+        const currentUser = req.user;
+        
+        // Prevent deletion of user ID 1 (system admin)
+        if (id === 1) {
+          return res.status(403).json({ error: 'Cannot delete system admin user' });
+        }
+        
+        // Prevent admin from deleting themselves
+        if (currentUser && currentUser.id === id) {
+          return res.status(403).json({ error: 'Cannot delete your own account' });
+        }
+        
+        const oldUser = await storage.getUser(id);
+        if (!oldUser) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+        
+        await storage.deleteUser(id);
+        await logAudit(req, id, oldUser, null);
+        
+        res.json({ message: 'User deleted successfully' });
+      } catch (error) {
+        console.error('Error deleting user:', error);
+        res.status(500).json({ error: 'Failed to delete user' });
+      }
+    }
+  );
+
+  /**
+   * PUT /api/admin/users/:id/status
+   * Update user status (active, suspended, locked, disabled) (admin only)
+   */
+  app.put('/api/admin/users/:id/status', 
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:users'), 
+    requireRole(['admin']),
+    auditMiddleware('users'),
+    validateId(),
+    validateUserStatus(), 
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const id = parseInt(req.params.id);
+        const { status } = req.body;
+        const currentUser = req.user;
+        
+        // Prevent admin from changing their own status
+        if (currentUser && currentUser.id === id) {
+          return res.status(403).json({ error: 'Cannot change your own status' });
+        }
+        
+        const oldUser = await storage.getUser(id);
+        if (!oldUser) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+        
+        const user = await storage.updateUserStatus(id, status);
+        await logAudit(req, id, oldUser, user);
+        
+        // Remove sensitive fields
+        const safeUser = {
+          id: user.id,
+          username: user.username,
+          role: user.role,
+          status: user.status,
+          email: user.email,
+          createdAt: user.createdAt,
+          lastLoginAt: user.lastLoginAt,
+          failedLoginAttempts: user.failedLoginAttempts,
+          lockedUntil: user.lockedUntil
+        };
+        
+        res.json(safeUser);
+      } catch (error) {
+        console.error('Error updating user status:', error);
+        res.status(500).json({ error: 'Failed to update user status' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/admin/users/:id/unlock
+   * Unlock user account (reset failed attempts, clear lock) (admin only)
+   */
+  app.post('/api/admin/users/:id/unlock', 
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:users'), 
+    requireRole(['admin']),
+    auditMiddleware('users'),
+    validateId(), 
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const id = parseInt(req.params.id);
+        
+        const oldUser = await storage.getUser(id);
+        if (!oldUser) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+        
+        const user = await storage.resetFailedLoginAttempts(id);
+        await logAudit(req, id, oldUser, user);
+        
+        // Remove sensitive fields
+        const safeUser = {
+          id: user.id,
+          username: user.username,
+          role: user.role,
+          status: user.status,
+          email: user.email,
+          createdAt: user.createdAt,
+          lastLoginAt: user.lastLoginAt,
+          failedLoginAttempts: user.failedLoginAttempts,
+          lockedUntil: user.lockedUntil
+        };
+        
+        res.json({ message: 'User account unlocked successfully', user: safeUser });
+      } catch (error) {
+        console.error('Error unlocking user account:', error);
+        res.status(500).json({ error: 'Failed to unlock user account' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/admin/users/:id/reset-password
+   * Generate password reset token for user (admin only)
+   */
+  app.post('/api/admin/users/:id/reset-password', 
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:users'), 
+    requireRole(['admin']),
+    auditMiddleware('users'),
+    validateId(), 
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const id = parseInt(req.params.id);
+        
+        const user = await storage.getUser(id);
+        if (!user) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+        
+        const resetToken = generateResetToken();
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+        
+        const updatedUser = await storage.updatePasswordResetToken(id, resetToken, expiresAt);
+        await logAudit(req, id, user, { passwordResetGenerated: true });
+        
+        res.json({ 
+          message: 'Password reset token generated successfully',
+          token: resetToken, // In production, this would be sent via email
+          expiresAt 
+        });
+      } catch (error) {
+        console.error('Error generating password reset token:', error);
+        res.status(500).json({ error: 'Failed to generate password reset token' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/auth/reset-password
+   * Initiate password reset (public, with rate limiting)
+   */
+  app.post('/api/auth/reset-password', 
+    passwordResetLimiter,
+    validatePasswordReset(), 
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { email } = req.body;
+        
+        const user = await storage.getUserByEmail(email);
+        // Always return success to prevent email enumeration
+        if (!user) {
+          return res.json({ message: 'If the email exists, a password reset link has been sent' });
+        }
+        
+        const resetToken = generateResetToken();
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+        
+        await storage.updatePasswordResetToken(user.id, resetToken, expiresAt);
+        await logAudit(req, user.id, null, { passwordResetRequested: true });
+        
+        // In production, send email with reset link
+        // await sendPasswordResetEmail(email, resetToken);
+        
+        res.json({ 
+          message: 'If the email exists, a password reset link has been sent',
+          // For development/testing, include token (remove in production)
+          ...(process.env.NODE_ENV !== 'production' && { token: resetToken })
+        });
+      } catch (error) {
+        console.error('Error initiating password reset:', error);
+        res.status(500).json({ error: 'Failed to initiate password reset' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/auth/confirm-reset-password
+   * Complete password reset with token (public)
+   */
+  app.post('/api/auth/confirm-reset-password', 
+    passwordResetLimiter,
+    validatePasswordResetConfirm(), 
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { token, newPassword } = req.body;
+        
+        const user = await storage.getUserByPasswordResetToken(token);
+        if (!user) {
+          return res.status(400).json({ error: 'Invalid or expired reset token' });
+        }
+        
+        const hashedPassword = await hashPassword(newPassword);
+        const oldUser = { ...user };
+        
+        // Update password and clear reset token
+        await storage.updateUser(user.id, { passwordHash: hashedPassword });
+        await storage.clearPasswordResetToken(user.id);
+        await logAudit(req, user.id, oldUser, { passwordReset: true });
+        
+        res.json({ message: 'Password reset successfully' });
+      } catch (error) {
+        console.error('Error confirming password reset:', error);
+        res.status(500).json({ error: 'Failed to reset password' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/auth/change-password
+   * Change own password (authenticated users)
+   */
+  app.post('/api/auth/change-password', 
+    requireAuth,
+    validatePasswordChange(), 
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { currentPassword, newPassword } = req.body;
+        const userId = req.user!.id;
+        
+        const user = await storage.getUser(userId);
+        if (!user) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+        
+        // Verify current password
+        const isCurrentPasswordValid = await comparePasswords(currentPassword, user.passwordHash);
+        if (!isCurrentPasswordValid) {
+          return res.status(400).json({ error: 'Current password is incorrect' });
+        }
+        
+        const hashedPassword = await hashPassword(newPassword);
+        const oldUser = { ...user };
+        
+        await storage.updateUser(userId, { passwordHash: hashedPassword });
+        await logAudit(req, userId, oldUser, { passwordChanged: true });
+        
+        res.json({ message: 'Password changed successfully' });
+      } catch (error) {
+        console.error('Error changing password:', error);
+        res.status(500).json({ error: 'Failed to change password' });
+      }
+    }
+  );
+
+  // ============================================================================
+  // EMPLOYEE MANAGEMENT ENDPOINTS
+  // ============================================================================
+
   // Employee routes - accessible via API key or session
   app.get('/api/employees', 
     apiKeyAuth,

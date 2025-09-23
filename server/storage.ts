@@ -217,6 +217,32 @@ export interface IStorage {
   updateLastLoginAt(id: number): Promise<User>;
   
   /**
+   * Get paginated list of all users with filtering
+   * @param {object} [options] - Query options for filtering and pagination
+   * @param {number} [options.limit=10] - Maximum number of users to return
+   * @param {number} [options.offset=0] - Number of users to skip
+   * @param {string} [options.search] - Search term for username or email
+   * @param {string} [options.role] - Filter by role
+   * @param {string} [options.status] - Filter by status
+   * @returns {Promise<{users: User[]; total: number}>} Paginated user list with total count
+   */
+  getAllUsers(options?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    role?: string;
+    status?: string;
+  }): Promise<{ users: User[]; total: number }>;
+  
+  /**
+   * Delete user account (admin only, with business rules)
+   * @param {number} id - User ID to delete
+   * @returns {Promise<void>} Resolves when deletion is complete
+   * @throws {Error} User not found or deletion not allowed
+   */
+  deleteUser(id: number): Promise<void>;
+  
+  /**
    * Employee Management Operations
    */
   
@@ -998,6 +1024,79 @@ export class DatabaseStorage implements IStorage {
       throw new Error(`User with id ${id} not found`);
     }
     return user;
+  }
+
+  async getAllUsers(options?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    role?: string;
+    status?: string;
+  }): Promise<{ users: User[]; total: number }> {
+    const { limit = 10, offset = 0, search, role, status } = options || {};
+    
+    let conditions = [];
+    
+    if (search) {
+      conditions.push(
+        or(
+          like(users.username, `%${search}%`),
+          like(users.email, `%${search}%`)
+        )
+      );
+    }
+    
+    if (role) {
+      conditions.push(eq(users.role, role));
+    }
+    
+    if (status) {
+      conditions.push(eq(users.status, status));
+    }
+    
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    
+    // Get total count
+    const [totalResult] = await db
+      .select({ count: count() })
+      .from(users)
+      .where(whereClause);
+    
+    // Get paginated results  
+    const usersResult = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        role: users.role,
+        status: users.status,
+        email: users.email,
+        createdAt: users.createdAt,
+        lastLoginAt: users.lastLoginAt,
+        failedLoginAttempts: users.failedLoginAttempts,
+        lockedUntil: users.lockedUntil
+      })
+      .from(users)
+      .where(whereClause)
+      .orderBy(desc(users.createdAt))
+      .limit(limit)
+      .offset(offset);
+    
+    return {
+      users: usersResult as User[],
+      total: totalResult.count
+    };
+  }
+
+  async deleteUser(id: number): Promise<void> {
+    // Prevent deletion of user ID 1 (system admin)
+    if (id === 1) {
+      throw new Error('Cannot delete system admin user');
+    }
+    
+    const result = await db.delete(users).where(eq(users.id, id));
+    if (result.rowCount === 0) {
+      throw new Error(`User with id ${id} not found`);
+    }
   }
 
   // Employee operations
