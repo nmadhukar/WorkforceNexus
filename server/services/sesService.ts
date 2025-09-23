@@ -7,6 +7,7 @@
  */
 
 import { SESClient, SendEmailCommand, VerifyEmailIdentityCommand } from "@aws-sdk/client-ses";
+import { NodeHttpHandler } from "@aws-sdk/node-http-handler";
 import { db } from "../db";
 import { sesConfigurations, emailReminders } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
@@ -99,13 +100,23 @@ export class SESService {
         return false;
       }
 
-      // Initialize SES client
+      // For development environment, check if these look like dummy/test credentials
+      if (accessKeyId.includes('dummy') || accessKeyId.includes('test') || secretAccessKey.includes('dummy') || secretAccessKey.includes('test')) {
+        console.log("SES Service: Detected test/dummy credentials, skipping AWS SES initialization for development");
+        return false;
+      }
+
+      // Initialize SES client with timeout configuration
       this.client = new SESClient({
         region: this.config.region || process.env.AWS_SES_REGION || "us-east-1",
         credentials: {
           accessKeyId,
           secretAccessKey
-        }
+        },
+        requestHandler: new NodeHttpHandler({
+          requestTimeout: 10000, // 10 second timeout
+          connectionTimeout: 5000 // 5 second connection timeout
+        })
       });
 
       this.initialized = true;
@@ -403,12 +414,14 @@ HR Management System
       if (!this.initialized) {
         const initialized = await this.initialize();
         if (!initialized) {
-          return { success: false, error: "SES service not configured" };
+          console.log("SES Service: Not configured, skipping email send in development environment");
+          return { success: false, error: "SES service not configured - email would be sent in production" };
         }
       }
 
       if (!this.client || !this.config) {
-        return { success: false, error: "SES client not initialized" };
+        console.log("SES Service: Client not initialized, skipping email send");
+        return { success: false, error: "SES client not initialized - email would be sent in production" };
       }
 
       const params = {
@@ -440,7 +453,14 @@ HR Management System
       };
 
       const command = new SendEmailCommand(params);
-      const response = await this.client.send(command);
+      
+      // Add promise timeout wrapper to prevent hanging
+      const sendEmailPromise = this.client.send(command);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Email send timeout after 15 seconds')), 15000)
+      );
+      
+      const response = await Promise.race([sendEmailPromise, timeoutPromise]);
       
       console.log(`SES Service: Email sent successfully to ${options.to}`);
       return { success: true, messageId: response.MessageId };
