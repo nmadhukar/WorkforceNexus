@@ -325,8 +325,17 @@ export default function Settings() {
       const response = await apiRequest("POST", "/api/admin/s3-config/test", configData);
       const data = await response.json();
       
+      console.log('S3 Test Response:', {
+        status: response.status,
+        ok: response.ok,
+        data,
+        canCreate: data.details?.canCreate,
+        errorCode: data.details?.errorCode
+      });
+      
       // Check if this is a 404 (bucket doesn't exist)
-      if (response.status === 404 && data.details?.canCreate) {
+      if (response.status === 404 && data.details?.canCreate === true) {
+        console.log('Bucket does not exist, showing create dialog...');
         // Show confirmation dialog to create bucket
         if (confirm(`The bucket "${configData.bucketName}" does not exist.\n\nWould you like to create it?`)) {
           // Create the bucket
@@ -1049,10 +1058,26 @@ export default function Settings() {
                                   id="s3-bucket"
                                   type="text"
                                   value={s3FormData.bucketName}
-                                  onChange={(e) => setS3FormData(prev => ({ ...prev, bucketName: e.target.value }))}
-                                  placeholder="my-bucket-name"
+                                  onChange={(e) => setS3FormData(prev => ({ ...prev, bucketName: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') }))}
+                                  placeholder="my-company-hr-docs-2025"
                                   data-testid="input-s3-bucket"
                                 />
+                                <div className="mt-2 space-y-1">
+                                  <p className="text-xs text-muted-foreground">
+                                    ⚠️ Bucket names must be globally unique across ALL AWS accounts
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const randomSuffix = Math.random().toString(36).substring(2, 8);
+                                      const suggestedName = `hr-docs-${randomSuffix}`;
+                                      setS3FormData(prev => ({ ...prev, bucketName: suggestedName }));
+                                    }}
+                                    className="text-xs text-primary hover:underline"
+                                  >
+                                    Generate unique name: hr-docs-{Math.random().toString(36).substring(2, 8)}
+                                  </button>
+                                </div>
                               </div>
                               
                               <div>
