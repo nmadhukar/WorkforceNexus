@@ -1152,12 +1152,32 @@ export class DatabaseStorage implements IStorage {
    * @returns {Promise<ApiKey>} Created API key record
    */
   async createApiKey(apiKey: InsertApiKey): Promise<ApiKey> {
-    // Ensure permissions is passed as array for text[] field
-    const [created] = await db.insert(apiKeys).values({
-      ...apiKey,
-      permissions: apiKey.permissions || []
-    }).returning();
-    return created;
+    try {
+      // Ensure permissions is properly formatted for JSONB field
+      // PostgreSQL JSONB fields require proper JSON formatting
+      const permissionsArray = Array.isArray(apiKey.permissions) ? apiKey.permissions : [];
+      
+      // For JSONB fields, we need to ensure the array is properly serialized
+      // Use raw SQL to explicitly cast to JSONB to avoid serialization issues
+      const [created] = await db.execute(sql`
+        INSERT INTO api_keys (
+          name, key_hash, key_prefix, user_id, permissions, 
+          expires_at, environment, rate_limit_per_hour, metadata
+        )
+        VALUES (
+          ${apiKey.name}, ${apiKey.keyHash}, ${apiKey.keyPrefix}, ${apiKey.userId},
+          ${JSON.stringify(permissionsArray)}::jsonb,
+          ${apiKey.expiresAt}, ${apiKey.environment}, ${apiKey.rateLimitPerHour},
+          ${JSON.stringify(apiKey.metadata || {})}::jsonb
+        )
+        RETURNING *
+      `);
+      
+      return created[0] as ApiKey;
+    } catch (error) {
+      console.error('Error creating API key:', error);
+      throw error;
+    }
   }
   
   /**
