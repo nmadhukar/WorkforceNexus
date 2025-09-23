@@ -109,7 +109,7 @@ export default function EmployeesList() {
     onSuccess: () => {
       toast({
         title: "Success",
-        description: "Invitation sent successfully"
+        description: "Invitation created and email sent successfully"
       });
       queryClient.invalidateQueries({ queryKey: ["/api/invitations"] });
       setInvitationDialogOpen(false);
@@ -122,11 +122,58 @@ export default function EmployeesList() {
       });
     },
     onError: (error) => {
+      // Parse error message to check if it's an email failure (400 error)
+      let errorMessage = error.message;
+      let isEmailFailure = false;
+      
+      try {
+        // Extract status code and response body from error message
+        const statusMatch = error.message.match(/^(\d+):\s*(.+)$/);
+        if (statusMatch) {
+          const statusCode = parseInt(statusMatch[1]);
+          const responseBody = statusMatch[2];
+          
+          if (statusCode === 400) {
+            try {
+              const errorData = JSON.parse(responseBody);
+              if (errorData.error === "Failed to send invitation email" && errorData.invitation) {
+                // This is an email failure - invitation was created but email failed
+                isEmailFailure = true;
+                errorMessage = errorData.invitation.note || 
+                  "Invitation created but email failed to send. You can resend from the employee list.";
+              } else {
+                // Other 400 error (validation, duplicate email, etc.)
+                errorMessage = errorData.error || responseBody;
+              }
+            } catch {
+              // Failed to parse JSON, use the response body as-is
+              errorMessage = responseBody;
+            }
+          }
+        }
+      } catch {
+        // If parsing fails, use original error message
+        errorMessage = error.message;
+      }
+
       toast({
-        title: "Error",
-        description: error.message,
+        title: isEmailFailure ? "Email Delivery Failed" : "Error",
+        description: errorMessage,
         variant: "destructive"
       });
+
+      // If invitation was created despite email failure, refresh the invitations list
+      if (isEmailFailure) {
+        queryClient.invalidateQueries({ queryKey: ["/api/invitations"] });
+        setInvitationDialogOpen(false);
+        setNewInvitation({
+          email: "",
+          firstName: "",
+          lastName: "",
+          position: "",
+          department: ""
+        });
+      }
     }
   });
 
@@ -137,17 +184,52 @@ export default function EmployeesList() {
     onSuccess: () => {
       toast({
         title: "Success",
-        description: "Invitation resent successfully"
+        description: "Invitation resent and email delivered successfully"
       });
       queryClient.invalidateQueries({ queryKey: ["/api/invitations"] });
       setResendInvitationId(null);
     },
     onError: (error) => {
+      // Parse error message to check if it's an email failure (400 error)
+      let errorMessage = error.message;
+      let isEmailFailure = false;
+      
+      try {
+        // Extract status code and response body from error message
+        const statusMatch = error.message.match(/^(\d+):\s*(.+)$/);
+        if (statusMatch) {
+          const statusCode = parseInt(statusMatch[1]);
+          const responseBody = statusMatch[2];
+          
+          if (statusCode === 400) {
+            try {
+              const errorData = JSON.parse(responseBody);
+              if (errorData.error === "Failed to send invitation email" && errorData.invitation) {
+                // This is an email failure - invitation exists but email failed
+                isEmailFailure = true;
+                errorMessage = "Failed to send invitation email. Please check your email configuration or try again later.";
+              } else {
+                // Other 400 error (validation, expired invitation, etc.)
+                errorMessage = errorData.error || responseBody;
+              }
+            } catch {
+              // Failed to parse JSON, use the response body as-is
+              errorMessage = responseBody;
+            }
+          }
+        }
+      } catch {
+        // If parsing fails, use original error message
+        errorMessage = error.message;
+      }
+
       toast({
-        title: "Error",
-        description: error.message,
+        title: isEmailFailure ? "Email Delivery Failed" : "Error",
+        description: errorMessage,
         variant: "destructive"
       });
+      
+      setResendInvitationId(null);
     }
   });
 

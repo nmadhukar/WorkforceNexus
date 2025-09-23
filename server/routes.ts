@@ -2736,11 +2736,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
             status: 'pending',
             metadata: { emailError: emailResult.error }
           });
+          
+          // Log audit for failed email
+          await logAudit(req, invitation.id, null, { email, firstName, lastName, emailError: emailResult.error });
+          
+          // Return error response to match test email behavior
+          return res.status(400).json({
+            error: 'Failed to send invitation email',
+            details: emailResult.error,
+            invitation: {
+              id: invitation.id,
+              email: invitation.email,
+              firstName: invitation.firstName,
+              lastName: invitation.lastName,
+              status: 'pending',
+              expiresAt: invitation.expiresAt,
+              note: 'Invitation was created but email delivery failed. You can try resending the invitation.'
+            }
+          });
         } else {
           console.log('Invitation email sent successfully to:', email);
         }
         
-        // Log audit
+        // Log audit for successful email
         await logAudit(req, invitation.id, null, { email, firstName, lastName });
         
         res.status(201).json({
