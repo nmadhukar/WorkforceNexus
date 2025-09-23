@@ -16,6 +16,7 @@ import Reports from "@/pages/reports";
 import Audits from "@/pages/audits";
 import Settings from "@/pages/settings";
 import ApiKeysPage from "@/pages/settings/api-keys";
+import UsersManagement from "@/pages/settings/users";
 
 function Router() {
   return (
@@ -30,6 +31,7 @@ function Router() {
       <ProtectedRoute path="/audits" component={Audits} />
       <ProtectedRoute path="/settings" component={Settings} />
       <ProtectedRoute path="/settings/api-keys" component={ApiKeysPage} />
+      <ProtectedRoute path="/settings/users" component={UsersManagement} />
       <Route path="/auth" component={AuthPage} />
       <Route component={NotFound} />
     </Switch>

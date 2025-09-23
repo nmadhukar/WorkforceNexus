@@ -15,15 +15,6 @@ import { useToast } from "@/hooks/use-toast";
 import { Settings as SettingsIcon, Users, Bell, Shield, Edit, Trash2, Plus, Save, Key, Cloud, Database, CheckCircle, XCircle, ArrowUpCircle, Mail, Send, MailCheck, FileSignature, RefreshCw, Link2 } from "lucide-react";
 import { Link } from "wouter";
 
-/**
- * User account information
- */
-interface User {
-  id: number;
-  username: string;
-  role: string;
-  createdAt: string;
-}
 
 /**
  * System-wide configuration settings
@@ -154,8 +145,6 @@ export default function Settings() {
   const { user } = useAuth();
   const { toast } = useToast();
   const isAdmin = user?.role === 'admin';
-  const [deleteUserId, setDeleteUserId] = useState<number | null>(null);
-  const [newUserDialogOpen, setNewUserDialogOpen] = useState(false);
   const [migrateDialogOpen, setMigrateDialogOpen] = useState(false);
   const [migrationBatchSize, setMigrationBatchSize] = useState(10);
   const [migrationDryRun, setMigrationDryRun] = useState(true);
@@ -189,11 +178,6 @@ export default function Settings() {
     fromEmail: "",
     fromName: "HR Management System",
     enabled: true
-  });
-  const [newUser, setNewUser] = useState({
-    username: "",
-    password: "",
-    role: "hr"
   });
   const [settings, setSettings] = useState<SystemSettings>({
     emailAlertsEnabled: true,
@@ -233,21 +217,6 @@ export default function Settings() {
     enabled: (isAdmin || user?.role === 'hr') && !!docusealConfig
   });
 
-  // Mock users query - in a real app this would fetch from /api/users
-  const { data: users = [] } = useQuery<User[]>({
-    queryKey: ["/api/users"],
-    queryFn: async () => {
-      // For demo purposes, return mock data since user management isn't fully implemented
-      return [
-        {
-          id: 1,
-          username: user?.username || "admin",
-          role: user?.role || "admin",
-          createdAt: new Date().toISOString()
-        }
-      ];
-    }
-  });
 
   // S3 Migration Mutation
   const migrateMutation = useMutation<MigrationResponse, Error, { batchSize: number; dryRun: boolean }>({
@@ -272,43 +241,7 @@ export default function Settings() {
     }
   });
 
-  const createUserMutation = useMutation({
-    mutationFn: (userData: typeof newUser) => apiRequest("POST", "/api/register", userData),
-    onSuccess: () => {
-      toast({
-        title: "Success",
-        description: "User created successfully"
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
-      setNewUserDialogOpen(false);
-      setNewUser({ username: "", password: "", role: "hr" });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive"
-      });
-    }
-  });
 
-  const deleteUserMutation = useMutation({
-    mutationFn: (userId: number) => apiRequest("DELETE", `/api/users/${userId}`),
-    onSuccess: () => {
-      toast({
-        title: "Success",
-        description: "User deleted successfully"
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive"
-      });
-    }
-  });
 
   const saveSettingsMutation = useMutation({
     mutationFn: (settingsData: SystemSettings) => apiRequest("PUT", "/api/settings", settingsData),
@@ -518,14 +451,6 @@ export default function Settings() {
     }
   });
 
-  const handleCreateUser = () => {
-    createUserMutation.mutate(newUser);
-  };
-
-  const handleDeleteUser = (userId: number) => {
-    deleteUserMutation.mutate(userId);
-    setDeleteUserId(null);
-  };
 
   const handleSaveSettings = () => {
     saveSettingsMutation.mutate(settings);
@@ -592,23 +517,6 @@ export default function Settings() {
     }
   };
 
-  /**
-   * Returns styled role badge based on user role
-   * @param {string} role - User role (admin, hr, viewer)
-   * @returns {JSX.Element} Styled badge component with role-specific colors
-   */
-  const getRoleBadge = (role: string) => {
-    switch (role) {
-      case 'admin':
-        return <Badge className="bg-destructive/10 text-destructive">Admin</Badge>;
-      case 'hr':
-        return <Badge className="bg-primary/10 text-primary">HR</Badge>;
-      case 'viewer':
-        return <Badge className="bg-muted/10 text-muted-foreground">Viewer</Badge>;
-      default:
-        return <Badge variant="secondary">{role}</Badge>;
-    }
-  };
 
   return (
     <MainLayout>
@@ -622,110 +530,30 @@ export default function Settings() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* User Management */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="flex items-center">
-                <Users className="w-5 h-5 mr-2" />
-                User Management
-              </CardTitle>
-              {isAdmin && (
-                <Dialog open={newUserDialogOpen} onOpenChange={setNewUserDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" data-testid="button-add-user">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add User
+          {/* User Management Navigation */}
+          {isAdmin && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Users className="w-5 h-5 mr-2" />
+                  User Management
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <p className="text-muted-foreground">
+                    Manage user accounts, roles, and permissions for the HR management system.
+                  </p>
+                  <Link href="/settings/users">
+                    <Button className="w-full" data-testid="link-manage-users">
+                      <Users className="w-4 h-4 mr-2" />
+                      Manage Users
                     </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Add New User</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div>
-                        <Label htmlFor="username">Username</Label>
-                        <Input
-                          id="username"
-                          value={newUser.username}
-                          onChange={(e) => setNewUser(prev => ({ ...prev, username: e.target.value }))}
-                          placeholder="Enter username"
-                          data-testid="input-new-username"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="password">Password</Label>
-                        <Input
-                          id="password"
-                          type="password"
-                          value={newUser.password}
-                          onChange={(e) => setNewUser(prev => ({ ...prev, password: e.target.value }))}
-                          placeholder="Enter password"
-                          data-testid="input-new-password"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="role">Role</Label>
-                        <select
-                          id="role"
-                          value={newUser.role}
-                          onChange={(e) => setNewUser(prev => ({ ...prev, role: e.target.value }))}
-                          className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                          data-testid="select-new-role"
-                        >
-                          <option value="hr">HR Staff</option>
-                          <option value="admin">Administrator</option>
-                          <option value="viewer">Viewer</option>
-                        </select>
-                      </div>
-                      <Button 
-                        onClick={handleCreateUser}
-                        disabled={createUserMutation.isPending || !newUser.username || !newUser.password}
-                        className="w-full"
-                        data-testid="button-create-user"
-                      >
-                        {createUserMutation.isPending ? "Creating..." : "Create User"}
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              )}
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {users.map((user) => (
-                  <div key={user.id} className="flex items-center justify-between p-4 border border-border rounded-lg" data-testid={`user-item-${user.id}`}>
-                    <div>
-                      <p className="font-medium text-foreground">{user.username}</p>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        {getRoleBadge(user.role)}
-                        <span>• Created {new Date(user.createdAt).toLocaleDateString()}</span>
-                      </div>
-                    </div>
-                    {isAdmin && user.id !== 1 && ( // Don't allow deleting the main admin
-                      <div className="flex items-center space-x-2">
-                        <Button variant="ghost" size="sm" data-testid={`button-edit-user-${user.id}`}>
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDeleteUserId(user.id)}
-                          className="text-destructive hover:text-destructive/80"
-                          data-testid={`button-delete-user-${user.id}`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                {users.length === 0 && (
-                  <p className="text-center text-muted-foreground py-4">No users found</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* System Configuration */}
           <Card>
@@ -1474,7 +1302,7 @@ export default function Settings() {
                 <p className="text-sm text-muted-foreground">Current User</p>
                 <p className="font-medium">{user?.username}</p>
                 <div className="mt-1">
-                  {getRoleBadge(user?.role || "viewer")}
+                  <Badge variant="secondary">{user?.role || "viewer"}</Badge>
                 </div>
               </div>
               
@@ -2036,27 +1864,6 @@ export default function Settings() {
           </DialogContent>
         </Dialog>
 
-        {/* Delete User Confirmation */}
-        <AlertDialog open={deleteUserId !== null} onOpenChange={() => setDeleteUserId(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete User</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to delete this user? This action cannot be undone and will revoke all access immediately.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel data-testid="button-cancel-delete-user">Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => deleteUserId && handleDeleteUser(deleteUserId)}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                data-testid="button-confirm-delete-user"
-              >
-                Delete User
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </div>
     </MainLayout>
   );

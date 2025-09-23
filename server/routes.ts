@@ -277,6 +277,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================================================
   
   /**
+   * POST /api/admin/users
+   * Create a new user (admin only)
+   */
+  app.post('/api/admin/users', 
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:users'), 
+    requireRole(['admin']),
+    auditMiddleware('users'),
+    validateUser(), 
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { username, email, role, password } = req.body;
+        
+        // Check if username already exists
+        const existingUser = await storage.getUserByUsername(username);
+        if (existingUser) {
+          return res.status(400).json({ error: 'Username already exists' });
+        }
+        
+        // Check if email already exists (if provided)
+        if (email) {
+          const existingEmailUser = await storage.getUserByEmail(email);
+          if (existingEmailUser) {
+            return res.status(400).json({ error: 'Email already exists' });
+          }
+        }
+        
+        // Hash password
+        const passwordHash = await hashPassword(password);
+        
+        // Create user
+        const user = await storage.createUser({
+          username,
+          email: email || undefined,
+          role: role || 'hr',
+          passwordHash,
+          status: 'active'
+        });
+        
+        // Remove sensitive fields from response
+        const safeUser = {
+          id: user.id,
+          username: user.username,
+          role: user.role,
+          status: user.status,
+          email: user.email,
+          createdAt: user.createdAt,
+          lastLoginAt: user.lastLoginAt,
+          failedLoginAttempts: user.failedLoginAttempts,
+          lockedUntil: user.lockedUntil
+        };
+        
+        res.status(201).json(safeUser);
+      } catch (error) {
+        console.error('Error creating user:', error);
+        res.status(500).json({ error: 'Failed to create user' });
+      }
+    }
+  );
+
+  /**
    * GET /api/admin/users
    * List all users with filtering and pagination (admin only)
    */
