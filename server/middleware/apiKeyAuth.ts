@@ -213,7 +213,8 @@ export async function apiKeyAuth(
     // Validate API key format
     if (!apiKey.startsWith('hrms_live_') && !apiKey.startsWith('hrms_test_')) {
       // Invalid API key format - return 401 immediately, don't fall through
-      return res.status(401).json({ error: 'Invalid API key format' });
+      res.status(401).json({ error: 'Invalid API key format' });
+      return;
     }
     
     // Extract prefix for database lookup
@@ -224,7 +225,8 @@ export async function apiKeyAuth(
     
     if (!storedKey) {
       // API key not found - return 401 immediately, don't fall through  
-      return res.status(401).json({ error: 'Invalid API key' });
+      res.status(401).json({ error: 'Invalid API key' });
+      return;
     }
     
     // Verify the key hash
@@ -232,34 +234,31 @@ export async function apiKeyAuth(
     
     if (!isValid) {
       // Log failed authentication attempt
-      await logAudit(
-        'api_keys',
-        storedKey.id,
-        'AUTH_FAILED',
-        null,
-        null,
-        { ip: req.ip, userAgent: req.headers['user-agent'] }
-      );
-      return res.status(401).json({ error: 'Invalid API key' });
+      console.log(`API key authentication failed for key ${keyPrefix} from IP ${req.ip}`);
+      res.status(401).json({ error: 'Invalid API key' });
+      return;
     }
     
     // Check if key is revoked
     if (storedKey.revokedAt) {
-      return res.status(401).json({ error: 'API key has been revoked' });
+      res.status(401).json({ error: 'API key has been revoked' });
+      return;
     }
     
     // Check if key is expired
     if (new Date(storedKey.expiresAt) < new Date()) {
-      return res.status(401).json({ error: 'API key has expired' });
+      res.status(401).json({ error: 'API key has expired' });
+      return;
     }
     
     // Check rate limit
     const rateLimit = storedKey.rateLimitPerHour || 1000;
     if (!checkRateLimit(storedKey.id, rateLimit)) {
-      return res.status(429).json({ 
+      res.status(429).json({ 
         error: 'Rate limit exceeded',
         retryAfter: 3600 // seconds
       });
+      return;
     }
     
     // Update lastUsedAt timestamp
@@ -271,7 +270,8 @@ export async function apiKeyAuth(
     const user = await storage.getUser(storedKey.userId);
     
     if (!user) {
-      return res.status(401).json({ error: 'Invalid API key user' });
+      res.status(401).json({ error: 'Invalid API key user' });
+      return;
     }
     
     // Attach user, API key, and permissions to request
@@ -280,14 +280,7 @@ export async function apiKeyAuth(
     req.permissions = storedKey.permissions as string[];
     
     // Log successful authentication
-    await logAudit(
-      'api_keys',
-      storedKey.id,
-      'AUTH_SUCCESS',
-      null,
-      null,
-      { ip: req.ip, userAgent: req.headers['user-agent'] }
-    );
+    console.log(`API key authentication successful for key ${keyPrefix} from IP ${req.ip}`);
     
     next();
   } catch (error) {
@@ -329,11 +322,12 @@ export function requirePermission(permission: string) {
     
     // Check if API key has required permission
     if (!hasPermission(req.permissions, permission)) {
-      return res.status(403).json({ 
+      res.status(403).json({ 
         error: 'Insufficient permissions',
         required: permission,
         granted: req.permissions
       });
+      return;
     }
     
     next();
@@ -374,7 +368,8 @@ export function requireAnyAuth(
  */
 setInterval(() => {
   const now = new Date();
-  for (const [keyId, data] of rateLimitCache.entries()) {
+  const entries = Array.from(rateLimitCache.entries());
+  for (const [keyId, data] of entries) {
     if (data.resetTime < now) {
       rateLimitCache.delete(keyId);
     }
