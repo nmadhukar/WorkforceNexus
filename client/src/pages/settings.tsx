@@ -600,9 +600,10 @@ export default function Settings() {
                   <div key={user.id} className="flex items-center justify-between p-4 border border-border rounded-lg" data-testid={`user-item-${user.id}`}>
                     <div>
                       <p className="font-medium text-foreground">{user.username}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {getRoleBadge(user.role)} • Created {new Date(user.createdAt).toLocaleDateString()}
-                      </p>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        {getRoleBadge(user.role)}
+                        <span>• Created {new Date(user.createdAt).toLocaleDateString()}</span>
+                      </div>
                     </div>
                     {isAdmin && user.id !== 1 && ( // Don't allow deleting the main admin
                       <div className="flex items-center space-x-2">
@@ -1276,25 +1277,33 @@ export default function Settings() {
               <div className="text-center p-4 bg-muted/50 rounded-lg">
                 <p className="text-sm text-muted-foreground">Current User</p>
                 <p className="font-medium">{user?.username}</p>
-                {getRoleBadge(user?.role || "viewer")}
+                <div className="mt-1">
+                  {getRoleBadge(user?.role || "viewer")}
+                </div>
               </div>
               
               <div className="text-center p-4 bg-muted/50 rounded-lg">
                 <p className="text-sm text-muted-foreground">Password Hashing</p>
                 <p className="font-medium">bcrypt</p>
-                <Badge className="bg-secondary/10 text-secondary">Enabled</Badge>
+                <div className="mt-1">
+                  <Badge className="bg-secondary/10 text-secondary">Enabled</Badge>
+                </div>
               </div>
               
               <div className="text-center p-4 bg-muted/50 rounded-lg">
                 <p className="text-sm text-muted-foreground">Data Encryption</p>
                 <p className="font-medium">AES-256</p>
-                <Badge className="bg-secondary/10 text-secondary">Active</Badge>
+                <div className="mt-1">
+                  <Badge className="bg-secondary/10 text-secondary">Active</Badge>
+                </div>
               </div>
               
               <div className="text-center p-4 bg-muted/50 rounded-lg">
                 <p className="text-sm text-muted-foreground">Audit Logging</p>
                 <p className="font-medium">All Actions</p>
-                <Badge className="bg-secondary/10 text-secondary">Tracking</Badge>
+                <div className="mt-1">
+                  <Badge className="bg-secondary/10 text-secondary">Tracking</Badge>
+                </div>
               </div>
             </div>
           </CardContent>
