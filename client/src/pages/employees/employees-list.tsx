@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmployeesTable } from "@/components/tables/employees-table";
 import { SearchFilters } from "@/components/search-filters";
@@ -161,7 +161,6 @@ export default function EmployeesList() {
   };
 
   const handleResendInvitation = (invitationId: number) => {
-    console.log('Resending invitation:', invitationId);
     resendInvitationMutation.mutate(invitationId);
   };
 
@@ -397,35 +396,35 @@ export default function EmployeesList() {
                             </TableCell>
                             <TableCell>
                               {invitation.status === 'pending' && (
-                                <AlertDialog open={resendInvitationId === invitation.id} onOpenChange={(open) => !open && setResendInvitationId(null)}>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => {
-                                      console.log('Opening resend dialog for invitation:', invitation.id);
-                                      setResendInvitationId(invitation.id);
-                                    }}
-                                    disabled={resendInvitationMutation.isPending}
-                                    data-testid={`button-resend-invitation-${invitation.id}`}
-                                  >
-                                    <RefreshCw className="w-4 h-4 mr-1" />
-                                    Resend
-                                  </Button>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Resend Invitation?</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        This will send a new invitation email to {invitation.email}. The invitation will be valid for another 7 days.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleResendInvitation(invitation.id)}>
-                                        Resend Invitation
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
+                                <>
+                                  <AlertDialog open={resendInvitationId === invitation.id} onOpenChange={(open) => !open && setResendInvitationId(null)}>
+                                    <AlertDialogTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        disabled={resendInvitationMutation.isPending}
+                                        data-testid={`button-resend-invitation-${invitation.id}`}
+                                      >
+                                        <RefreshCw className="w-4 h-4 mr-1" />
+                                        Resend
+                                      </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Resend Invitation?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          This will send a new invitation email to {invitation.email}. The invitation will be valid for another 7 days.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction onClick={() => handleResendInvitation(invitation.id)}>
+                                          Resend Invitation
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                </>
                               )}
                               {invitation.status === 'registered' && (
                                 <span className="text-sm text-muted-foreground">Awaiting approval</span>
