@@ -83,8 +83,8 @@ test.describe('Settings Management', () => {
       await settingsPage.clickByTestId('button-save-api-key');
       
       // Should show validation errors
-      await expect(settingsPage.apiKeyNameInput).toBeInvalid();
-      await expect(settingsPage.apiKeyValueInput).toBeInvalid();
+      await expect(settingsPage.apiKeyNameInput).toHaveAttribute('aria-invalid', 'true');
+      await expect(settingsPage.apiKeyValueInput).toHaveAttribute('aria-invalid', 'true');
     });
 
     test('should support different API key types', async ({ page }) => {
@@ -154,8 +154,8 @@ test.describe('Settings Management', () => {
       await settingsPage.clickByTestId('button-save-s3');
       
       // Should show validation errors
-      await expect(settingsPage.s3BucketInput).toBeInvalid();
-      await expect(settingsPage.s3RegionInput).toBeInvalid();
+      await expect(settingsPage.s3BucketInput).toHaveAttribute('aria-invalid', 'true');
+      await expect(settingsPage.s3RegionInput).toHaveAttribute('aria-invalid', 'true');
     });
 
     test('should test S3 connection', async ({ page }) => {
@@ -209,7 +209,7 @@ test.describe('Settings Management', () => {
       await settingsPage.configureSES(invalidSESConfig);
       
       // Should show email validation error
-      await expect(settingsPage.sesFromEmailInput).toBeInvalid();
+      await expect(settingsPage.sesFromEmailInput).toHaveAttribute('aria-invalid', 'true');
     });
 
     test('should test SES connection', async ({ page }) => {
@@ -242,7 +242,7 @@ test.describe('Settings Management', () => {
       await settingsPage.configureDocuSeal(invalidDocuSealConfig);
       
       // Should show URL validation error
-      await expect(settingsPage.docusealWebhookUrlInput).toBeInvalid();
+      await expect(settingsPage.docusealWebhookUrlInput).toHaveAttribute('aria-invalid', 'true');
     });
 
     test('should test DocuSeal connection', async ({ page }) => {
@@ -391,7 +391,7 @@ test.describe('Settings Management', () => {
       await settingsPage.clickByTestId('button-save-s3');
       
       // Should show validation errors
-      await expect(settingsPage.s3BucketInput).toBeInvalid();
+      await expect(settingsPage.s3BucketInput).toHaveAttribute('aria-invalid', 'true');
     });
   });
 

@@ -1,0 +1,1025 @@
+{
+  "config": {
+    "configFile": "/home/runner/workspace/playwright.config.ts",
+    "rootDir": "/home/runner/workspace/tests/ui",
+    "forbidOnly": false,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 4
+    },
+    "preserveOutput": "always",
+    "reporter": [
+      [
+        "html",
+        {
+          "outputFolder": "test-results/html-report"
+        }
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/results.json"
+        }
+      ],
+      [
+        "list",
+        null
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "quiet": false,
+    "projects": [
+      {
+        "outputDir": "/home/runner/workspace/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 4
+        },
+        "id": "setup",
+        "name": "setup",
+        "testDir": "/home/runner/workspace/tests/ui",
+        "testIgnore": [],
+        "testMatch": [
+          "/.*\\.setup\\.ts/"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/home/runner/workspace/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 4
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/runner/workspace/tests/ui",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/home/runner/workspace/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 4
+        },
+        "id": "firefox",
+        "name": "firefox",
+        "testDir": "/home/runner/workspace/tests/ui",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/home/runner/workspace/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 4
+        },
+        "id": "webkit",
+        "name": "webkit",
+        "testDir": "/home/runner/workspace/tests/ui",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/home/runner/workspace/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 4
+        },
+        "id": "Mobile Chrome",
+        "name": "Mobile Chrome",
+        "testDir": "/home/runner/workspace/tests/ui",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/home/runner/workspace/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 4
+        },
+        "id": "Mobile Safari",
+        "name": "Mobile Safari",
+        "testDir": "/home/runner/workspace/tests/ui",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/home/runner/workspace/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 4
+        },
+        "id": "hr-role",
+        "name": "hr-role",
+        "testDir": "/home/runner/workspace/tests/ui",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "/home/runner/workspace/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 4
+        },
+        "id": "viewer-role",
+        "name": "viewer-role",
+        "testDir": "/home/runner/workspace/tests/ui",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "shard": null,
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.55.0",
+    "workers": 4,
+    "webServer": {
+      "command": "npm run dev",
+      "url": "http://localhost:5000",
+      "reuseExistingServer": true,
+      "timeout": 120000
+    }
+  },
+  "suites": [
+    {
+      "title": "auth/auth.setup.ts",
+      "file": "auth/auth.setup.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "authenticate as admin",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "setup",
+              "projectName": "setup",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 14,
+                  "error": {
+                    "message": "Error: browserType.launch: \n╔══════════════════════════════════════════════════════╗\n║ Host system is missing dependencies to run browsers. ║\n║ Please install them with the following command:      ║\n║                                                      ║\n║     sudo npx playwright install-deps                 ║\n║                                                      ║\n║ Alternatively, use apt:                              ║\n║     sudo apt-get install libglib2.0-0t64\\            ║\n║         libnspr4\\                                    ║\n║         libnss3\\                                     ║\n║         libdbus-1-3\\                                 ║\n║         libatk1.0-0t64\\                              ║\n║         libatk-bridge2.0-0t64\\                       ║\n║         libatspi2.0-0t64\\                            ║\n║         libx11-6\\                                    ║\n║         libxcomposite1\\                              ║\n║         libxdamage1\\                                 ║\n║         libxext6\\                                    ║\n║         libxfixes3\\                                  ║\n║         libxrandr2\\                                  ║\n║         libgbm1\\                                     ║\n║         libxcb1\\                                     ║\n║         libxkbcommon0\\                               ║\n║         libasound2t64                                ║\n║                                                      ║\n║ <3 Playwright Team                                   ║\n╚══════════════════════════════════════════════════════╝",
+                    "stack": "Error: browserType.launch: \n╔══════════════════════════════════════════════════════╗\n║ Host system is missing dependencies to run browsers. ║\n║ Please install them with the following command:      ║\n║                                                      ║\n║     sudo npx playwright install-deps                 ║\n║                                                      ║\n║ Alternatively, use apt:                              ║\n║     sudo apt-get install libglib2.0-0t64\\            ║\n║         libnspr4\\                                    ║\n║         libnss3\\                                     ║\n║         libdbus-1-3\\                                 ║\n║         libatk1.0-0t64\\                              ║\n║         libatk-bridge2.0-0t64\\                       ║\n║         libatspi2.0-0t64\\                            ║\n║         libx11-6\\                                    ║\n║         libxcomposite1\\                              ║\n║         libxdamage1\\                                 ║\n║         libxext6\\                                    ║\n║         libxfixes3\\                                  ║\n║         libxrandr2\\                                  ║\n║         libgbm1\\                                     ║\n║         libxcb1\\                                     ║\n║         libxkbcommon0\\                               ║\n║         libasound2t64                                ║\n║                                                      ║\n║ <3 Playwright Team                                   ║\n╚══════════════════════════════════════════════════════╝"
+                  },
+                  "errors": [
+                    {
+                      "message": "Error: browserType.launch: \n╔══════════════════════════════════════════════════════╗\n║ Host system is missing dependencies to run browsers. ║\n║ Please install them with the following command:      ║\n║                                                      ║\n║     sudo npx playwright install-deps                 ║\n║                                                      ║\n║ Alternatively, use apt:                              ║\n║     sudo apt-get install libglib2.0-0t64\\            ║\n║         libnspr4\\                                    ║\n║         libnss3\\                                     ║\n║         libdbus-1-3\\                                 ║\n║         libatk1.0-0t64\\                              ║\n║         libatk-bridge2.0-0t64\\                       ║\n║         libatspi2.0-0t64\\                            ║\n║         libx11-6\\                                    ║\n║         libxcomposite1\\                              ║\n║         libxdamage1\\                                 ║\n║         libxext6\\                                    ║\n║         libxfixes3\\                                  ║\n║         libxrandr2\\                                  ║\n║         libgbm1\\                                     ║\n║         libxcb1\\                                     ║\n║         libxkbcommon0\\                               ║\n║         libasound2t64                                ║\n║                                                      ║\n║ <3 Playwright Team                                   ║\n╚══════════════════════════════════════════════════════╝"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2025-09-23T07:44:32.196Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "b45c5396b06e34bf5a1f-7606e6765f03f30e0b36",
+          "file": "auth/auth.setup.ts",
+          "line": 17,
+          "column": 1
+        },
+        {
+          "title": "authenticate as hr",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "setup",
+              "projectName": "setup",
+              "results": [
+                {
+                  "workerIndex": 1,
+                  "parallelIndex": 1,
+                  "status": "failed",
+                  "duration": 13,
+                  "error": {
+                    "message": "Error: browserType.launch: \n╔══════════════════════════════════════════════════════╗\n║ Host system is missing dependencies to run browsers. ║\n║ Please install them with the following command:      ║\n║                                                      ║\n║     sudo npx playwright install-deps                 ║\n║                                                      ║\n║ Alternatively, use apt:                              ║\n║     sudo apt-get install libglib2.0-0t64\\            ║\n║         libnspr4\\                                    ║\n║         libnss3\\                                     ║\n║         libdbus-1-3\\                                 ║\n║         libatk1.0-0t64\\                              ║\n║         libatk-bridge2.0-0t64\\                       ║\n║         libatspi2.0-0t64\\                            ║\n║         libx11-6\\                                    ║\n║         libxcomposite1\\                              ║\n║         libxdamage1\\                                 ║\n║         libxext6\\                                    ║\n║         libxfixes3\\                                  ║\n║         libxrandr2\\                                  ║\n║         libgbm1\\                                     ║\n║         libxcb1\\                                     ║\n║         libxkbcommon0\\                               ║\n║         libasound2t64                                ║\n║                                                      ║\n║ <3 Playwright Team                                   ║\n╚══════════════════════════════════════════════════════╝",
+                    "stack": "Error: browserType.launch: \n╔══════════════════════════════════════════════════════╗\n║ Host system is missing dependencies to run browsers. ║\n║ Please install them with the following command:      ║\n║                                                      ║\n║     sudo npx playwright install-deps                 ║\n║                                                      ║\n║ Alternatively, use apt:                              ║\n║     sudo apt-get install libglib2.0-0t64\\            ║\n║         libnspr4\\                                    ║\n║         libnss3\\                                     ║\n║         libdbus-1-3\\                                 ║\n║         libatk1.0-0t64\\                              ║\n║         libatk-bridge2.0-0t64\\                       ║\n║         libatspi2.0-0t64\\                            ║\n║         libx11-6\\                                    ║\n║         libxcomposite1\\                              ║\n║         libxdamage1\\                                 ║\n║         libxext6\\                                    ║\n║         libxfixes3\\                                  ║\n║         libxrandr2\\                                  ║\n║         libgbm1\\                                     ║\n║         libxcb1\\                                     ║\n║         libxkbcommon0\\                               ║\n║         libasound2t64                                ║\n║                                                      ║\n║ <3 Playwright Team                                   ║\n╚══════════════════════════════════════════════════════╝"
+                  },
+                  "errors": [
+                    {
+                      "message": "Error: browserType.launch: \n╔══════════════════════════════════════════════════════╗\n║ Host system is missing dependencies to run browsers. ║\n║ Please install them with the following command:      ║\n║                                                      ║\n║     sudo npx playwright install-deps                 ║\n║                                                      ║\n║ Alternatively, use apt:                              ║\n║     sudo apt-get install libglib2.0-0t64\\            ║\n║         libnspr4\\                                    ║\n║         libnss3\\                                     ║\n║         libdbus-1-3\\                                 ║\n║         libatk1.0-0t64\\                              ║\n║         libatk-bridge2.0-0t64\\                       ║\n║         libatspi2.0-0t64\\                            ║\n║         libx11-6\\                                    ║\n║         libxcomposite1\\                              ║\n║         libxdamage1\\                                 ║\n║         libxext6\\                                    ║\n║         libxfixes3\\                                  ║\n║         libxrandr2\\                                  ║\n║         libgbm1\\                                     ║\n║         libxcb1\\                                     ║\n║         libxkbcommon0\\                               ║\n║         libasound2t64                                ║\n║                                                      ║\n║ <3 Playwright Team                                   ║\n╚══════════════════════════════════════════════════════╝"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2025-09-23T07:44:32.164Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "b45c5396b06e34bf5a1f-7ce7b235e77beb6dc6f2",
+          "file": "auth/auth.setup.ts",
+          "line": 49,
+          "column": 1
+        },
+        {
+          "title": "authenticate as viewer",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "setup",
+              "projectName": "setup",
+              "results": [
+                {
+                  "workerIndex": 2,
+                  "parallelIndex": 2,
+                  "status": "failed",
+                  "duration": 7,
+                  "error": {
+                    "message": "Error: browserType.launch: \n╔══════════════════════════════════════════════════════╗\n║ Host system is missing dependencies to run browsers. ║\n║ Please install them with the following command:      ║\n║                                                      ║\n║     sudo npx playwright install-deps                 ║\n║                                                      ║\n║ Alternatively, use apt:                              ║\n║     sudo apt-get install libglib2.0-0t64\\            ║\n║         libnspr4\\                                    ║\n║         libnss3\\                                     ║\n║         libdbus-1-3\\                                 ║\n║         libatk1.0-0t64\\                              ║\n║         libatk-bridge2.0-0t64\\                       ║\n║         libatspi2.0-0t64\\                            ║\n║         libx11-6\\                                    ║\n║         libxcomposite1\\                              ║\n║         libxdamage1\\                                 ║\n║         libxext6\\                                    ║\n║         libxfixes3\\                                  ║\n║         libxrandr2\\                                  ║\n║         libgbm1\\                                     ║\n║         libxcb1\\                                     ║\n║         libxkbcommon0\\                               ║\n║         libasound2t64                                ║\n║                                                      ║\n║ <3 Playwright Team                                   ║\n╚══════════════════════════════════════════════════════╝",
+                    "stack": "Error: browserType.launch: \n╔══════════════════════════════════════════════════════╗\n║ Host system is missing dependencies to run browsers. ║\n║ Please install them with the following command:      ║\n║                                                      ║\n║     sudo npx playwright install-deps                 ║\n║                                                      ║\n║ Alternatively, use apt:                              ║\n║     sudo apt-get install libglib2.0-0t64\\            ║\n║         libnspr4\\                                    ║\n║         libnss3\\                                     ║\n║         libdbus-1-3\\                                 ║\n║         libatk1.0-0t64\\                              ║\n║         libatk-bridge2.0-0t64\\                       ║\n║         libatspi2.0-0t64\\                            ║\n║         libx11-6\\                                    ║\n║         libxcomposite1\\                              ║\n║         libxdamage1\\                                 ║\n║         libxext6\\                                    ║\n║         libxfixes3\\                                  ║\n║         libxrandr2\\                                  ║\n║         libgbm1\\                                     ║\n║         libxcb1\\                                     ║\n║         libxkbcommon0\\                               ║\n║         libasound2t64                                ║\n║                                                      ║\n║ <3 Playwright Team                                   ║\n╚══════════════════════════════════════════════════════╝"
+                  },
+                  "errors": [
+                    {
+                      "message": "Error: browserType.launch: \n╔══════════════════════════════════════════════════════╗\n║ Host system is missing dependencies to run browsers. ║\n║ Please install them with the following command:      ║\n║                                                      ║\n║     sudo npx playwright install-deps                 ║\n║                                                      ║\n║ Alternatively, use apt:                              ║\n║     sudo apt-get install libglib2.0-0t64\\            ║\n║         libnspr4\\                                    ║\n║         libnss3\\                                     ║\n║         libdbus-1-3\\                                 ║\n║         libatk1.0-0t64\\                              ║\n║         libatk-bridge2.0-0t64\\                       ║\n║         libatspi2.0-0t64\\                            ║\n║         libx11-6\\                                    ║\n║         libxcomposite1\\                              ║\n║         libxdamage1\\                                 ║\n║         libxext6\\                                    ║\n║         libxfixes3\\                                  ║\n║         libxrandr2\\                                  ║\n║         libgbm1\\                                     ║\n║         libxcb1\\                                     ║\n║         libxkbcommon0\\                               ║\n║         libasound2t64                                ║\n║                                                      ║\n║ <3 Playwright Team                                   ║\n╚══════════════════════════════════════════════════════╝"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2025-09-23T07:44:32.128Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "b45c5396b06e34bf5a1f-29361d79a503656970d0",
+          "file": "auth/auth.setup.ts",
+          "line": 81,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "settings/settings-management.spec.ts",
+      "file": "settings/settings-management.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Settings Management",
+          "file": "settings/settings-management.spec.ts",
+          "line": 12,
+          "column": 6,
+          "specs": [],
+          "suites": [
+            {
+              "title": "General Settings Access",
+              "file": "settings/settings-management.spec.ts",
+              "line": 36,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should navigate to settings page",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-0ccd52af3ecbbec1b557",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 37,
+                  "column": 5
+                },
+                {
+                  "title": "should display settings navigation tabs",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-62268792f0cc2b0361c0",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 44,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "API Keys Management",
+              "file": "settings/settings-management.spec.ts",
+              "line": 62,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should create new API key",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-c8f156bc87e41434f5e0",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 63,
+                  "column": 5
+                },
+                {
+                  "title": "should validate API key required fields",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-c3f1afbdcb7ca6450a80",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 78,
+                  "column": 5
+                },
+                {
+                  "title": "should support different API key types",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-b687309c66493c8c07ab",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 90,
+                  "column": 5
+                },
+                {
+                  "title": "should delete API key",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-26f1a916af49aee56eb3",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 106,
+                  "column": 5
+                },
+                {
+                  "title": "should mask API key values in display",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-5274dd64a12aa1155435",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 123,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "S3 Configuration",
+              "file": "settings/settings-management.spec.ts",
+              "line": 137,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should configure S3 settings",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-92197caa52aee1bc9084",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 138,
+                  "column": 5
+                },
+                {
+                  "title": "should validate S3 configuration fields",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-4033b6492e2ae362f68d",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 147,
+                  "column": 5
+                },
+                {
+                  "title": "should test S3 connection",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-9dc07155de2ba484888f",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 161,
+                  "column": 5
+                },
+                {
+                  "title": "should handle S3 connection failures",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-7bc4c07c00dd11e19dcb",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 174,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "SES Configuration",
+              "file": "settings/settings-management.spec.ts",
+              "line": 191,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should configure SES settings",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-81b8cdf7275040a3ff0f",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 192,
+                  "column": 5
+                },
+                {
+                  "title": "should validate email address format",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-41db00e80ff3a57fbe45",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 201,
+                  "column": 5
+                },
+                {
+                  "title": "should test SES connection",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-792735d23c4957d4571f",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 215,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "DocuSeal Configuration",
+              "file": "settings/settings-management.spec.ts",
+              "line": 226,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should configure DocuSeal settings",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-ced14f9f33c69849dc3c",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 227,
+                  "column": 5
+                },
+                {
+                  "title": "should validate webhook URL format",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-9c15e6e158b0e5adc75c",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 236,
+                  "column": 5
+                },
+                {
+                  "title": "should test DocuSeal connection",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-d2a42827516c4fc392ef",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 248,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "Role-Based Settings Access",
+              "file": "settings/settings-management.spec.ts",
+              "line": 259,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should allow admin full access to settings",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-83596e16407b97bde3e1",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 260,
+                  "column": 5
+                },
+                {
+                  "title": "should limit HR access to settings",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-b053373199d13e23c259",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 269,
+                  "column": 5
+                },
+                {
+                  "title": "should restrict viewer access to settings",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-0402bdab5ef247d41eeb",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 276,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "Settings Persistence",
+              "file": "settings/settings-management.spec.ts",
+              "line": 284,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should persist settings across sessions",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-52786e7851acb4130e52",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 285,
+                  "column": 5
+                },
+                {
+                  "title": "should handle settings update conflicts",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-7a21fbda152c0793b78d",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 303,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "Settings Import/Export",
+              "file": "settings/settings-management.spec.ts",
+              "line": 318,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should export settings configuration",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-ec29b2e6a8b5f1b5461b",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 319,
+                  "column": 5
+                },
+                {
+                  "title": "should validate settings before import",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-7b5aef4d618385dc22b0",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 334,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "Error Handling",
+              "file": "settings/settings-management.spec.ts",
+              "line": 352,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should handle settings save failures",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-c7dd0d7bc78229789af2",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 353,
+                  "column": 5
+                },
+                {
+                  "title": "should handle network errors gracefully",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-605173e5fce33ec22410",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 372,
+                  "column": 5
+                },
+                {
+                  "title": "should validate settings before saving",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-b377b8b32c745d49b9f3",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 384,
+                  "column": 5
+                }
+              ]
+            },
+            {
+              "title": "Settings Security",
+              "file": "settings/settings-management.spec.ts",
+              "line": 398,
+              "column": 8,
+              "specs": [
+                {
+                  "title": "should not expose sensitive values in client-side code",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-29301aa8b0de5ff75cc9",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 399,
+                  "column": 5
+                },
+                {
+                  "title": "should mask sensitive input fields",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-70faae4b6da9d556a417",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 410,
+                  "column": 5
+                },
+                {
+                  "title": "should require confirmation for destructive actions",
+                  "ok": true,
+                  "tags": [],
+                  "tests": [
+                    {
+                      "timeout": 60000,
+                      "annotations": [],
+                      "expectedStatus": "passed",
+                      "projectId": "chromium",
+                      "projectName": "chromium",
+                      "results": [],
+                      "status": "skipped"
+                    }
+                  ],
+                  "id": "dc02ee521f8b3f273933-7b7d5cdcc43288dcc3ac",
+                  "file": "settings/settings-management.spec.ts",
+                  "line": 418,
+                  "column": 5
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2025-09-23T07:44:27.080Z",
+    "duration": 6605.777,
+    "expected": 0,
+    "skipped": 30,
+    "unexpected": 3,
+    "flaky": 0
+  }
+}

@@ -230,7 +230,12 @@ export class TestDataFactory {
       case 'bulk-employee-import':
         return {
           employees: this.createMultipleEmployees(10),
-          documents: this.getTestFiles().slice(0, 2)
+          documents: this.getTestFiles().slice(0, 2).map(file => ({
+            name: file.name,
+            category: file.category,
+            filePath: file.path,
+            description: `Test document from ${file.name}`
+          }))
         };
       
       case 'settings-configuration':
