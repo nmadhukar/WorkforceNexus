@@ -20,35 +20,7 @@ import {
   type InsertFormSubmission
 } from "@shared/schema";
 import { eq, and, desc, inArray } from "drizzle-orm";
-import * as crypto from "crypto";
-
-// Encryption key from environment or generate one
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex').slice(0, 32);
-const ENCRYPTION_IV_LENGTH = 16;
-
-/**
- * Encrypt sensitive data using AES-256
- */
-function encrypt(text: string): string {
-  const iv = crypto.randomBytes(ENCRYPTION_IV_LENGTH);
-  const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
-  let encrypted = cipher.update(text);
-  encrypted = Buffer.concat([encrypted, cipher.final()]);
-  return iv.toString('hex') + ':' + encrypted.toString('hex');
-}
-
-/**
- * Decrypt sensitive data
- */
-function decrypt(text: string): string {
-  const textParts = text.split(':');
-  const iv = Buffer.from(textParts.shift()!, 'hex');
-  const encryptedText = Buffer.from(textParts.join(':'), 'hex');
-  const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
-  let decrypted = decipher.update(encryptedText);
-  decrypted = Buffer.concat([decrypted, decipher.final()]);
-  return decrypted.toString();
-}
+import { encrypt, decrypt } from "../utils/encryption";
 
 /**
  * DocuSeal API response types

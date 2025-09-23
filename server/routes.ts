@@ -2206,14 +2206,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { apiKey, ...otherConfig } = req.body;
         
         // Encrypt the API key
-        const crypto = await import('crypto');
-        const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex').slice(0, 32);
-        const ENCRYPTION_IV_LENGTH = 16;
-        const iv = crypto.randomBytes(ENCRYPTION_IV_LENGTH);
-        const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
-        let encrypted = cipher.update(apiKey);
-        encrypted = Buffer.concat([encrypted, cipher.final()]);
-        const encryptedApiKey = iv.toString('hex') + ':' + encrypted.toString('hex');
+        const { encrypt } = await import('./utils/encryption');
+        const encryptedApiKey = encrypt(apiKey);
         
         // Check if configuration exists
         const existingConfig = await storage.getDocusealConfiguration();
