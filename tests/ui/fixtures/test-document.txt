@@ -1,0 +1,10 @@
+This is a test document for upload testing.
+
+It contains some sample text to validate file upload functionality.
+
+Test Document Contents:
+- Line 1: Testing file upload
+- Line 2: Document management
+- Line 3: UI test validation
+
+Created for Playwright UI testing purposes.
