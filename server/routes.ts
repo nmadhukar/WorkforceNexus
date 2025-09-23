@@ -1866,7 +1866,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    */
   app.post('/api/admin/ses-config',
     requireAuth,
-    requireRole(['admin']),
+    requireRole(['admin', 'hr']),
     [
       body('region').notEmpty().withMessage('AWS Region is required'),
       body('accessKeyId').notEmpty().withMessage('AWS Access Key ID is required'),
@@ -1905,7 +1905,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    */
   app.post('/api/admin/ses-config/test',
     requireAuth,
-    requireRole(['admin']),
+    requireRole(['admin', 'hr']),
     [
       body('testEmail').isEmail().withMessage('Valid test email is required')
     ],
@@ -1939,7 +1939,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    */
   app.post('/api/admin/ses-config/verify',
     requireAuth,
-    requireRole(['admin']),
+    requireRole(['admin', 'hr']),
     [
       body('email').isEmail().withMessage('Valid email is required')
     ],
