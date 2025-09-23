@@ -808,7 +808,7 @@ export const apiKeys = pgTable("api_keys", {
   keyHash: varchar("key_hash", { length: 255 }).notNull(), // Hashed version of the API key (bcrypt)
   keyPrefix: varchar("key_prefix", { length: 16 }).notNull().unique(), // First 16 chars of key for identification (unique for collision prevention)
   userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(), // Owner of the API key
-  permissions: jsonb("permissions").notNull().default([]), // Array of allowed endpoints/scopes
+  permissions: text("permissions").array().notNull().default(sql`'{}'::text[]`), // Array of allowed endpoints/scopes
   lastUsedAt: timestamp("last_used_at"), // Track last usage timestamp
   expiresAt: timestamp("expires_at").notNull(), // Key expiration date
   createdAt: timestamp("created_at").defaultNow().notNull(), // Key creation timestamp

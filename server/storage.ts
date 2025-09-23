@@ -1153,27 +1153,25 @@ export class DatabaseStorage implements IStorage {
    */
   async createApiKey(apiKey: InsertApiKey): Promise<ApiKey> {
     try {
-      // Ensure permissions is properly formatted for JSONB field
-      // PostgreSQL JSONB fields require proper JSON formatting
+      // Ensure permissions is properly formatted for text[] field
+      // PostgreSQL text[] fields work directly with JavaScript arrays
       const permissionsArray = Array.isArray(apiKey.permissions) ? apiKey.permissions : [];
       
-      // For JSONB fields, we need to ensure the array is properly serialized
-      // Use raw SQL to explicitly cast to JSONB to avoid serialization issues
-      const [created] = await db.execute(sql`
-        INSERT INTO api_keys (
-          name, key_hash, key_prefix, user_id, permissions, 
-          expires_at, environment, rate_limit_per_hour, metadata
-        )
-        VALUES (
-          ${apiKey.name}, ${apiKey.keyHash}, ${apiKey.keyPrefix}, ${apiKey.userId},
-          ${JSON.stringify(permissionsArray)}::jsonb,
-          ${apiKey.expiresAt}, ${apiKey.environment}, ${apiKey.rateLimitPerHour},
-          ${JSON.stringify(apiKey.metadata || {})}::jsonb
-        )
-        RETURNING *
-      `);
+      // For text[] fields, Drizzle can handle JavaScript arrays directly
+      // No need for raw SQL casting - use the standard insert method
+      const [created] = await db.insert(apiKeys).values({
+        name: apiKey.name,
+        keyHash: apiKey.keyHash,
+        keyPrefix: apiKey.keyPrefix,
+        userId: apiKey.userId,
+        permissions: permissionsArray,
+        expiresAt: apiKey.expiresAt,
+        environment: apiKey.environment,
+        rateLimitPerHour: apiKey.rateLimitPerHour,
+        metadata: apiKey.metadata
+      }).returning();
       
-      return created[0] as ApiKey;
+      return created;
     } catch (error) {
       console.error('Error creating API key:', error);
       throw error;
