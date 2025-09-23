@@ -1155,9 +1155,8 @@ export class DatabaseStorage implements IStorage {
     // Ensure permissions is a proper JSON value for jsonb field
     const apiKeyData = {
       ...apiKey,
-      permissions: apiKey.permissions || []
+      permissions: JSON.parse(JSON.stringify(apiKey.permissions || []))
     };
-    console.log('Creating API key with data:', JSON.stringify(apiKeyData, null, 2));
     const [created] = await db.insert(apiKeys).values(apiKeyData).returning();
     return created;
   }
