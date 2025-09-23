@@ -6,6 +6,9 @@ import { MainLayout } from "@/components/layout/main-layout";
 import { Users, UserCheck, AlertTriangle, UserPlus, Download, Upload, TrendingUp } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
+/**
+ * Statistical data for dashboard overview cards
+ */
 interface DashboardStats {
   totalEmployees: number;
   activeLicenses: number;
@@ -13,6 +16,9 @@ interface DashboardStats {
   complianceRate: number;
 }
 
+/**
+ * Recent activity entry for the activity feed
+ */
 interface RecentActivity {
   id: number;
   type: string;
@@ -22,6 +28,22 @@ interface RecentActivity {
   entityId?: number;
 }
 
+/**
+ * Main dashboard page displaying HR management system overview with statistics,
+ * recent activity feed, quick actions, and upcoming expirations
+ * @component
+ * @returns {JSX.Element} Dashboard interface with stats cards, activity feed, and quick action buttons
+ * @example
+ * <Dashboard />
+ * 
+ * @description
+ * - Displays key metrics: total employees, active licenses, expiring items, compliance rate
+ * - Shows recent system activity with icon-coded activity types
+ * - Provides quick action buttons for common tasks (add employee, generate reports, upload documents)
+ * - Lists upcoming license/certification expirations with priority badges
+ * - All stats cards are clickable and navigate to relevant detailed views
+ * - Uses data-testid attributes for testing automation
+ */
 export default function Dashboard() {
   const [location, setLocation] = useLocation();
   
@@ -145,6 +167,11 @@ export default function Dashboard() {
             <CardContent>
               <div className="space-y-4">
                 {activities.slice(0, 5).map((activity: RecentActivity, index: number) => {
+                  /**
+                   * Returns appropriate icon for activity type
+                   * @param {string} activityType - The type of activity (CREATE, UPDATE, DELETE, etc.)
+                   * @returns {JSX.Element} Icon component with appropriate styling
+                   */
                   const getActivityIcon = () => {
                     if (activity.type?.includes('CREATE')) return <UserPlus className="w-4 h-4 text-primary" />;
                     if (activity.type?.includes('UPDATE')) return <Download className="w-4 h-4 text-secondary" />;
@@ -152,6 +179,11 @@ export default function Dashboard() {
                     return <Upload className="w-4 h-4 text-accent" />;
                   };
                   
+                  /**
+                   * Returns appropriate background class for activity icon
+                   * @param {string} activityType - The type of activity
+                   * @returns {string} CSS class for background styling
+                   */
                   const getIconBg = () => {
                     if (activity.type?.includes('CREATE')) return 'bg-primary/10';
                     if (activity.type?.includes('UPDATE')) return 'bg-secondary/10';

@@ -1,18 +1,52 @@
-// User types
+/**
+ * @fileoverview TypeScript Type Definitions for HR Management System
+ * 
+ * This module contains all TypeScript interfaces and types used throughout the HR system.
+ * Types are organized by domain (users, employees, documents, etc.) and provide strong
+ * typing for API responses, form data, and component props.
+ * 
+ * Features:
+ * - Complete type coverage for all entities
+ * - Separate interfaces for insert vs select operations
+ * - API response wrapper types with pagination
+ * - Form-specific data types for validation
+ * - Filter and search parameter types
+ * 
+ * @module types
+ */
+
+/**
+ * System user interface for authentication and access control
+ * @interface User
+ */
 export interface User {
+  /** Unique user identifier */
   id: number;
+  /** Unique username for login */
   username: string;
+  /** User role determining access permissions */
   role: "admin" | "hr" | "viewer";
+  /** Account creation timestamp */
   createdAt: string;
 }
 
+/**
+ * User data for creating new accounts
+ * @interface InsertUser
+ */
 export interface InsertUser {
+  /** Unique username for login */
   username: string;
+  /** User password for authentication */
   password: string;
+  /** User role: admin (full access), hr (employee management), viewer (read-only) */
   role: "admin" | "hr" | "viewer";
 }
 
-// Employee types
+/**
+ * Primary employee record with personal, professional, and contact information
+ * @interface Employee
+ */
 export interface Employee {
   id: number;
   firstName: string;
@@ -63,7 +97,10 @@ export interface Employee {
   updatedAt: string;
 }
 
-// Education types
+/**
+ * Employee education record for tracking academic background
+ * @interface Education
+ */
 export interface Education {
   id: number;
   employeeId: number;
@@ -75,7 +112,10 @@ export interface Education {
   endDate?: string;
 }
 
-// Employment history types
+/**
+ * Employee work history record for tracking previous employment
+ * @interface Employment
+ */
 export interface Employment {
   id: number;
   employeeId: number;
@@ -86,7 +126,10 @@ export interface Employment {
   description?: string;
 }
 
-// Peer reference types
+/**
+ * Professional reference information for employee verification
+ * @interface PeerReference
+ */
 export interface PeerReference {
   id: number;
   employeeId: number;
@@ -96,7 +139,10 @@ export interface PeerReference {
   comments?: string;
 }
 
-// License types
+/**
+ * State professional license information
+ * @interface StateLicense
+ */
 export interface StateLicense {
   id: number;
   employeeId: number;
@@ -107,6 +153,10 @@ export interface StateLicense {
   status?: string;
 }
 
+/**
+ * DEA (Drug Enforcement Administration) license information
+ * @interface DeaLicense
+ */
 export interface DeaLicense {
   id: number;
   employeeId: number;
@@ -116,6 +166,10 @@ export interface DeaLicense {
   status?: string;
 }
 
+/**
+ * Professional board certification information
+ * @interface BoardCertification
+ */
 export interface BoardCertification {
   id: number;
   employeeId: number;
@@ -126,7 +180,10 @@ export interface BoardCertification {
   status?: string;
 }
 
-// Document types
+/**
+ * Document metadata and file information for employee records
+ * @interface Document
+ */
 export interface Document {
   id: number;
   employeeId: number;
@@ -201,7 +258,11 @@ export interface Audit {
   newData?: any;
 }
 
-// API Response types
+/**
+ * Generic paginated API response wrapper
+ * @interface PaginatedResponse
+ * @template T - Type of the data array items
+ */
 export interface PaginatedResponse<T> {
   data: T[];
   total: number;
@@ -221,7 +282,10 @@ export interface AuditsResponse extends PaginatedResponse<Audit> {
   audits: Audit[];
 }
 
-// Dashboard/Reports types
+/**
+ * Dashboard statistics summary data
+ * @interface DashboardStats
+ */
 export interface DashboardStats {
   totalEmployees: number;
   activeEmployees: number;
@@ -238,7 +302,10 @@ export interface ExpiringItem {
   daysRemaining: number;
 }
 
-// Form data types
+/**
+ * Form data structure for employee creation and editing
+ * @interface EmployeeFormData
+ */
 export interface EmployeeFormData {
   firstName: string;
   lastName: string;
@@ -286,7 +353,10 @@ export interface EmployeeFormData {
   dlExpirationDate?: string;
 }
 
-// Filter types
+/**
+ * Filter parameters for employee search and listing
+ * @interface EmployeeFilters
+ */
 export interface EmployeeFilters {
   search: string;
   department?: string;
@@ -317,7 +387,10 @@ export interface SystemSettings {
   caqhReattestationWarningDays: number;
 }
 
-// API Error types
+/**
+ * Standard API error response structure
+ * @interface ApiError
+ */
 export interface ApiError {
   message: string;
   details?: any[];

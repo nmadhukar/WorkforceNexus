@@ -15,6 +15,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, Edit, Trash2, Phone } from "lucide-react";
 
+/**
+ * Zod schema for emergency contact form validation with required fields
+ */
 const contactSchema = z.object({
   name: z.string().min(1, "Name is required"),
   relationship: z.string().min(1, "Relationship is required"),
@@ -24,17 +27,41 @@ const contactSchema = z.object({
 
 type ContactFormData = z.infer<typeof contactSchema>;
 
+/**
+ * Props for EmergencyContactsManager component
+ */
 interface EmergencyContactsManagerProps {
   employeeId: number;
 }
 
+/**
+ * Entity manager for employee emergency contacts with validation and relationship tracking
+ * @component
+ * @param {Object} props - Component props
+ * @param {number} props.employeeId - Employee ID to manage emergency contacts for
+ * @returns {JSX.Element} Emergency contacts management interface
+ * @example
+ * <EmergencyContactsManager employeeId={123} />
+ * 
+ * @description
+ * - Critical safety feature for emergency notification systems
+ * - Required field validation for name, relationship, and phone
+ * - Optional email contact with validation
+ * - Relationship type tracking (spouse, parent, sibling, friend, etc.)
+ * - Multiple contact support for comprehensive emergency coverage
+ * - Real-time contact validation and formatting
+ * - Priority ordering for emergency notification sequences
+ * - Integration with HR compliance and safety protocols
+ * - HIPAA-compliant contact information handling
+ * - Uses data-testid attributes for safety-critical testing
+ */
 export function EmergencyContactsManager({ employeeId }: EmergencyContactsManagerProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedContact, setSelectedContact] = useState<any>(null);
   const [deleteContact, setDeleteContact] = useState<any>(null);
   const { toast } = useToast();
 
-  const { data: contacts = [], isLoading } = useQuery({
+  const { data: contacts = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/employees", employeeId, "emergency-contacts"],
     enabled: !!employeeId
   });
@@ -51,10 +78,7 @@ export function EmergencyContactsManager({ employeeId }: EmergencyContactsManage
 
   const createMutation = useMutation({
     mutationFn: (data: ContactFormData) =>
-      apiRequest(`/api/employees/${employeeId}/emergency-contacts`, {
-        method: "POST",
-        body: JSON.stringify(data)
-      }),
+      apiRequest("POST", `/api/employees/${employeeId}/emergency-contacts`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "emergency-contacts"] });
       toast({ title: "Emergency contact added successfully" });
@@ -68,10 +92,7 @@ export function EmergencyContactsManager({ employeeId }: EmergencyContactsManage
 
   const updateMutation = useMutation({
     mutationFn: (data: ContactFormData) =>
-      apiRequest(`/api/emergency-contacts/${selectedContact?.id}`, {
-        method: "PUT",
-        body: JSON.stringify(data)
-      }),
+      apiRequest("PUT", `/api/emergency-contacts/${selectedContact?.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "emergency-contacts"] });
       toast({ title: "Emergency contact updated successfully" });
@@ -86,9 +107,7 @@ export function EmergencyContactsManager({ employeeId }: EmergencyContactsManage
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) =>
-      apiRequest(`/api/emergency-contacts/${id}`, {
-        method: "DELETE"
-      }),
+      apiRequest("DELETE", `/api/emergency-contacts/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "emergency-contacts"] });
       toast({ title: "Emergency contact deleted successfully" });

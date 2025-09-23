@@ -15,6 +15,9 @@ import { useToast } from "@/hooks/use-toast";
 import { Settings as SettingsIcon, Users, Bell, Shield, Edit, Trash2, Plus, Save, Key, Cloud, Database, CheckCircle, XCircle, ArrowUpCircle, Mail, Send, MailCheck, FileSignature, RefreshCw, Link2 } from "lucide-react";
 import { Link } from "wouter";
 
+/**
+ * User account information
+ */
 interface User {
   id: number;
   username: string;
@@ -22,6 +25,9 @@ interface User {
   createdAt: string;
 }
 
+/**
+ * System-wide configuration settings
+ */
 interface SystemSettings {
   emailAlertsEnabled: boolean;
   dailyReportsEnabled: boolean;
@@ -121,6 +127,29 @@ interface DocusealTemplate {
   lastSyncedAt?: string;
 }
 
+/**
+ * Comprehensive system settings and configuration management page
+ * @component
+ * @returns {JSX.Element} Multi-section settings interface for system administration
+ * @example
+ * <Settings />
+ * 
+ * @description
+ * - User Management: Create/delete user accounts with role-based access control
+ * - S3 Storage Configuration: Object storage setup with AWS S3 or compatible services
+ * - SES Email Configuration: Amazon SES setup for system email notifications
+ * - DocuSeal Integration: Document signing service configuration and template management
+ * - System Settings: Global preferences for notifications, alerts, and automation
+ * - Role-based access control: Different features available based on user role (admin/hr/viewer)
+ * - Real-time configuration testing with connection validation
+ * - Database migration tools for storage configuration changes
+ * - Email verification workflow for SES setup
+ * - Template synchronization with DocuSeal service
+ * - Advanced configuration options with environment variable support
+ * - Comprehensive error handling and user feedback
+ * - Uses data-testid attributes for testing automation
+ * - Security-focused with credential protection and validation
+ */
 export default function Settings() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -563,6 +592,11 @@ export default function Settings() {
     }
   };
 
+  /**
+   * Returns styled role badge based on user role
+   * @param {string} role - User role (admin, hr, viewer)
+   * @returns {JSX.Element} Styled badge component with role-specific colors
+   */
   const getRoleBadge = (role: string) => {
     switch (role) {
       case 'admin':

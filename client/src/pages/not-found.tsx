@@ -1,6 +1,20 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { AlertCircle } from "lucide-react";
 
+/**
+ * 404 Not Found page displayed when user navigates to invalid routes
+ * @component
+ * @returns {JSX.Element} Centered error card with 404 message and developer hint
+ * @example
+ * <NotFound />
+ * 
+ * @description
+ * - Simple error page with consistent styling
+ * - Developer-friendly message about router configuration
+ * - Centered layout with full-screen height
+ * - Uses AlertCircle icon for visual emphasis
+ * - Styled with shadcn/ui components for consistency
+ */
 export default function NotFound() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">

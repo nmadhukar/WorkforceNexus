@@ -62,6 +62,31 @@ import { PayerEnrollmentsManager } from "@/components/entity-managers/payer-enro
 import { IncidentLogsManager } from "@/components/entity-managers/incident-logs-manager";
 import { FormsManager } from "@/components/entity-managers/forms-manager";
 
+/**
+ * Comprehensive employee profile page displaying detailed employee information with tabbed navigation
+ * @component
+ * @returns {JSX.Element} Employee profile interface with detailed information cards and management tabs
+ * @example
+ * <EmployeeProfile />
+ * // Accessed via route: /employees/:id
+ * 
+ * @description
+ * - Displays comprehensive employee information in organized card layout
+ * - Hero section with employee avatar, name, job title, and status
+ * - Three main information cards: Contact Info, Professional Credentials, CAQH & System Info
+ * - Tabbed navigation for managing related entities (education, employment, licenses, etc.)
+ * - Breadcrumb navigation for easy traversal
+ * - Quick action buttons: Edit, Print, Export
+ * - Protected data display (SSN masking, tooltips for sensitive info)
+ * - Status badges with color coding (active, inactive, on_leave)
+ * - Professional credential display (NPI, Medical License, SSN, etc.)
+ * - CAQH provider information with attestation tracking
+ * - Integration with 11 entity managers for comprehensive data management
+ * - Real-time data loading with skeleton states
+ * - Error handling with user-friendly messages
+ * - Uses data-testid attributes for testing automation
+ * - Responsive design with mobile-optimized layouts
+ */
 export default function EmployeeProfile() {
   const params = useParams();
   const [, navigate] = useLocation();
@@ -111,10 +136,21 @@ export default function EmployeeProfile() {
     );
   }
 
+  /**
+   * Generates user initials from first and last name
+   * @param {string} firstName - Employee's first name
+   * @param {string} lastName - Employee's last name
+   * @returns {string} Uppercase initials for avatar display
+   */
   const getUserInitials = (firstName: string, lastName: string) => {
     return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
   };
 
+  /**
+   * Returns styled status badge based on employee status
+   * @param {string} status - Employee status (active, inactive, on_leave)
+   * @returns {JSX.Element} Styled badge with icon and gradient colors
+   */
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'active':
@@ -143,6 +179,11 @@ export default function EmployeeProfile() {
     }
   };
 
+  /**
+   * Formats date string to human-readable format
+   * @param {string | null | undefined} date - Date string to format
+   * @returns {string} Formatted date or "Not provided" fallback
+   */
   const formatDate = (date: string | null | undefined) => {
     if (!date) return "Not provided";
     return new Date(date).toLocaleDateString('en-US', {
@@ -152,6 +193,11 @@ export default function EmployeeProfile() {
     });
   };
 
+  /**
+   * Formats phone number to standard US format
+   * @param {string | null | undefined} phone - Raw phone number
+   * @returns {string} Formatted phone number or "Not provided" fallback
+   */
   const formatPhoneNumber = (phone: string | null | undefined) => {
     if (!phone) return "Not provided";
     const cleaned = phone.replace(/\D/g, '');
@@ -161,10 +207,17 @@ export default function EmployeeProfile() {
     return phone;
   };
 
+  /**
+   * Triggers browser print dialog for profile printing
+   */
   const handlePrint = () => {
     window.print();
   };
 
+  /**
+   * Handles employee data export functionality
+   * @description Placeholder for PDF export functionality
+   */
   const handleExport = () => {
     // Export functionality placeholder
     console.log('Exporting employee data...');

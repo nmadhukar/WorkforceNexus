@@ -64,6 +64,9 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 
+/**
+ * API key record with metadata and permissions
+ */
 interface ApiKey {
   id: number;
   name: string;
@@ -120,6 +123,30 @@ const AVAILABLE_PERMISSIONS = [
   { value: "manage:api_keys", label: "Manage API Keys" },
 ];
 
+/**
+ * API key management page for external application integration
+ * @component
+ * @returns {JSX.Element} API key management interface with creation, rotation, and monitoring
+ * @example
+ * <ApiKeysPage />
+ * 
+ * @description
+ * - Complete API key lifecycle management: creation, rotation, revocation
+ * - Granular permission system with fine-grained access control
+ * - Environment-specific keys (live/test) for development workflows
+ * - Usage statistics and monitoring with authentication attempt tracking
+ * - Rate limiting configuration per API key
+ * - Expiration date management with warning alerts
+ * - Secure key display with one-time viewing after creation
+ * - Copy-to-clipboard functionality for easy key distribution
+ * - Rotation workflow with grace period for seamless transitions
+ * - Comprehensive audit trail for all key operations
+ * - Status indicators with color-coded badges (active, expired, revoked)
+ * - Search and filtering capabilities for large key inventories
+ * - Export capabilities for key inventory management
+ * - Uses data-testid attributes for automated testing
+ * - Security-focused design with protected key display
+ */
 export default function ApiKeysPage() {
   const { toast } = useToast();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -258,6 +285,10 @@ export default function ApiKeysPage() {
     }
   };
 
+  /**
+   * Copies text to clipboard and shows success notification
+   * @param {string} text - Text to copy to clipboard
+   */
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     toast({
@@ -266,6 +297,10 @@ export default function ApiKeysPage() {
     });
   };
 
+  /**
+   * Toggles permission selection for new API key creation
+   * @param {string} permission - Permission identifier to toggle
+   */
   const togglePermission = (permission: string) => {
     setSelectedPermissions((prev) =>
       prev.includes(permission)
@@ -274,6 +309,11 @@ export default function ApiKeysPage() {
     );
   };
 
+  /**
+   * Returns appropriate status badge based on API key state and expiration
+   * @param {ApiKey} key - API key object to evaluate
+   * @returns {JSX.Element} Styled badge indicating key status
+   */
   const getStatusBadge = (key: ApiKey) => {
     if (key.revokedAt) {
       return <Badge variant="destructive">Revoked</Badge>;

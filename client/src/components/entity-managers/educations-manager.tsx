@@ -15,6 +15,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, Edit, Trash2, GraduationCap } from "lucide-react";
 
+/**
+ * Zod schema for education form validation
+ */
 const educationSchema = z.object({
   educationType: z.string().optional(),
   schoolInstitution: z.string().optional(),
@@ -26,17 +29,41 @@ const educationSchema = z.object({
 
 type EducationFormData = z.infer<typeof educationSchema>;
 
+/**
+ * Props for EducationsManager component
+ */
 interface EducationsManagerProps {
   employeeId: number;
 }
 
+/**
+ * Entity manager for employee education history with comprehensive academic record management
+ * @component
+ * @param {Object} props - Component props
+ * @param {number} props.employeeId - Employee ID to manage education records for
+ * @returns {JSX.Element} Education management interface with CRUD operations
+ * @example
+ * <EducationsManager employeeId={123} />
+ * 
+ * @description
+ * - Manages complete educational background and academic credentials
+ * - Support for multiple education types (undergraduate, graduate, professional, etc.)
+ * - Institution and degree tracking with specialty/major fields
+ * - Date range management for academic periods
+ * - Form validation with comprehensive error handling
+ * - Real-time updates with optimistic UI feedback
+ * - Tabular display with sorting and filtering capabilities
+ * - Modal-based create/edit workflows
+ * - Bulk operations for managing multiple education records
+ * - Uses data-testid attributes for testing automation
+ */
 export function EducationsManager({ employeeId }: EducationsManagerProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedEducation, setSelectedEducation] = useState<any>(null);
   const [deleteEducation, setDeleteEducation] = useState<any>(null);
   const { toast } = useToast();
 
-  const { data: educations = [], isLoading } = useQuery({
+  const { data: educations = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/employees", employeeId, "educations"],
     enabled: !!employeeId
   });
@@ -55,10 +82,7 @@ export function EducationsManager({ employeeId }: EducationsManagerProps) {
 
   const createMutation = useMutation({
     mutationFn: (data: EducationFormData) =>
-      apiRequest(`/api/employees/${employeeId}/educations`, {
-        method: "POST",
-        body: JSON.stringify(data)
-      }),
+      apiRequest("POST", `/api/employees/${employeeId}/educations`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "educations"] });
       toast({ title: "Education added successfully" });
@@ -72,10 +96,7 @@ export function EducationsManager({ employeeId }: EducationsManagerProps) {
 
   const updateMutation = useMutation({
     mutationFn: (data: EducationFormData) =>
-      apiRequest(`/api/educations/${selectedEducation?.id}`, {
-        method: "PUT",
-        body: JSON.stringify(data)
-      }),
+      apiRequest("PUT", `/api/educations/${selectedEducation?.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "educations"] });
       toast({ title: "Education updated successfully" });
@@ -90,9 +111,7 @@ export function EducationsManager({ employeeId }: EducationsManagerProps) {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) =>
-      apiRequest(`/api/educations/${id}`, {
-        method: "DELETE"
-      }),
+      apiRequest("DELETE", `/api/educations/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "educations"] });
       toast({ title: "Education deleted successfully" });

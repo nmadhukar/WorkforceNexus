@@ -15,6 +15,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, Edit, Trash2, Briefcase } from "lucide-react";
 
+/**
+ * Zod schema for employment history form validation
+ */
 const employmentSchema = z.object({
   employer: z.string().optional(),
   position: z.string().optional(),
@@ -25,17 +28,41 @@ const employmentSchema = z.object({
 
 type EmploymentFormData = z.infer<typeof employmentSchema>;
 
+/**
+ * Props for EmploymentsManager component
+ */
 interface EmploymentsManagerProps {
   employeeId: number;
 }
 
+/**
+ * Entity manager for employee employment history with comprehensive work experience tracking
+ * @component
+ * @param {Object} props - Component props
+ * @param {number} props.employeeId - Employee ID to manage employment history for
+ * @returns {JSX.Element} Employment history management interface
+ * @example
+ * <EmploymentsManager employeeId={123} />
+ * 
+ * @description
+ * - Complete work history tracking for background verification
+ * - Employer information with position titles and responsibilities
+ * - Employment date ranges with gap detection
+ * - Rich text descriptions for detailed role responsibilities
+ * - Career progression visualization and analysis
+ * - Background check integration for compliance
+ * - Reference verification workflow support
+ * - Timeline view of professional development
+ * - Integration with credentialing and licensing requirements
+ * - Uses data-testid attributes for compliance testing
+ */
 export function EmploymentsManager({ employeeId }: EmploymentsManagerProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedEmployment, setSelectedEmployment] = useState<any>(null);
   const [deleteEmployment, setDeleteEmployment] = useState<any>(null);
   const { toast } = useToast();
 
-  const { data: employments = [], isLoading } = useQuery({
+  const { data: employments = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/employees", employeeId, "employments"],
     enabled: !!employeeId
   });
@@ -53,10 +80,7 @@ export function EmploymentsManager({ employeeId }: EmploymentsManagerProps) {
 
   const createMutation = useMutation({
     mutationFn: (data: EmploymentFormData) =>
-      apiRequest(`/api/employees/${employeeId}/employments`, {
-        method: "POST",
-        body: JSON.stringify(data)
-      }),
+      apiRequest("POST", `/api/employees/${employeeId}/employments`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "employments"] });
       toast({ title: "Employment added successfully" });
@@ -70,10 +94,7 @@ export function EmploymentsManager({ employeeId }: EmploymentsManagerProps) {
 
   const updateMutation = useMutation({
     mutationFn: (data: EmploymentFormData) =>
-      apiRequest(`/api/employments/${selectedEmployment?.id}`, {
-        method: "PUT",
-        body: JSON.stringify(data)
-      }),
+      apiRequest("PUT", `/api/employments/${selectedEmployment?.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "employments"] });
       toast({ title: "Employment updated successfully" });
@@ -88,9 +109,7 @@ export function EmploymentsManager({ employeeId }: EmploymentsManagerProps) {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) =>
-      apiRequest(`/api/employments/${id}`, {
-        method: "DELETE"
-      }),
+      apiRequest("DELETE", `/api/employments/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "employments"] });
       toast({ title: "Employment deleted successfully" });

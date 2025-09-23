@@ -10,6 +10,24 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Users, Shield, Eye, Mail, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+/**
+ * Authentication page providing login and registration functionality for the HR management system
+ * @component
+ * @returns {JSX.Element} Authentication interface with login/register tabs and onboarding support
+ * @example
+ * <AuthPage />
+ * 
+ * @description
+ * - Dual-purpose authentication with login and registration tabs
+ * - Supports employee onboarding flow via invitation tokens in URL
+ * - Handles role-based registration (admin, hr, viewer)
+ * - Auto-redirects authenticated users to dashboard
+ * - Displays success messages for registration with onboarding form notifications
+ * - Features responsive split layout with hero section showcasing system benefits
+ * - Password confirmation validation with real-time feedback
+ * - Invitation token processing for employee onboarding workflow
+ * - Uses data-testid attributes for comprehensive testing coverage
+ */
 export default function AuthPage() {
   const [, navigate] = useLocation();
   const { user, loginMutation, registerMutation } = useAuth();
@@ -46,11 +64,20 @@ export default function AuthPage() {
     }
   }, [user, navigate, registrationSuccess]);
 
+  /**
+   * Handles user login form submission
+   * @param {React.FormEvent} e - Form submission event
+   */
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     loginMutation.mutate(loginData);
   };
 
+  /**
+   * Handles user registration form submission with validation
+   * @param {React.FormEvent} e - Form submission event
+   * @description Validates password confirmation and processes onboarding tokens
+   */
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
     if (registerData.password !== registerData.confirmPassword) {

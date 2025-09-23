@@ -23,6 +23,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
+/**
+ * Complete employee form data structure covering all aspects of employee information
+ */
 interface EmployeeFormData {
   // Personal Info
   firstName: string;
@@ -84,6 +87,46 @@ interface EmployeeFormData {
   incidentLogs?: any[];
 }
 
+/**
+ * Comprehensive 12-step employee form for creating and editing medical staff records
+ * @component
+ * @returns {JSX.Element} Multi-step form interface for employee data entry
+ * @example
+ * // Create new employee
+ * <EmployeeForm />
+ * // Edit existing employee (accessed via /employees/:id/edit)
+ * <EmployeeForm />
+ * 
+ * @description
+ * - 12-step wizard-style form covering all aspects of employee data
+ * - Dual-mode operation: Create new employees or edit existing ones
+ * - Comprehensive data collection: personal info, credentials, licenses, certifications
+ * - Related entity management: education, employment, references, contacts, etc.
+ * - Form persistence and validation across all steps
+ * - Real-time form state management with step navigation
+ * - Enhanced header with employee status and quick actions
+ * - Atomic transaction handling: creates employee first, then related entities
+ * - Error handling with detailed feedback for failed operations
+ * - Progress tracking with visual step indicators
+ * - Responsive design with mobile-optimized layouts
+ * - Auto-save draft functionality for data preservation
+ * - Integration with 11+ specialized form components
+ * - Uses data-testid attributes for comprehensive testing
+ * 
+ * @steps
+ * 1. Personal Info - Name, contact information, address
+ * 2. Professional Info - Job title, location, qualifications
+ * 3. Credentials - Medical licenses, NPI, provider numbers
+ * 4. Additional Info - CAQH information, system settings
+ * 5. Education & Employment - Academic and work history
+ * 6. Licenses - State and DEA licenses
+ * 7. Certifications - Board certifications and specializations
+ * 8. References & Contacts - Professional references and emergency contacts
+ * 9. Tax & Documentation - Tax forms and documentation
+ * 10. Training & Payer - Training records and payer enrollments
+ * 11. Incidents - Incident logs and safety records
+ * 12. Review - Final review and submission
+ */
 export default function EmployeeForm() {
   const params = useParams();
   const [, navigate] = useLocation();
@@ -291,6 +334,10 @@ export default function EmployeeForm() {
     }
   });
 
+  /**
+   * Handles form submission for both create and edit modes
+   * @description Routes to appropriate mutation based on edit state
+   */
   const handleSubmit = () => {
     if (isEdit) {
       updateMutation.mutate(formData);
@@ -299,18 +346,29 @@ export default function EmployeeForm() {
     }
   };
 
+  /**
+   * Advances to the next step in the form
+   * @description Validates current step before advancing (if validation implemented)
+   */
   const handleNext = () => {
     if (currentStep < 12) {
       setCurrentStep(currentStep + 1);
     }
   };
 
+  /**
+   * Returns to the previous step in the form
+   */
   const handlePrevious = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
     }
   };
 
+  /**
+   * Updates form data with partial data from step components
+   * @param {Partial<EmployeeFormData>} data - Partial form data to merge
+   */
   const updateFormData = (data: Partial<EmployeeFormData>) => {
     setFormData(prev => ({ ...prev, ...data }));
   };

@@ -19,6 +19,9 @@ import { useAuth } from "@/hooks/use-auth";
 import { Plus, Search, UserPlus, Mail, Clock, RefreshCw } from "lucide-react";
 import { Employee } from "@/lib/types";
 
+/**
+ * Response structure for paginated employees API
+ */
 interface EmployeesResponse {
   employees: Employee[];
   total: number;
@@ -26,6 +29,9 @@ interface EmployeesResponse {
   totalPages: number;
 }
 
+/**
+ * Employee invitation data structure
+ */
 interface EmployeeInvitation {
   id: number;
   email: string;
@@ -45,6 +51,26 @@ interface EmployeeInvitation {
   expiresAt: string;
 }
 
+/**
+ * Employee list management page with invitation system and dual-tab interface
+ * @component
+ * @returns {JSX.Element} Employee list interface with active employees and invitations tabs
+ * @example
+ * <EmployeesList />
+ * 
+ * @description
+ * - Dual-tab interface: Active Employees and Invitations management
+ * - Comprehensive employee filtering by department, status, location, and search
+ * - Employee invitation system with email delivery tracking
+ * - Invitation status management (pending, registered, approved, expired)
+ * - Role-based access control for HR and Admin users
+ * - Email delivery failure handling with detailed error messages
+ * - Invitation resending capabilities with confirmation dialogs
+ * - Paginated employee table with 10 employees per page
+ * - Real-time invitation status updates and expiration tracking
+ * - Integration with EmployeesTable for detailed employee display
+ * - Uses data-testid attributes for comprehensive testing coverage
+ */
 export default function EmployeesList() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -233,19 +259,37 @@ export default function EmployeesList() {
     }
   });
 
+  /**
+   * Updates filter state and resets pagination to first page
+   * @param {string} key - Filter property to update
+   * @param {string} value - New filter value
+   */
   const handleFilterChange = (key: string, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }));
     setPage(1); // Reset to first page when filtering
   };
 
+  /**
+   * Handles sending a new employee invitation
+   * @description Validates form data and sends invitation email
+   */
   const handleSendInvitation = () => {
     sendInvitationMutation.mutate(newInvitation);
   };
 
+  /**
+   * Handles resending an existing invitation
+   * @param {number} invitationId - ID of invitation to resend
+   */
   const handleResendInvitation = (invitationId: number) => {
     resendInvitationMutation.mutate(invitationId);
   };
 
+  /**
+   * Returns styled badge component based on invitation status
+   * @param {string} status - Invitation status (pending, registered, approved, expired)
+   * @returns {JSX.Element} Styled status badge with appropriate colors
+   */
   const getInvitationStatusBadge = (status: string) => {
     switch (status) {
       case 'pending':

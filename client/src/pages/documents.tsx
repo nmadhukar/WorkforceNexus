@@ -13,6 +13,9 @@ import { FileText, Award, Clipboard, Folder, Upload } from "lucide-react";
 import { useLocation } from "wouter";
 import type { Document } from "@/lib/types";
 
+/**
+ * Response structure for paginated documents API
+ */
 interface DocumentsResponse {
   documents: Document[];
   total: number;
@@ -20,6 +23,9 @@ interface DocumentsResponse {
   totalPages: number;
 }
 
+/**
+ * Statistics for different document categories
+ */
 interface DocumentStats {
   licenses: number;
   certifications: number;
@@ -28,6 +34,24 @@ interface DocumentStats {
   expiringSoon: number;
 }
 
+/**
+ * Document management page for viewing, filtering, and uploading employee documents
+ * @component
+ * @returns {JSX.Element} Documents interface with category cards, filters, and document table
+ * @example
+ * <Documents />
+ * 
+ * @description
+ * - Displays document categories with counts (Licenses, Certifications, Tax Forms, Other)
+ * - Provides filtering by document type and search functionality
+ * - Supports document upload via drag-and-drop dialog
+ * - Shows expiration warnings for documents nearing expiry
+ * - Integrates with DocumentsTable for paginated document listing
+ * - Category cards are clickable filters for quick navigation
+ * - URL parameter support for initial filter state
+ * - Uses data-testid attributes for testing automation
+ * - Real-time updates after successful document uploads
+ */
 export default function Documents() {
   const { toast } = useToast();
   const [location, setLocation] = useLocation();
@@ -95,19 +119,37 @@ export default function Documents() {
     }
   });
 
+  /**
+   * Updates filter state and resets pagination
+   * @param {string} key - Filter property to update
+   * @param {string} value - New filter value
+   */
   const handleFilterChange = (key: string, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }));
     setPage(1);
   };
 
+  /**
+   * Handles document upload via form data
+   * @param {FormData} formData - File upload form data
+   */
   const handleUpload = (formData: FormData) => {
     uploadMutation.mutate(formData);
   };
 
+  /**
+   * Handles category card clicks to filter documents
+   * @param {string} documentType - Document type to filter by
+   */
   const handleCardClick = (documentType: string) => {
     handleFilterChange('type', documentType);
   };
 
+  /**
+   * Returns styled expiration status message based on count
+   * @param {number} count - Number of expiring documents
+   * @returns {JSX.Element} Styled status message component
+   */
   const getExpiringStatus = (count: number) => {
     if (count === 0) {
       return <p className="text-xs text-secondary">All up to date</p>;

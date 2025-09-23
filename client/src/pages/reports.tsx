@@ -9,6 +9,9 @@ import { SearchFilters } from "@/components/search-filters";
 import { AlertTriangle, FileText, Users, Download, BarChart2, TrendingUp } from "lucide-react";
 import { useLocation } from "wouter";
 
+/**
+ * Item with upcoming expiration date
+ */
 interface ExpiringItem {
   employeeId: number;
   employeeName: string;
@@ -18,6 +21,9 @@ interface ExpiringItem {
   daysRemaining: number;
 }
 
+/**
+ * Dashboard statistics for reporting
+ */
 interface DashboardStats {
   totalEmployees: number;
   activeEmployees: number;
@@ -25,6 +31,9 @@ interface DashboardStats {
   pendingDocs: number;
 }
 
+/**
+ * Analytics data for dashboard reporting
+ */
 interface DashboardAnalytics {
   totalEmployees: number;
   activeLicenses: number;
@@ -32,6 +41,25 @@ interface DashboardAnalytics {
   complianceRate: number;
 }
 
+/**
+ * Reports and analytics page for generating HR management system reports
+ * @component
+ * @returns {JSX.Element} Reports interface with multiple report types and data visualization
+ * @example
+ * <Reports />
+ * 
+ * @description
+ * - Provides four main report types: Expiring Items, Compliance, Employee Directory, Analytics
+ * - Interactive report cards with export functionality
+ * - Detailed expiring items table with filtering and priority badges
+ * - CSV export capabilities for all report types
+ * - URL parameter support for deep linking to specific reports
+ * - Dynamic time range selection for expiring items (30/60/90 days)
+ * - Priority-based filtering (high/medium/low) for expiring items
+ * - Summary statistics display with visual indicators
+ * - Uses data-testid attributes for comprehensive testing
+ * - Real-time data updates and responsive design
+ */
 export default function Reports() {
   const [location, setLocation] = useLocation();
   const [selectedReport, setSelectedReport] = useState("expiring");
@@ -71,10 +99,19 @@ export default function Reports() {
     queryKey: ["/api/dashboard/stats"]
   });
 
+  /**
+   * Updates filter state for report data
+   * @param {string} key - Filter property to update
+   * @param {string} value - New filter value
+   */
   const handleFilterChange = (key: string, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }));
   };
 
+  /**
+   * Handles report card selection and data fetching
+   * @param {string} reportType - Type of report to display
+   */
   const handleReportClick = (reportType: string) => {
     setSelectedReport(reportType);
     if (reportType === 'expiring') {
@@ -82,6 +119,11 @@ export default function Reports() {
     }
   };
 
+  /**
+   * Exports report data as CSV file
+   * @param {string} reportType - Type of report to export
+   * @description Downloads CSV file with timestamped filename
+   */
   const handleExportCSV = async (reportType: string) => {
     try {
       const response = await fetch(`/api/export/${reportType}`, {
@@ -106,6 +148,11 @@ export default function Reports() {
     }
   };
 
+  /**
+   * Returns priority badge based on days remaining until expiration
+   * @param {number} daysRemaining - Number of days until expiration
+   * @returns {JSX.Element} Styled priority badge component
+   */
   const getPriorityBadge = (daysRemaining: number) => {
     if (daysRemaining <= 15) {
       return <Badge className="bg-destructive/10 text-destructive priority-high">High</Badge>;

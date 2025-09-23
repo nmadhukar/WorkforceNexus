@@ -35,7 +35,7 @@ export function TrainingsManager({ employeeId }: TrainingsManagerProps) {
   const [deleteTraining, setDeleteTraining] = useState<any>(null);
   const { toast } = useToast();
 
-  const { data: trainings = [], isLoading } = useQuery({
+  const { data: trainings = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/employees", employeeId, "trainings"],
     enabled: !!employeeId
   });
@@ -53,10 +53,7 @@ export function TrainingsManager({ employeeId }: TrainingsManagerProps) {
 
   const createMutation = useMutation({
     mutationFn: (data: TrainingFormData) =>
-      apiRequest(`/api/employees/${employeeId}/trainings`, {
-        method: "POST",
-        body: JSON.stringify(data)
-      }),
+      apiRequest("POST", `/api/employees/${employeeId}/trainings`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "trainings"] });
       toast({ title: "Training added successfully" });
@@ -70,10 +67,7 @@ export function TrainingsManager({ employeeId }: TrainingsManagerProps) {
 
   const updateMutation = useMutation({
     mutationFn: (data: TrainingFormData) =>
-      apiRequest(`/api/trainings/${selectedTraining?.id}`, {
-        method: "PUT",
-        body: JSON.stringify(data)
-      }),
+      apiRequest("PUT", `/api/trainings/${selectedTraining?.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "trainings"] });
       toast({ title: "Training updated successfully" });
@@ -88,9 +82,7 @@ export function TrainingsManager({ employeeId }: TrainingsManagerProps) {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) =>
-      apiRequest(`/api/trainings/${id}`, {
-        method: "DELETE"
-      }),
+      apiRequest("DELETE", `/api/trainings/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "trainings"] });
       toast({ title: "Training deleted successfully" });

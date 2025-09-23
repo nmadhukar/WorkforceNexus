@@ -11,6 +11,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Shield, Eye } from "lucide-react";
 import type { Audit } from "@/lib/types";
 
+/**
+ * Response structure for paginated audit entries API
+ */
 interface AuditsResponse {
   audits: Audit[];
   total: number;
@@ -18,6 +21,24 @@ interface AuditsResponse {
   totalPages: number;
 }
 
+/**
+ * Audit trail page for tracking all system changes and user activities
+ * @component
+ * @returns {JSX.Element} Audit interface with filtering capabilities and detailed audit log
+ * @example
+ * <Audits />
+ * 
+ * @description
+ * - Comprehensive audit trail with filterable entries
+ * - Advanced filtering by action type, table, date range, and search terms
+ * - Detailed audit entry modal with before/after data comparison
+ * - Paginated audit log with 25 entries per page
+ * - Color-coded action badges (CREATE, UPDATE, DELETE, LOGIN)
+ * - JSON data formatting with syntax highlighting
+ * - Real-time audit tracking for compliance and security
+ * - Uses data-testid attributes for testing automation
+ * - HIPAA-compliant audit logging capabilities
+ */
 export default function Audits() {
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({
@@ -48,16 +69,30 @@ export default function Audits() {
     }
   });
 
+  /**
+   * Updates filter state and resets pagination
+   * @param {string} key - Filter property to update
+   * @param {string} value - New filter value
+   */
   const handleFilterChange = (key: string, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }));
     setPage(1);
   };
 
+  /**
+   * Opens audit details modal for selected audit entry
+   * @param {Audit} audit - Audit entry to display in detail
+   */
   const showAuditDetails = (audit: Audit) => {
     setSelectedAudit(audit);
     setDetailsOpen(true);
   };
 
+  /**
+   * Formats JSON data for display with proper indentation
+   * @param {any} data - Raw audit data to format
+   * @returns {string} Formatted JSON string or fallback text
+   */
   const formatJsonData = (data: any) => {
     if (!data) return "No data";
     try {

@@ -15,6 +15,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, Edit, Trash2, Award } from "lucide-react";
 
+/**
+ * Zod schema for board certification form validation
+ */
 const certificationSchema = z.object({
   boardName: z.string().optional(),
   certification: z.string().optional(),
@@ -24,17 +27,40 @@ const certificationSchema = z.object({
 
 type CertificationFormData = z.infer<typeof certificationSchema>;
 
+/**
+ * Props for BoardCertificationsManager component
+ */
 interface BoardCertificationsManagerProps {
   employeeId: number;
 }
 
+/**
+ * Entity manager for employee board certifications with full CRUD operations
+ * @component
+ * @param {Object} props - Component props
+ * @param {number} props.employeeId - Employee ID to manage certifications for
+ * @returns {JSX.Element} Board certifications management interface
+ * @example
+ * <BoardCertificationsManager employeeId={123} />
+ * 
+ * @description
+ * - Complete CRUD operations for board certifications
+ * - Form validation using Zod schema with react-hook-form
+ * - Real-time data updates with TanStack Query
+ * - Tabular display with edit and delete actions
+ * - Modal dialogs for create/edit workflows
+ * - Confirmation dialogs for delete operations
+ * - Expiration date tracking for compliance monitoring
+ * - Uses data-testid attributes for automated testing
+ * - Responsive design with proper accessibility
+ */
 export function BoardCertificationsManager({ employeeId }: BoardCertificationsManagerProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedCertification, setSelectedCertification] = useState<any>(null);
   const [deleteCertification, setDeleteCertification] = useState<any>(null);
   const { toast } = useToast();
 
-  const { data: certifications = [], isLoading } = useQuery({
+  const { data: certifications = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/employees", employeeId, "board-certifications"],
     enabled: !!employeeId
   });
@@ -51,10 +77,7 @@ export function BoardCertificationsManager({ employeeId }: BoardCertificationsMa
 
   const createMutation = useMutation({
     mutationFn: (data: CertificationFormData) =>
-      apiRequest(`/api/employees/${employeeId}/board-certifications`, {
-        method: "POST",
-        body: JSON.stringify(data)
-      }),
+      apiRequest("POST", `/api/employees/${employeeId}/board-certifications`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "board-certifications"] });
       toast({ title: "Certification added successfully" });
@@ -68,10 +91,7 @@ export function BoardCertificationsManager({ employeeId }: BoardCertificationsMa
 
   const updateMutation = useMutation({
     mutationFn: (data: CertificationFormData) =>
-      apiRequest(`/api/board-certifications/${selectedCertification?.id}`, {
-        method: "PUT",
-        body: JSON.stringify(data)
-      }),
+      apiRequest("PUT", `/api/board-certifications/${selectedCertification?.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "board-certifications"] });
       toast({ title: "Certification updated successfully" });
@@ -86,9 +106,7 @@ export function BoardCertificationsManager({ employeeId }: BoardCertificationsMa
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) =>
-      apiRequest(`/api/board-certifications/${id}`, {
-        method: "DELETE"
-      }),
+      apiRequest("DELETE", `/api/board-certifications/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "board-certifications"] });
       toast({ title: "Certification deleted successfully" });
