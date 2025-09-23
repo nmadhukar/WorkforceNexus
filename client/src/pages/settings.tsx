@@ -346,18 +346,44 @@ export default function Settings() {
         }
       }
       
+      // Check for region mismatch
+      if (!response.ok && data.details?.errorCode === 'PermanentRedirect' && data.details?.correctRegion) {
+        // Automatically update the region in the form
+        const correctRegion = data.details.correctRegion;
+        if (confirm(`The bucket "${configData.bucketName}" exists in region "${correctRegion}".\n\nWould you like to switch to that region and try again?`)) {
+          // Update the form data with correct region
+          setS3FormData(prev => ({ ...prev, region: correctRegion }));
+          // Retry with correct region
+          const retryResponse = await apiRequest("POST", "/api/admin/s3-config/test", {
+            ...configData,
+            region: correctRegion
+          });
+          return retryResponse.json();
+        }
+      }
+      
       if (!response.ok && response.status !== 404) {
-        throw new Error(data.error || data.message || 'Test failed');
+        // Return the error data for display
+        return data;
       }
       
       return data;
     },
     onSuccess: (data) => {
-      toast({
-        title: data.success ? "Success" : "Connection Failed",
-        description: data.message || data.details?.suggestion || "Check your configuration",
-        variant: data.success ? "default" : "destructive"
-      });
+      if (data.success) {
+        toast({
+          title: "Connection Successful",
+          description: data.message,
+          variant: "default"
+        });
+      } else {
+        // Show detailed error message
+        toast({
+          title: data.message || "Connection Failed",
+          description: data.error || data.details?.suggestion || "Check your configuration",
+          variant: "destructive"
+        });
+      }
       setTestingS3(false);
     },
     onError: (error) => {

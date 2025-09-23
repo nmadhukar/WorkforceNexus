@@ -1752,6 +1752,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           });
         } catch (error: any) {
+          console.log('S3 Test Error:', error.name, error.message);
+          
           // Special handling for bucket not found
           if (error.name === 'NoSuchBucket') {
             res.status(404).json({
@@ -1766,7 +1768,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 suggestion: 'Would you like to create this bucket?'
               }
             });
-          } else {
+          } 
+          // Handle region mismatch error
+          else if (error.name === 'PermanentRedirect' || error.$metadata?.httpStatusCode === 301) {
+            // Try to extract the correct region from the error
+            let correctRegion = 'unknown';
+            if (error.$response?.headers?.['x-amz-bucket-region']) {
+              correctRegion = error.$response.headers['x-amz-bucket-region'];
+            } else if (error.message && error.message.includes('us-west-2')) {
+              correctRegion = 'us-west-2';
+            }
+            
+            res.status(400).json({
+              success: false,
+              message: 'Bucket exists in a different region',
+              error: `The bucket "${bucketName}" exists in region "${correctRegion}" but you're trying to access it from "${region}"`,
+              details: {
+                region,
+                bucketName,
+                correctRegion,
+                errorCode: 'PermanentRedirect',
+                canCreate: false,
+                suggestion: `Please change the region to "${correctRegion}" and try again`
+              }
+            });
+          } 
+          // Handle access denied
+          else if (error.name === 'AccessDenied' || error.name === 'Forbidden') {
+            res.status(403).json({
+              success: false,
+              message: 'Access denied to S3 bucket',
+              error: 'Your AWS credentials do not have permission to access this bucket',
+              details: {
+                region,
+                bucketName,
+                errorCode: error.name,
+                canCreate: false,
+                suggestion: 'Check your IAM permissions or try a different bucket name'
+              }
+            });
+          } 
+          // Generic error handling
+          else {
             res.status(400).json({
               success: false,
               message: 'Failed to connect to S3',
@@ -1776,9 +1819,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 bucketName,
                 errorCode: error.name,
                 canCreate: false,
-                suggestion: error.name === 'AccessDenied' ? 'Invalid credentials or insufficient permissions' :
-                          error.name === 'PermanentRedirect' ? 'Wrong region for this bucket' :
-                          'Check your configuration and try again'
+                suggestion: 'Check your AWS credentials and configuration'
               }
             });
           }
