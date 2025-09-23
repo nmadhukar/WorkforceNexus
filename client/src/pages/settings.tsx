@@ -320,15 +320,42 @@ export default function Settings() {
     }
   });
 
-  const testS3ConfigMutation = useMutation<S3TestResponse, Error, typeof s3FormData>({
+  const testS3ConfigMutation = useMutation<any, Error, typeof s3FormData>({
     mutationFn: async (configData: typeof s3FormData) => {
       const response = await apiRequest("POST", "/api/admin/s3-config/test", configData);
-      return response.json();
+      const data = await response.json();
+      
+      // Check if this is a 404 (bucket doesn't exist)
+      if (response.status === 404 && data.details?.canCreate) {
+        // Show confirmation dialog to create bucket
+        if (confirm(`The bucket "${configData.bucketName}" does not exist.\n\nWould you like to create it?`)) {
+          // Create the bucket
+          const createResponse = await apiRequest("POST", "/api/admin/s3-config/create-bucket", configData);
+          const createData = await createResponse.json();
+          
+          if (createResponse.ok) {
+            // Bucket created successfully, now test again
+            const retestResponse = await apiRequest("POST", "/api/admin/s3-config/test", configData);
+            return retestResponse.json();
+          } else {
+            throw new Error(createData.error || 'Failed to create bucket');
+          }
+        } else {
+          // User cancelled bucket creation
+          return data;
+        }
+      }
+      
+      if (!response.ok && response.status !== 404) {
+        throw new Error(data.error || data.message || 'Test failed');
+      }
+      
+      return data;
     },
     onSuccess: (data) => {
       toast({
         title: data.success ? "Success" : "Connection Failed",
-        description: data.message,
+        description: data.message || data.details?.suggestion || "Check your configuration",
         variant: data.success ? "default" : "destructive"
       });
       setTestingS3(false);

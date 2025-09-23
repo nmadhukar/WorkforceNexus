@@ -1752,24 +1752,151 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           });
         } catch (error: any) {
-          res.status(400).json({
-            success: false,
-            message: 'Failed to connect to S3',
-            error: error.message || 'Unknown error',
-            details: {
-              region,
-              bucketName,
-              errorCode: error.name,
-              suggestion: error.name === 'NoSuchBucket' ? 'The bucket does not exist' :
-                        error.name === 'AccessDenied' ? 'Invalid credentials or insufficient permissions' :
-                        error.name === 'PermanentRedirect' ? 'Wrong region for this bucket' :
-                        'Check your configuration and try again'
-            }
-          });
+          // Special handling for bucket not found
+          if (error.name === 'NoSuchBucket') {
+            res.status(404).json({
+              success: false,
+              message: 'Bucket does not exist',
+              error: error.message || 'The specified bucket does not exist',
+              details: {
+                region,
+                bucketName,
+                errorCode: 'NoSuchBucket',
+                canCreate: true,
+                suggestion: 'Would you like to create this bucket?'
+              }
+            });
+          } else {
+            res.status(400).json({
+              success: false,
+              message: 'Failed to connect to S3',
+              error: error.message || 'Unknown error',
+              details: {
+                region,
+                bucketName,
+                errorCode: error.name,
+                canCreate: false,
+                suggestion: error.name === 'AccessDenied' ? 'Invalid credentials or insufficient permissions' :
+                          error.name === 'PermanentRedirect' ? 'Wrong region for this bucket' :
+                          'Check your configuration and try again'
+              }
+            });
+          }
         }
       } catch (error) {
         console.error('Error testing S3 configuration:', error);
         res.status(500).json({ error: 'Failed to test S3 configuration' });
+      }
+    }
+  );
+  
+  /**
+   * POST /api/admin/s3-config/create-bucket
+   * Create a new S3 bucket
+   */
+  app.post('/api/admin/s3-config/create-bucket',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    [
+      body('accessKeyId').notEmpty().withMessage('AWS Access Key ID is required'),
+      body('secretAccessKey').notEmpty().withMessage('AWS Secret Access Key is required'),
+      body('region').notEmpty().withMessage('AWS Region is required'),
+      body('bucketName').notEmpty().withMessage('S3 Bucket Name is required')
+    ],
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { accessKeyId, secretAccessKey, region, bucketName, endpoint } = req.body;
+        
+        // Import S3 client
+        const { S3Client, CreateBucketCommand, PutBucketCorsCommand } = await import('@aws-sdk/client-s3');
+        
+        // Create a client with provided credentials
+        const clientConfig: any = {
+          region,
+          credentials: {
+            accessKeyId,
+            secretAccessKey
+          },
+          forcePathStyle: true
+        };
+        
+        if (endpoint) {
+          clientConfig.endpoint = endpoint;
+        }
+        
+        const s3Client = new S3Client(clientConfig);
+        
+        try {
+          // Create the bucket
+          const createBucketCommand = new CreateBucketCommand({
+            Bucket: bucketName,
+            // Add LocationConstraint for regions other than us-east-1
+            ...(region !== 'us-east-1' && {
+              CreateBucketConfiguration: {
+                LocationConstraint: region
+              }
+            })
+          });
+          
+          await s3Client.send(createBucketCommand);
+          
+          // Set CORS configuration for the bucket
+          const corsCommand = new PutBucketCorsCommand({
+            Bucket: bucketName,
+            CORSConfiguration: {
+              CORSRules: [
+                {
+                  AllowedHeaders: ['*'],
+                  AllowedMethods: ['GET', 'PUT', 'POST', 'DELETE', 'HEAD'],
+                  AllowedOrigins: ['*'],
+                  ExposeHeaders: ['ETag'],
+                  MaxAgeSeconds: 3000
+                }
+              ]
+            }
+          });
+          
+          await s3Client.send(corsCommand);
+          
+          res.json({
+            success: true,
+            message: `Successfully created S3 bucket: ${bucketName}`,
+            details: {
+              region,
+              bucketName,
+              corsEnabled: true
+            }
+          });
+        } catch (error: any) {
+          if (error.name === 'BucketAlreadyExists' || error.name === 'BucketAlreadyOwnedByYou') {
+            res.status(400).json({
+              success: false,
+              message: 'Bucket already exists',
+              error: 'A bucket with this name already exists',
+              details: {
+                region,
+                bucketName,
+                suggestion: 'Try using a different bucket name'
+              }
+            });
+          } else {
+            res.status(400).json({
+              success: false,
+              message: 'Failed to create bucket',
+              error: error.message || 'Unknown error',
+              details: {
+                region,
+                bucketName,
+                errorCode: error.name,
+                suggestion: 'Check your AWS credentials and permissions'
+              }
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error creating S3 bucket:', error);
+        res.status(500).json({ error: 'Failed to create S3 bucket' });
       }
     }
   );
