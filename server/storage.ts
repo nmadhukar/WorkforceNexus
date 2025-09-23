@@ -134,8 +134,43 @@ export interface IStorage {
    */
   createUser(user: InsertUser): Promise<User>;
   
-  // Employee operations
+  /**
+   * Employee Management Operations
+   */
+  
+  /**
+   * Retrieve employee by ID
+   * @param {number} id - Employee's unique identifier
+   * @returns {Promise<Employee | undefined>} Employee object or undefined if not found
+   * @throws {Error} Database connection or query errors
+   * @example
+   * const employee = await storage.getEmployee(123);
+   * if (employee) {
+   *   console.log(`Found ${employee.firstName} ${employee.lastName}`);
+   * }
+   */
   getEmployee(id: number): Promise<Employee | undefined>;
+  
+  /**
+   * Retrieve paginated list of employees with filtering
+   * @param {object} [options] - Query options for filtering and pagination
+   * @param {number} [options.limit=10] - Maximum number of employees to return
+   * @param {number} [options.offset=0] - Number of employees to skip
+   * @param {string} [options.search] - Search term for name, email, or ID
+   * @param {string} [options.department] - Filter by department
+   * @param {string} [options.status] - Filter by employment status
+   * @param {string} [options.location] - Filter by work location
+   * @returns {Promise<{employees: Employee[]; total: number}>} Paginated employee list with total count
+   * @throws {Error} Database query errors or invalid pagination parameters
+   * @example
+   * const result = await storage.getEmployees({
+   *   limit: 20,
+   *   search: 'john',
+   *   department: 'Nursing',
+   *   status: 'active'
+   * });
+   * console.log(`Found ${result.total} employees, showing ${result.employees.length}`);
+   */
   getEmployees(options?: {
     limit?: number;
     offset?: number;
@@ -144,19 +179,137 @@ export interface IStorage {
     status?: string;
     location?: string;
   }): Promise<{ employees: Employee[]; total: number }>;
+  
+  /**
+   * Create a new employee record
+   * @param {InsertEmployee} employee - Employee data for creation
+   * @returns {Promise<Employee>} Newly created employee with generated ID
+   * @throws {Error} Validation errors, constraint violations, or database errors
+   * @example
+   * const newEmployee = await storage.createEmployee({
+   *   firstName: 'Jane',
+   *   lastName: 'Smith',
+   *   workEmail: 'jane.smith@hospital.com',
+   *   department: 'Emergency Medicine',
+   *   status: 'active'
+   * });
+   */
   createEmployee(employee: InsertEmployee): Promise<Employee>;
+  
+  /**
+   * Update existing employee record
+   * @param {number} id - Employee ID to update
+   * @param {Partial<InsertEmployee>} employee - Partial employee data for updates
+   * @returns {Promise<Employee>} Updated employee object
+   * @throws {Error} Employee not found, validation errors, or database errors
+   * @example
+   * const updated = await storage.updateEmployee(123, {
+   *   department: 'Cardiology',
+   *   status: 'active'
+   * });
+   */
   updateEmployee(id: number, employee: Partial<InsertEmployee>): Promise<Employee>;
+  
+  /**
+   * Delete employee record and all related data
+   * @param {number} id - Employee ID to delete
+   * @returns {Promise<void>} Resolves when deletion is complete
+   * @throws {Error} Employee not found, foreign key constraints, or database errors
+   * @example
+   * await storage.deleteEmployee(123);
+   * console.log('Employee and all related records deleted');
+   */
   deleteEmployee(id: number): Promise<void>;
   
-  // Related data operations
+  /**
+   * Employee Education Management
+   */
+  
+  /**
+   * Get all education records for an employee
+   * @param {number} employeeId - Employee's unique identifier
+   * @returns {Promise<Education[]>} Array of education records
+   * @throws {Error} Database errors or invalid employee ID
+   * @example
+   * const educations = await storage.getEmployeeEducations(123);
+   * educations.forEach(edu => {
+   *   console.log(`${edu.degree} from ${edu.schoolInstitution}`);
+   * });
+   */
   getEmployeeEducations(employeeId: number): Promise<Education[]>;
+  
+  /**
+   * Create new education record for employee
+   * @param {InsertEducation} education - Education data including employee ID
+   * @returns {Promise<Education>} Created education record
+   * @throws {Error} Validation errors or database constraints
+   * @example
+   * const education = await storage.createEducation({
+   *   employeeId: 123,
+   *   schoolInstitution: 'Johns Hopkins University',
+   *   degree: 'MD',
+   *   graduationYear: 2015
+   * });
+   */
   createEducation(education: InsertEducation): Promise<Education>;
+  
+  /**
+   * Update existing education record
+   * @param {number} id - Education record ID
+   * @param {Partial<InsertEducation>} education - Partial education data
+   * @returns {Promise<Education>} Updated education record
+   * @throws {Error} Record not found or validation errors
+   */
   updateEducation(id: number, education: Partial<InsertEducation>): Promise<Education>;
+  
+  /**
+   * Delete education record
+   * @param {number} id - Education record ID to delete
+   * @returns {Promise<void>} Resolves when deletion is complete
+   * @throws {Error} Record not found or database errors
+   */
   deleteEducation(id: number): Promise<void>;
   
+  /**
+   * Employee Employment History Management
+   */
+  
+  /**
+   * Get employment history for an employee
+   * @param {number} employeeId - Employee's unique identifier
+   * @returns {Promise<Employment[]>} Array of employment records
+   * @throws {Error} Database errors or invalid employee ID
+   * @example
+   * const employments = await storage.getEmployeeEmployments(123);
+   * employments.forEach(emp => {
+   *   console.log(`${emp.position} at ${emp.employer} (${emp.startDate} - ${emp.endDate || 'present'})`);
+   * });
+   */
   getEmployeeEmployments(employeeId: number): Promise<Employment[]>;
+  
+  /**
+   * Create new employment record
+   * @param {InsertEmployment} employment - Employment data
+   * @returns {Promise<Employment>} Created employment record
+   * @throws {Error} Validation errors or database constraints
+   */
   createEmployment(employment: InsertEmployment): Promise<Employment>;
+  
+  /**
+   * Update existing employment record
+   * @param {number} id - Employment record ID
+   * @param {Partial<InsertEmployment>} employment - Partial employment data
+   * @returns {Promise<Employment>} Updated employment record
+   * @throws {Error} Record not found or validation errors
+   */
   updateEmployment(id: number, employment: Partial<InsertEmployment>): Promise<Employment>;
+  
+  /**
+   * Delete employment record
+   * @param {number} id - Employment record ID to delete
+   * @returns {Promise<void>} Resolves when deletion is complete
+   * @throws {Error} Record not found or database errors
+   */
   deleteEmployment(id: number): Promise<void>;
   
   getEmployeePeerReferences(employeeId: number): Promise<PeerReference[]>;
@@ -164,19 +317,138 @@ export interface IStorage {
   updatePeerReference(id: number, reference: Partial<InsertPeerReference>): Promise<PeerReference>;
   deletePeerReference(id: number): Promise<void>;
   
+  /**
+   * State Medical License Management
+   */
+  
+  /**
+   * Get all state medical licenses for an employee
+   * @param {number} employeeId - Employee's unique identifier
+   * @returns {Promise<StateLicense[]>} Array of state license records with expiration tracking
+   * @throws {Error} Database errors or invalid employee ID
+   * @example
+   * const licenses = await storage.getEmployeeStateLicenses(123);
+   * licenses.forEach(license => {
+   *   console.log(`${license.state} License: ${license.licenseNumber} (expires: ${license.expirationDate})`);
+   * });
+   */
   getEmployeeStateLicenses(employeeId: number): Promise<StateLicense[]>;
+  
+  /**
+   * Create new state medical license record
+   * @param {InsertStateLicense} license - State license data with expiration tracking
+   * @returns {Promise<StateLicense>} Created license record
+   * @throws {Error} Validation errors, duplicate license numbers, or database constraints
+   * @example
+   * const license = await storage.createStateLicense({
+   *   employeeId: 123,
+   *   state: 'CA',
+   *   licenseNumber: 'A12345',
+   *   issueDate: new Date('2020-01-15'),
+   *   expirationDate: new Date('2025-01-15')
+   * });
+   */
   createStateLicense(license: InsertStateLicense): Promise<StateLicense>;
+  
+  /**
+   * Update state medical license record
+   * @param {number} id - License record ID
+   * @param {Partial<InsertStateLicense>} license - Partial license data for updates
+   * @returns {Promise<StateLicense>} Updated license record
+   * @throws {Error} Record not found, validation errors, or duplicate license numbers
+   */
   updateStateLicense(id: number, license: Partial<InsertStateLicense>): Promise<StateLicense>;
+  
+  /**
+   * Delete state medical license record
+   * @param {number} id - License record ID to delete
+   * @returns {Promise<void>} Resolves when deletion is complete
+   * @throws {Error} Record not found or database errors
+   */
   deleteStateLicense(id: number): Promise<void>;
   
+  /**
+   * DEA License Management (Controlled Substances)
+   */
+  
+  /**
+   * Get all DEA licenses for an employee
+   * @param {number} employeeId - Employee's unique identifier
+   * @returns {Promise<DeaLicense[]>} Array of DEA license records for controlled substance prescriptions
+   * @throws {Error} Database errors or invalid employee ID
+   * @example
+   * const deaLicenses = await storage.getEmployeeDeaLicenses(123);
+   * deaLicenses.forEach(dea => {
+   *   console.log(`DEA: ${dea.licenseNumber} (expires: ${dea.expirationDate})`);
+   * });
+   */
   getEmployeeDeaLicenses(employeeId: number): Promise<DeaLicense[]>;
+  
+  /**
+   * Create new DEA license record
+   * @param {InsertDeaLicense} license - DEA license data for controlled substance authorization
+   * @returns {Promise<DeaLicense>} Created DEA license record
+   * @throws {Error} Validation errors, duplicate DEA numbers, or database constraints
+   */
   createDeaLicense(license: InsertDeaLicense): Promise<DeaLicense>;
+  
+  /**
+   * Update DEA license record
+   * @param {number} id - DEA license record ID
+   * @param {Partial<InsertDeaLicense>} license - Partial DEA license data
+   * @returns {Promise<DeaLicense>} Updated DEA license record
+   * @throws {Error} Record not found or validation errors
+   */
   updateDeaLicense(id: number, license: Partial<InsertDeaLicense>): Promise<DeaLicense>;
+  
+  /**
+   * Delete DEA license record
+   * @param {number} id - DEA license record ID to delete
+   * @returns {Promise<void>} Resolves when deletion is complete
+   * @throws {Error} Record not found or database errors
+   */
   deleteDeaLicense(id: number): Promise<void>;
   
+  /**
+   * Board Certification Management
+   */
+  
+  /**
+   * Get all board certifications for an employee
+   * @param {number} employeeId - Employee's unique identifier
+   * @returns {Promise<BoardCertification[]>} Array of specialty board certifications
+   * @throws {Error} Database errors or invalid employee ID
+   * @example
+   * const certs = await storage.getEmployeeBoardCertifications(123);
+   * certs.forEach(cert => {
+   *   console.log(`${cert.boardName}: ${cert.certification} (expires: ${cert.expirationDate})`);
+   * });
+   */
   getEmployeeBoardCertifications(employeeId: number): Promise<BoardCertification[]>;
+  
+  /**
+   * Create new board certification record
+   * @param {InsertBoardCertification} certification - Board certification data
+   * @returns {Promise<BoardCertification>} Created certification record
+   * @throws {Error} Validation errors or database constraints
+   */
   createBoardCertification(certification: InsertBoardCertification): Promise<BoardCertification>;
+  
+  /**
+   * Update board certification record
+   * @param {number} id - Certification record ID
+   * @param {Partial<InsertBoardCertification>} certification - Partial certification data
+   * @returns {Promise<BoardCertification>} Updated certification record
+   * @throws {Error} Record not found or validation errors
+   */
   updateBoardCertification(id: number, certification: Partial<InsertBoardCertification>): Promise<BoardCertification>;
+  
+  /**
+   * Delete board certification record
+   * @param {number} id - Certification record ID to delete
+   * @returns {Promise<void>} Resolves when deletion is complete
+   * @throws {Error} Record not found or database errors
+   */
   deleteBoardCertification(id: number): Promise<void>;
   
   getEmployeeDocuments(employeeId: number): Promise<Document[]>;
@@ -209,8 +481,46 @@ export interface IStorage {
   updateIncidentLog(id: number, log: Partial<InsertIncidentLog>): Promise<IncidentLog>;
   deleteIncidentLog(id: number): Promise<void>;
   
-  // Audit operations
+  /**
+   * Audit Trail Management
+   */
+  
+  /**
+   * Create new audit record for compliance tracking
+   * @param {InsertAudit} audit - Audit data with change details
+   * @returns {Promise<Audit>} Created audit record with timestamp
+   * @throws {Error} Validation errors or database constraints
+   * @example
+   * const audit = await storage.createAudit({
+   *   tableName: 'employees',
+   *   recordId: 123,
+   *   action: 'UPDATE',
+   *   changedBy: 456,
+   *   oldData: { status: 'inactive' },
+   *   newData: { status: 'active' }
+   * });
+   */
   createAudit(audit: InsertAudit): Promise<Audit>;
+  
+  /**
+   * Retrieve audit records with filtering for compliance reporting
+   * @param {object} [options] - Query options for audit filtering
+   * @param {number} [options.limit=50] - Maximum number of audit records
+   * @param {number} [options.offset=0] - Number of records to skip
+   * @param {string} [options.tableName] - Filter by specific table
+   * @param {string} [options.action] - Filter by action type (CREATE/UPDATE/DELETE)
+   * @param {Date} [options.startDate] - Filter audits after this date
+   * @param {Date} [options.endDate] - Filter audits before this date
+   * @returns {Promise<{audits: Audit[]; total: number}>} Paginated audit records with total count
+   * @throws {Error} Database query errors or invalid date ranges
+   * @example
+   * const auditReport = await storage.getAudits({
+   *   tableName: 'employees',
+   *   startDate: new Date('2024-01-01'),
+   *   endDate: new Date('2024-12-31'),
+   *   limit: 100
+   * });
+   */
   getAudits(options?: {
     limit?: number;
     offset?: number;
@@ -220,8 +530,32 @@ export interface IStorage {
     endDate?: Date;
   }): Promise<{ audits: Audit[]; total: number }>;
   
-  // Report operations
+  /**
+   * Compliance Reporting Operations
+   */
+  
+  /**
+   * Get licenses and certifications expiring within specified days
+   * @param {number} days - Number of days ahead to check for expirations
+   * @returns {Promise<any[]>} Array of expiring items with employee details
+   * @throws {Error} Database query errors or invalid day parameter
+   * @example
+   * const expiring = await storage.getExpiringItems(30);
+   * expiring.forEach(item => {
+   *   console.log(`${item.employeeName}: ${item.itemType} expires in ${item.daysRemaining} days`);
+   * });
+   */
   getExpiringItems(days: number): Promise<any[]>;
+  
+  /**
+   * Get comprehensive employee statistics for management dashboard
+   * @returns {Promise<object>} Employee statistics including compliance metrics
+   * @throws {Error} Database aggregation errors
+   * @example
+   * const stats = await storage.getEmployeeStats();
+   * console.log(`Total: ${stats.totalEmployees}, Active: ${stats.activeEmployees}`);
+   * console.log(`Expiring Soon: ${stats.expiringSoon}, Pending Docs: ${stats.pendingDocs}`);
+   */
   getEmployeeStats(): Promise<{
     totalEmployees: number;
     activeEmployees: number;
@@ -262,16 +596,108 @@ export interface IStorage {
     localCount: number;
   }>;
   
-  // API Key operations
+  /**
+   * API Key Security Management
+   */
+  
+  /**
+   * Create new API key with secure hash storage
+   * @param {InsertApiKey} apiKey - API key data with permissions and expiration
+   * @returns {Promise<ApiKey>} Created API key record (hash stored, not plain key)
+   * @throws {Error} Validation errors, duplicate names, or database constraints
+   * @example
+   * const apiKey = await storage.createApiKey({
+   *   name: 'Integration API Key',
+   *   keyHash: '$2b$10$...', // bcrypt hash
+   *   keyPrefix: 'hrms_live_abc123',
+   *   userId: 1,
+   *   permissions: ['read:employees', 'write:employees'],
+   *   expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000) // 90 days
+   * });
+   */
   createApiKey(apiKey: InsertApiKey): Promise<ApiKey>;
+  
+  /**
+   * Retrieve API key by ID
+   * @param {number} id - API key's unique identifier
+   * @returns {Promise<ApiKey | undefined>} API key record or undefined if not found
+   * @throws {Error} Database query errors
+   */
   getApiKey(id: number): Promise<ApiKey | undefined>;
+  
+  /**
+   * Find API key by hash for authentication
+   * @param {string} keyHash - Bcrypt hash of the API key
+   * @returns {Promise<ApiKey | undefined>} API key record or undefined if not found
+   * @throws {Error} Database query errors
+   */
   getApiKeyByHash(keyHash: string): Promise<ApiKey | undefined>;
+  
+  /**
+   * Find API key by prefix for efficient lookup
+   * @param {string} prefix - First 16 characters of the API key
+   * @returns {Promise<ApiKey | undefined>} API key record or undefined if not found
+   * @throws {Error} Database query errors
+   * @example
+   * const apiKey = await storage.getApiKeyByPrefix('hrms_live_abc123');
+   * if (apiKey && !apiKey.revokedAt) {
+   *   // Proceed with full hash verification
+   * }
+   */
   getApiKeyByPrefix(prefix: string): Promise<ApiKey | undefined>;
+  
+  /**
+   * Get all API keys for a specific user
+   * @param {number} userId - User's unique identifier
+   * @returns {Promise<ApiKey[]>} Array of API keys owned by the user
+   * @throws {Error} Database query errors
+   */
   getUserApiKeys(userId: number): Promise<ApiKey[]>;
+  
+  /**
+   * Update API key properties (permissions, expiration, etc.)
+   * @param {number} id - API key ID to update
+   * @param {Partial<ApiKey>} updates - Partial API key data for updates
+   * @returns {Promise<ApiKey>} Updated API key record
+   * @throws {Error} API key not found or validation errors
+   */
   updateApiKey(id: number, updates: Partial<ApiKey>): Promise<ApiKey>;
+  
+  /**
+   * Revoke API key (sets revokedAt timestamp)
+   * @param {number} id - API key ID to revoke
+   * @returns {Promise<void>} Resolves when revocation is complete
+   * @throws {Error} API key not found or database errors
+   * @example
+   * await storage.revokeApiKey(123);
+   * console.log('API key revoked - access immediately terminated');
+   */
   revokeApiKey(id: number): Promise<void>;
+  
+  /**
+   * Permanently delete API key record
+   * @param {number} id - API key ID to delete
+   * @returns {Promise<void>} Resolves when deletion is complete
+   * @throws {Error} API key not found or database errors
+   */
   deleteApiKey(id: number): Promise<void>;
+  
+  /**
+   * Get all active (non-revoked, non-expired) API keys
+   * @returns {Promise<ApiKey[]>} Array of active API keys
+   * @throws {Error} Database query errors
+   */
   getActiveApiKeys(): Promise<ApiKey[]>;
+  
+  /**
+   * Get API keys expiring within specified days
+   * @param {number} days - Number of days ahead to check for expiring keys
+   * @returns {Promise<ApiKey[]>} Array of API keys expiring soon
+   * @throws {Error} Database query errors
+   * @example
+   * const expiring = await storage.getExpiringApiKeys(7);
+   * // Send notification emails for keys expiring in 7 days
+   */
   getExpiringApiKeys(days: number): Promise<ApiKey[]>;
   
   // API Key Rotation operations

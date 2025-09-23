@@ -1,9 +1,24 @@
 /**
- * AWS SES Service
+ * @fileoverview AWS SES Service for Email Notifications
  * 
- * Handles email sending through Amazon Simple Email Service (SES).
- * Manages configuration, sending, and tracking of email notifications
- * for employee onboarding invitations and reminders.
+ * This module provides comprehensive email functionality for the HR management system
+ * using Amazon Simple Email Service (SES). It handles configuration management,
+ * email sending, template generation, and tracking for employee communications.
+ * 
+ * Features:
+ * - Secure credential encryption and storage
+ * - HTML email template generation for invitations
+ * - Email verification and configuration testing
+ * - Automatic retry logic and error handling
+ * - Development environment fallback support
+ * 
+ * @module sesService
+ * @requires @aws-sdk/client-ses
+ * @requires @aws-sdk/node-http-handler
+ * @requires ../db
+ * @requires @shared/schema
+ * @requires drizzle-orm
+ * @requires crypto
  */
 
 import { SESClient, SendEmailCommand, VerifyEmailIdentityCommand } from "@aws-sdk/client-ses";
@@ -18,7 +33,23 @@ const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toSt
 const ENCRYPTION_IV_LENGTH = 16;
 
 /**
- * Encrypt sensitive data using AES-256
+ * Encrypt sensitive data using AES-256-CBC encryption
+ * 
+ * @function encrypt
+ * @param {string} text - Plain text to encrypt
+ * @returns {string} Encrypted text in format "iv:encryptedData"
+ * 
+ * @description
+ * Encrypts sensitive configuration data such as AWS credentials
+ * using AES-256-CBC encryption. The function generates a random
+ * initialization vector (IV) for each encryption to ensure security.
+ * 
+ * @throws {Error} Encryption fails due to invalid input or crypto errors
+ * 
+ * @example
+ * const accessKey = "AKIA1234567890ABCDEF";
+ * const encrypted = encrypt(accessKey);
+ * // Returns: "a1b2c3d4e5f6....:x9y8z7w6v5u4...."
  */
 function encrypt(text: string): string {
   const iv = crypto.randomBytes(ENCRYPTION_IV_LENGTH);
@@ -29,7 +60,23 @@ function encrypt(text: string): string {
 }
 
 /**
- * Decrypt sensitive data
+ * Decrypt AES-256-CBC encrypted sensitive data
+ * 
+ * @function decrypt
+ * @param {string} text - Encrypted text in format "iv:encryptedData"
+ * @returns {string} Decrypted plain text
+ * 
+ * @description
+ * Decrypts data that was encrypted using the encrypt() function.
+ * Expects input in the format "iv:encryptedData" where both
+ * components are hex-encoded.
+ * 
+ * @throws {Error} Decryption fails due to invalid format, wrong key, or corrupted data
+ * 
+ * @example
+ * const encrypted = "a1b2c3d4e5f6....:x9y8z7w6v5u4....";
+ * const decrypted = decrypt(encrypted);
+ * // Returns: "AKIA1234567890ABCDEF"
  */
 function decrypt(text: string): string {
   const textParts = text.split(':');
@@ -41,19 +88,41 @@ function decrypt(text: string): string {
   return decrypted.toString();
 }
 
+/**
+ * Email options for sending messages via SES
+ * 
+ * @interface EmailOptions
+ * @description Configuration object for email sending operations
+ */
 export interface EmailOptions {
+  /** Recipient email address */
   to: string;
+  /** Email subject line */
   subject: string;
+  /** Plain text email body (optional) */
   bodyText?: string;
+  /** HTML email body (optional) */
   bodyHtml?: string;
+  /** Reply-to email address (optional) */
   replyTo?: string;
 }
 
+/**
+ * Template data for employee invitation emails
+ * 
+ * @interface EmailTemplateData
+ * @description Data structure for generating personalized invitation emails
+ */
 export interface EmailTemplateData {
+  /** Employee's first name */
   firstName: string;
+  /** Employee's last name */
   lastName: string;
+  /** Unique invitation URL for employee onboarding */
   invitationLink: string;
+  /** Human-readable expiration timeframe (e.g., "in 7 days") */
   expiresIn?: string;
+  /** Reminder sequence number (1-3 for escalating urgency) */
   reminderNumber?: number;
 }
 
@@ -64,6 +133,28 @@ export class SESService {
 
   /**
    * Initialize SES client with configuration from database
+   * 
+   * @async
+   * @method initialize
+   * @returns {Promise<boolean>} True if initialization successful, false otherwise
+   * 
+   * @description
+   * Sets up the AWS SES client using configuration stored in the database.
+   * The method:
+   * - Retrieves enabled SES configuration from database
+   * - Decrypts stored AWS credentials
+   * - Validates credentials and handles development environment
+   * - Creates SES client with timeout configuration
+   * - Sets initialization status for the service
+   * 
+   * @throws {Error} Database connection errors or invalid configuration
+   * 
+   * @example
+   * const sesService = new SESService();
+   * const initialized = await sesService.initialize();
+   * if (!initialized) {
+   *   console.log('SES service failed to initialize');
+   * }
    */
   async initialize(): Promise<boolean> {
     try {
@@ -130,6 +221,37 @@ export class SESService {
 
   /**
    * Save or update SES configuration in database
+   * 
+   * @async
+   * @method saveConfiguration
+   * @param {object} config - SES configuration object
+   * @param {string} config.region - AWS region for SES (e.g., 'us-east-1')
+   * @param {string} config.accessKeyId - AWS access key ID
+   * @param {string} config.secretAccessKey - AWS secret access key
+   * @param {string} config.fromEmail - Verified sender email address
+   * @param {string} [config.fromName] - Display name for sender
+   * @param {boolean} [config.enabled] - Whether to enable this configuration
+   * @param {number} config.updatedBy - User ID of admin making changes
+   * @returns {Promise<boolean>} True if configuration saved successfully
+   * 
+   * @description
+   * Securely stores or updates SES configuration in the database.
+   * Sensitive credentials are encrypted before storage using AES-256.
+   * After saving, the service automatically reinitializes with new settings.
+   * 
+   * @throws {Error} Database errors, encryption failures, or invalid configuration
+   * 
+   * @example
+   * const config = {
+   *   region: 'us-east-1',
+   *   accessKeyId: 'AKIA1234567890ABCDEF',
+   *   secretAccessKey: 'abcdef1234567890abcdef1234567890abcdef12',
+   *   fromEmail: 'hr@company.com',
+   *   fromName: 'HR Department',
+   *   enabled: true,
+   *   updatedBy: 1
+   * };
+   * const saved = await sesService.saveConfiguration(config);
    */
   async saveConfiguration(config: {
     region: string;
@@ -186,6 +308,26 @@ export class SESService {
 
   /**
    * Verify email address with AWS SES
+   * 
+   * @async
+   * @method verifyEmailAddress
+   * @param {string} email - Email address to verify with AWS SES
+   * @returns {Promise<boolean>} True if verification email sent successfully
+   * 
+   * @description
+   * Initiates email verification process with AWS SES. The recipient
+   * will receive a verification email from AWS and must click the link
+   * to confirm ownership. Only verified email addresses can be used
+   * as senders in AWS SES (unless in production mode).
+   * 
+   * @throws {Error} AWS SES API errors or network connectivity issues
+   * 
+   * @example
+   * // Verify the HR department email
+   * const verified = await sesService.verifyEmailAddress('hr@company.com');
+   * if (verified) {
+   *   console.log('Verification email sent to hr@company.com');
+   * }
    */
   async verifyEmailAddress(email: string): Promise<boolean> {
     if (!this.initialized) {
@@ -210,6 +352,32 @@ export class SESService {
 
   /**
    * Test SES configuration by sending a test email
+   * 
+   * @async
+   * @method testConfiguration
+   * @param {string} testEmail - Email address to send test message to
+   * @returns {Promise<{success: boolean; error?: string}>} Test result with success status and optional error
+   * 
+   * @description
+   * Validates SES configuration by sending a test email. If successful,
+   * marks the configuration as verified in the database. This is used
+   * to ensure the SES setup is working correctly before using it for
+   * production email sending.
+   * 
+   * The test email includes:
+   * - Professional HTML template
+   * - Success confirmation message
+   * - Configuration verification status
+   * 
+   * @throws {Error} Does not throw - returns error in result object
+   * 
+   * @example
+   * const result = await sesService.testConfiguration('admin@company.com');
+   * if (result.success) {
+   *   console.log('SES configuration is working correctly');
+   * } else {
+   *   console.error('SES test failed:', result.error);
+   * }
    */
   async testConfiguration(testEmail: string): Promise<{ success: boolean; error?: string }> {
     try {
@@ -251,6 +419,29 @@ export class SESService {
 
   /**
    * Generate invitation email HTML template
+   * 
+   * @private
+   * @method generateInvitationEmailHtml
+   * @param {EmailTemplateData} data - Template data for personalization
+   * @returns {string} Complete HTML email template
+   * 
+   * @description
+   * Creates a professional HTML email template for employee invitations.
+   * The template includes:
+   * - Responsive design for mobile and desktop
+   * - Progressive reminder styling (blue → orange → red)
+   * - Call-to-action button with hover effects
+   * - Warning messages for reminder emails
+   * - Expiration notices for urgency
+   * 
+   * @example
+   * const htmlTemplate = this.generateInvitationEmailHtml({
+   *   firstName: 'John',
+   *   lastName: 'Doe',
+   *   invitationLink: 'https://hr.company.com/onboard/abc123',
+   *   expiresIn: 'in 7 days',
+   *   reminderNumber: 1
+   * });
    */
   private generateInvitationEmailHtml(data: EmailTemplateData): string {
     const isReminder = data.reminderNumber && data.reminderNumber > 0;
@@ -332,6 +523,31 @@ export class SESService {
 
   /**
    * Generate invitation email plain text template
+   * 
+   * @private
+   * @method generateInvitationEmailText
+   * @param {EmailTemplateData} data - Template data for personalization
+   * @returns {string} Complete plain text email template
+   * 
+   * @description
+   * Creates a plain text version of the invitation email for email clients
+   * that don't support HTML or for accessibility purposes. Includes all
+   * the same information as the HTML version but in a clean text format.
+   * 
+   * The text template includes:
+   * - Progressive reminder language
+   * - Clear action items and links
+   * - Expiration warnings
+   * - Contact information
+   * 
+   * @example
+   * const textTemplate = this.generateInvitationEmailText({
+   *   firstName: 'John',
+   *   lastName: 'Doe',
+   *   invitationLink: 'https://hr.company.com/onboard/abc123',
+   *   expiresIn: 'in 7 days',
+   *   reminderNumber: 2
+   * });
    */
   private generateInvitationEmailText(data: EmailTemplateData): string {
     const isReminder = data.reminderNumber && data.reminderNumber > 0;
@@ -366,7 +582,43 @@ HR Management System
   }
 
   /**
-   * Send invitation email
+   * Send invitation email to new employee
+   * 
+   * @async
+   * @method sendInvitationEmail
+   * @param {EmailTemplateData & {to: string}} data - Email recipient and template data
+   * @param {number} [invitationId] - Database ID for tracking purposes
+   * @param {number} [reminderNumber=0] - Reminder sequence number (0=initial, 1-3=reminders)
+   * @returns {Promise<{success: boolean; messageId?: string; error?: string}>} Send result
+   * 
+   * @description
+   * Sends a personalized invitation email to a new employee with onboarding
+   * instructions. The email includes:
+   * - Professional HTML and text templates
+   * - Personalized greeting and instructions
+   * - Secure invitation link with expiration
+   * - Progressive reminder styling for follow-ups
+   * 
+   * The method automatically:
+   * - Tracks email delivery in database
+   * - Adjusts subject line for reminders
+   * - Logs success/failure status
+   * - Returns detailed result information
+   * 
+   * @throws {Error} Database errors or email sending failures
+   * 
+   * @example
+   * const result = await sesService.sendInvitationEmail({
+   *   to: 'newemployee@company.com',
+   *   firstName: 'John',
+   *   lastName: 'Doe',
+   *   invitationLink: 'https://hr.company.com/onboard/abc123',
+   *   expiresIn: 'in 7 days'
+   * }, 456, 1);
+   * 
+   * if (result.success) {
+   *   console.log('Invitation sent with ID:', result.messageId);
+   * }
    */
   async sendInvitationEmail(
     data: EmailTemplateData & { to: string },
@@ -408,6 +660,42 @@ HR Management System
 
   /**
    * Send email through AWS SES
+   * 
+   * @async
+   * @method sendEmail
+   * @param {EmailOptions} options - Email configuration object
+   * @returns {Promise<{success: boolean; messageId?: string; error?: string}>} Send result with AWS message ID
+   * 
+   * @description
+   * Core email sending method that interfaces with AWS SES. This method:
+   * - Validates SES client initialization
+   * - Constructs proper SES parameters
+   * - Handles both HTML and text content
+   * - Manages reply-to addresses
+   * - Provides graceful fallback for development
+   * 
+   * The method automatically handles:
+   * - Service initialization if needed
+   * - UTF-8 character encoding
+   * - Proper sender name formatting
+   * - Development environment fallback
+   * 
+   * @throws {Error} AWS SES API errors, network issues, or invalid configuration
+   * 
+   * @example
+   * const result = await sesService.sendEmail({
+   *   to: 'recipient@company.com',
+   *   subject: 'Welcome to the Team',
+   *   bodyText: 'Welcome! Please complete your onboarding.',
+   *   bodyHtml: '<h1>Welcome!</h1><p>Please complete your onboarding.</p>',
+   *   replyTo: 'hr@company.com'
+   * });
+   * 
+   * if (result.success) {
+   *   console.log('Email sent with Message ID:', result.messageId);
+   * } else {
+   *   console.error('Failed to send email:', result.error);
+   * }
    */
   async sendEmail(options: EmailOptions): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {

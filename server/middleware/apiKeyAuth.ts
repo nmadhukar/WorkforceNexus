@@ -26,14 +26,38 @@ import { ApiKey, User } from "@shared/schema";
 
 /**
  * Express request extension for API key authentication
+ * 
+ * @interface ApiKeyRequest
+ * @extends {AuditRequest}
+ * @description Extends the AuditRequest interface to include API key authentication data.
+ * Used throughout the API to support dual authentication (session + API key).
  */
 export interface ApiKeyRequest extends AuditRequest {
+  /** Authenticated API key object from database */
   apiKey?: ApiKey;
+  /** Array of permissions granted to the API key */
   permissions?: string[];
 }
 
 /**
  * Available permission scopes for API keys
+ * 
+ * @constant {object} API_KEY_PERMISSIONS
+ * @description Defines all available permission scopes for API key access control.
+ * Permissions follow a resource:action pattern for fine-grained access control.
+ * Use wildcard '*' for full access.
+ * 
+ * @example
+ * // Grant read-only access to employees
+ * const permissions = [API_KEY_PERMISSIONS.READ_EMPLOYEES];
+ * 
+ * @example
+ * // Grant full employee management access
+ * const permissions = [
+ *   API_KEY_PERMISSIONS.READ_EMPLOYEES,
+ *   API_KEY_PERMISSIONS.WRITE_EMPLOYEES,
+ *   API_KEY_PERMISSIONS.DELETE_EMPLOYEES
+ * ];
  */
 export const API_KEY_PERMISSIONS = {
   // Employee permissions
@@ -113,9 +137,23 @@ export async function generateApiKey(environment: 'live' | 'test' = 'live'): Pro
 /**
  * Compare API key with stored hash
  * 
+ * @async
+ * @function verifyApiKey
  * @param {string} apiKey - Raw API key from request
- * @param {string} hash - Stored hash from database
- * @returns {Promise<boolean>} True if key matches hash
+ * @param {string} hash - Stored bcrypt hash from database
+ * @returns {Promise<boolean>} True if key matches hash, false otherwise
+ * 
+ * @description
+ * Securely compares a plain text API key with its stored bcrypt hash.
+ * Uses constant-time comparison to prevent timing attacks.
+ * 
+ * @throws {Error} Bcrypt comparison errors or invalid input
+ * 
+ * @example
+ * const isValid = await verifyApiKey('hrms_live_abc123...', '$2b$10$...');
+ * if (isValid) {
+ *   console.log('API key is valid');
+ * }
  */
 export async function verifyApiKey(apiKey: string, hash: string): Promise<boolean> {
   return bcrypt.compare(apiKey, hash);
@@ -124,9 +162,26 @@ export async function verifyApiKey(apiKey: string, hash: string): Promise<boolea
 /**
  * Check if API key has required permission
  * 
+ * @function hasPermission
  * @param {string[]} keyPermissions - Permissions granted to the API key
  * @param {string} requiredPermission - Permission required for the operation
- * @returns {boolean} True if permission is granted
+ * @returns {boolean} True if permission is granted, false otherwise
+ * 
+ * @description
+ * Checks if an API key has the required permission for an operation.
+ * Supports wildcard '*' permission for full access.
+ * 
+ * @throws {Error} Does not throw - handles invalid input gracefully
+ * 
+ * @example
+ * const permissions = ['read:employees', 'write:employees'];
+ * const canRead = hasPermission(permissions, 'read:employees'); // true
+ * const canDelete = hasPermission(permissions, 'delete:employees'); // false
+ * 
+ * @example
+ * // Wildcard permission grants everything
+ * const adminPermissions = ['*'];
+ * const canDoAnything = hasPermission(adminPermissions, 'delete:employees'); // true
  */
 export function hasPermission(keyPermissions: string[], requiredPermission: string): boolean {
   return keyPermissions.includes(requiredPermission) || keyPermissions.includes('*');
@@ -135,9 +190,24 @@ export function hasPermission(keyPermissions: string[], requiredPermission: stri
 /**
  * Check and update rate limit for API key
  * 
- * @param {number} apiKeyId - API key ID
- * @param {number} limit - Rate limit per hour
+ * @function checkRateLimit
+ * @param {number} apiKeyId - API key ID for tracking
+ * @param {number} limit - Maximum requests allowed per hour
  * @returns {boolean} True if within rate limit, false if exceeded
+ * 
+ * @description
+ * Implements in-memory rate limiting for API keys using a sliding window.
+ * Each API key gets its own counter that resets every hour.
+ * This prevents API abuse and ensures fair usage across all clients.
+ * 
+ * @throws {Error} Does not throw - handles invalid input gracefully
+ * 
+ * @example
+ * // Check if API key #123 can make another request (limit: 1000/hour)
+ * const canProceed = checkRateLimit(123, 1000);
+ * if (!canProceed) {
+ *   return res.status(429).json({ error: 'Rate limit exceeded' });
+ * }
  */
 function checkRateLimit(apiKeyId: number, limit: number): boolean {
   const now = new Date();
@@ -165,10 +235,12 @@ function checkRateLimit(apiKeyId: number, limit: number): boolean {
 /**
  * API Key Authentication Middleware
  * 
+ * @async
  * @function apiKeyAuth
  * @param {ApiKeyRequest} req - Express request with potential API key
  * @param {Response} res - Express response
  * @param {NextFunction} next - Express next middleware
+ * @returns {Promise<void>} Resolves when authentication is complete
  * 
  * @description
  * Authenticates requests using API keys with the following process:
@@ -181,9 +253,17 @@ function checkRateLimit(apiKeyId: number, limit: number): boolean {
  * 7. Updates lastUsedAt timestamp
  * 8. Attaches user and permissions to request
  * 
+ * @throws {Error} Database errors, bcrypt failures, or storage issues
+ * 
  * @example
  * // Use as middleware for API routes
  * app.get('/api/employees', apiKeyAuth, requirePermission('read:employees'), ...)
+ * 
+ * @example
+ * // API key can be provided in Authorization header
+ * // Authorization: Bearer hrms_live_abc123defg456...
+ * // Or in X-API-Key header
+ * // X-API-Key: hrms_live_abc123defg456...
  */
 export async function apiKeyAuth(
   req: ApiKeyRequest,
@@ -293,18 +373,29 @@ export async function apiKeyAuth(
  * Middleware to require specific permission for API key
  * 
  * @function requirePermission
- * @param {string} permission - Required permission
+ * @param {string} permission - Required permission (e.g., 'read:employees')
  * @returns {Function} Express middleware function
  * 
  * @description
  * Checks if the authenticated API key has the required permission.
- * Must be used after apiKeyAuth middleware.
+ * Must be used after apiKeyAuth middleware. Session-authenticated users
+ * bypass permission checks as they have full access.
+ * 
+ * @throws {Error} Does not throw - returns 403 response for insufficient permissions
  * 
  * @example
  * app.post('/api/employees', 
  *   apiKeyAuth, 
  *   requirePermission('write:employees'),
  *   createEmployee
+ * );
+ * 
+ * @example
+ * // Multiple permission checks
+ * app.delete('/api/employees/:id',
+ *   apiKeyAuth,
+ *   requirePermission('delete:employees'),
+ *   deleteEmployee
  * );
  */
 export function requirePermission(permission: string) {
@@ -341,13 +432,23 @@ export function requirePermission(permission: string) {
  * @param {ApiKeyRequest} req - Express request
  * @param {Response} res - Express response
  * @param {NextFunction} next - Express next middleware
+ * @returns {void}
  * 
  * @description
  * Ensures that the request is authenticated either via session or API key.
- * This provides dual authentication support for the API.
+ * This provides dual authentication support for the API, allowing both
+ * web users (session) and API clients (API key) to access the same endpoints.
+ * 
+ * @throws {Error} Does not throw - returns 401 response for unauthenticated requests
  * 
  * @example
- * app.get('/api/employees', apiKeyAuth, requireAnyAuth, ...)
+ * app.get('/api/employees', apiKeyAuth, requireAnyAuth, getEmployees);
+ * 
+ * @example
+ * // Works with session authentication (web users)
+ * // GET /api/employees (with session cookie)
+ * // Or with API key authentication (API clients)
+ * // GET /api/employees (with Authorization: Bearer hrms_live_...)
  */
 export function requireAnyAuth(
   req: ApiKeyRequest,
