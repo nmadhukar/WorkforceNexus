@@ -135,6 +135,88 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   
   /**
+   * Update an existing user account
+   * @param {number} id - User ID to update
+   * @param {Partial<InsertUser>} updates - Partial user data for updates
+   * @returns {Promise<User>} Updated user object
+   */
+  updateUser(id: number, updates: Partial<InsertUser>): Promise<User>;
+  
+  /**
+   * Retrieve a user by their email address
+   * @param {string} email - User's email address
+   * @returns {Promise<User | undefined>} User object or undefined if not found
+   */
+  getUserByEmail(email: string): Promise<User | undefined>;
+  
+  /**
+   * Update user status (active, suspended, locked, disabled)
+   * @param {number} id - User ID
+   * @param {string} status - New status value
+   * @returns {Promise<User>} Updated user object
+   */
+  updateUserStatus(id: number, status: string): Promise<User>;
+  
+  /**
+   * Get users by status for admin management
+   * @param {string} status - Status to filter by
+   * @returns {Promise<User[]>} Array of users with the specified status
+   */
+  getUsersByStatus(status: string): Promise<User[]>;
+  
+  /**
+   * Update password reset token and expiration
+   * @param {number} id - User ID
+   * @param {string} token - Password reset token
+   * @param {Date} expiresAt - Token expiration date
+   * @returns {Promise<User>} Updated user object
+   */
+  updatePasswordResetToken(id: number, token: string, expiresAt: Date): Promise<User>;
+  
+  /**
+   * Retrieve user by password reset token
+   * @param {string} token - Password reset token
+   * @returns {Promise<User | undefined>} User object or undefined if token not found/expired
+   */
+  getUserByPasswordResetToken(token: string): Promise<User | undefined>;
+  
+  /**
+   * Clear password reset token after successful reset
+   * @param {number} id - User ID
+   * @returns {Promise<User>} Updated user object
+   */
+  clearPasswordResetToken(id: number): Promise<User>;
+  
+  /**
+   * Increment failed login attempts counter
+   * @param {number} id - User ID
+   * @returns {Promise<User>} Updated user object
+   */
+  incrementFailedLoginAttempts(id: number): Promise<User>;
+  
+  /**
+   * Reset failed login attempts counter (after successful login)
+   * @param {number} id - User ID
+   * @returns {Promise<User>} Updated user object
+   */
+  resetFailedLoginAttempts(id: number): Promise<User>;
+  
+  /**
+   * Lock user account until specified time
+   * @param {number} id - User ID
+   * @param {Date} lockedUntil - Lock expiration date
+   * @returns {Promise<User>} Updated user object
+   */
+  lockUserUntil(id: number, lockedUntil: Date): Promise<User>;
+  
+  /**
+   * Update last login timestamp
+   * @param {number} id - User ID
+   * @returns {Promise<User>} Updated user object
+   */
+  updateLastLoginAt(id: number): Promise<User>;
+  
+  /**
    * Employee Management Operations
    */
   
@@ -801,6 +883,120 @@ export class DatabaseStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();
+    return user;
+  }
+
+  async updateUser(id: number, updates: Partial<InsertUser>): Promise<User> {
+    const [user] = await db.update(users).set(updates).where(eq(users.id, id)).returning();
+    if (!user) {
+      throw new Error(`User with id ${id} not found`);
+    }
+    return user;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
+  async updateUserStatus(id: number, status: string): Promise<User> {
+    const [user] = await db.update(users).set({ status }).where(eq(users.id, id)).returning();
+    if (!user) {
+      throw new Error(`User with id ${id} not found`);
+    }
+    return user;
+  }
+
+  async getUsersByStatus(status: string): Promise<User[]> {
+    return await db.select().from(users).where(eq(users.status, status));
+  }
+
+  async updatePasswordResetToken(id: number, token: string, expiresAt: Date): Promise<User> {
+    const [user] = await db.update(users)
+      .set({ 
+        passwordResetToken: token,
+        passwordResetExpiresAt: expiresAt
+      })
+      .where(eq(users.id, id))
+      .returning();
+    if (!user) {
+      throw new Error(`User with id ${id} not found`);
+    }
+    return user;
+  }
+
+  async getUserByPasswordResetToken(token: string): Promise<User | undefined> {
+    const [user] = await db.select()
+      .from(users)
+      .where(
+        and(
+          eq(users.passwordResetToken, token),
+          sql`${users.passwordResetExpiresAt} > NOW()`
+        )
+      );
+    return user;
+  }
+
+  async clearPasswordResetToken(id: number): Promise<User> {
+    const [user] = await db.update(users)
+      .set({ 
+        passwordResetToken: null,
+        passwordResetExpiresAt: null
+      })
+      .where(eq(users.id, id))
+      .returning();
+    if (!user) {
+      throw new Error(`User with id ${id} not found`);
+    }
+    return user;
+  }
+
+  async incrementFailedLoginAttempts(id: number): Promise<User> {
+    const [user] = await db.update(users)
+      .set({ 
+        failedLoginAttempts: sql`${users.failedLoginAttempts} + 1`
+      })
+      .where(eq(users.id, id))
+      .returning();
+    if (!user) {
+      throw new Error(`User with id ${id} not found`);
+    }
+    return user;
+  }
+
+  async resetFailedLoginAttempts(id: number): Promise<User> {
+    const [user] = await db.update(users)
+      .set({ 
+        failedLoginAttempts: 0,
+        lockedUntil: null
+      })
+      .where(eq(users.id, id))
+      .returning();
+    if (!user) {
+      throw new Error(`User with id ${id} not found`);
+    }
+    return user;
+  }
+
+  async lockUserUntil(id: number, lockedUntil: Date): Promise<User> {
+    const [user] = await db.update(users)
+      .set({ lockedUntil })
+      .where(eq(users.id, id))
+      .returning();
+    if (!user) {
+      throw new Error(`User with id ${id} not found`);
+    }
+    return user;
+  }
+
+  async updateLastLoginAt(id: number): Promise<User> {
+    const [user] = await db.update(users)
+      .set({ lastLoginAt: sql`NOW()` })
+      .where(eq(users.id, id))
+      .returning();
+    if (!user) {
+      throw new Error(`User with id ${id} not found`);
+    }
     return user;
   }
 

@@ -48,7 +48,14 @@ export const users = pgTable("users", {
   username: varchar("username", { length: 50 }).unique().notNull(), // Unique login identifier
   passwordHash: varchar("password_hash", { length: 255 }).notNull(), // Scrypt-hashed password with salt
   role: varchar("role", { length: 20 }).notNull().default("hr"), // User role for RBAC
-  createdAt: timestamp("created_at").defaultNow() // Account creation timestamp
+  status: varchar("status", { length: 20 }).default("active").notNull(), // User status: active | suspended | locked | disabled
+  email: varchar("email", { length: 100 }).unique(), // Optional email field (unique but nullable)
+  createdAt: timestamp("created_at").defaultNow().notNull(), // Account creation timestamp
+  lastLoginAt: timestamp("last_login_at"), // Last successful login timestamp
+  passwordResetToken: varchar("password_reset_token", { length: 255 }), // Password reset token for security
+  passwordResetExpiresAt: timestamp("password_reset_expires_at"), // Reset token expiration timestamp
+  failedLoginAttempts: integer("failed_login_attempts").default(0).notNull(), // Failed login counter for security
+  lockedUntil: timestamp("locked_until") // Temporary account lock expiration
 });
 
 /**
@@ -720,7 +727,22 @@ export const auditsRelations = relations(audits, ({ one }) => ({
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   passwordHash: true,
-  role: true
+  role: true,
+  status: true,
+  email: true,
+  lastLoginAt: true,
+  passwordResetToken: true,
+  passwordResetExpiresAt: true,
+  failedLoginAttempts: true,
+  lockedUntil: true
+}).partial({
+  status: true,
+  email: true,
+  lastLoginAt: true,
+  passwordResetToken: true,
+  passwordResetExpiresAt: true,
+  failedLoginAttempts: true,
+  lockedUntil: true
 });
 
 export const insertEmployeeSchema = createInsertSchema(employees).omit({
