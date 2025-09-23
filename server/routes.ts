@@ -2583,7 +2583,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Get all employee invitations
    */
   app.get('/api/invitations',
-    requireAuth,
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('read:employees'),
     requireRole(['admin', 'hr']),
     async (req: AuditRequest, res: Response) => {
       try {
@@ -2644,7 +2646,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Create a new employee invitation and send email
    */
   app.post('/api/invitations',
-    requireAuth,
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:employees'),
     requireRole(['admin', 'hr']),
     [
       body('firstName').notEmpty().withMessage('First name is required'),
@@ -2751,7 +2755,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Get form submission status for a specific invitation
    */
   app.get('/api/invitations/:id/form-status',
-    requireAuth,
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('read:employees'),
     requireRole(['admin', 'hr']),
     validateId,
     handleValidationErrors,
@@ -2805,7 +2811,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Approve completed onboarding and convert to full employee
    */
   app.post('/api/invitations/:id/approve',
-    requireAuth,
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:employees'),
     requireRole(['admin', 'hr']),
     validateId,
     handleValidationErrors,
@@ -2877,7 +2885,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Resend invitation email
    */
   app.post('/api/invitations/:id/resend',
-    requireAuth,
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:employees'),
     requireRole(['admin', 'hr']),
     validateId,
     handleValidationErrors,
@@ -2939,7 +2949,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Cancel an invitation
    */
   app.delete('/api/invitations/:id',
-    requireAuth,
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('delete:employees'),
     requireRole(['admin', 'hr']),
     validateId,
     handleValidationErrors,
