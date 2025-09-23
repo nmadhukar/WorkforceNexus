@@ -2672,7 +2672,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         // Generate secure invitation token
-        const invitationToken = generateApiKey();
+        const { key: invitationToken } = await generateApiKey('test');
         
         // Calculate expiration (7 days from now)
         const expiresAt = new Date();
