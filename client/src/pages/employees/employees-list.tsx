@@ -161,6 +161,7 @@ export default function EmployeesList() {
   };
 
   const handleResendInvitation = (invitationId: number) => {
+    console.log('Resending invitation:', invitationId);
     resendInvitationMutation.mutate(invitationId);
   };
 
@@ -400,7 +401,10 @@ export default function EmployeesList() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => setResendInvitationId(invitation.id)}
+                                    onClick={() => {
+                                      console.log('Opening resend dialog for invitation:', invitation.id);
+                                      setResendInvitationId(invitation.id);
+                                    }}
                                     disabled={resendInvitationMutation.isPending}
                                     data-testid={`button-resend-invitation-${invitation.id}`}
                                   >
