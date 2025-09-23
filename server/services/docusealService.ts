@@ -252,8 +252,7 @@ export class DocuSealService {
             description: apiTemplate.description || null,
             fields: apiTemplate.fields || null,
             signerRoles: apiTemplate.submitters || null,
-            documentCount: apiTemplate.documents?.length || 0,
-            lastSyncedAt: new Date()
+            documentCount: apiTemplate.documents?.length || 0
           };
 
           if (existingTemplate.length > 0) {
@@ -261,6 +260,7 @@ export class DocuSealService {
             await db.update(docusealTemplates)
               .set({
                 ...templateData,
+                lastSyncedAt: new Date(),
                 updatedAt: new Date()
               })
               .where(eq(docusealTemplates.id, existingTemplate[0].id));
