@@ -105,7 +105,7 @@ export default function EmployeesList() {
   // Send Invitation Mutation
   const sendInvitationMutation = useMutation({
     mutationFn: (invitationData: typeof newInvitation) => 
-      apiRequest("POST", "/api/invitations/send", invitationData),
+      apiRequest("POST", "/api/invitations", invitationData),
     onSuccess: () => {
       toast({
         title: "Success",

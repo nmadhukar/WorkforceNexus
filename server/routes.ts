@@ -2700,6 +2700,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Send invitation email
         const { sesService } = await import('./services/sesService');
+        console.log('Attempting to send invitation email to:', email);
+        
+        // Check if SES is initialized
+        const isInitialized = await sesService.initialize();
+        console.log('SES Service initialized:', isInitialized);
+        
         const emailResult = await sesService.sendInvitationEmail(
           {
             to: email,
@@ -2712,6 +2718,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           0 // Initial invitation, not a reminder
         );
         
+        console.log('Email send result:', emailResult);
+        
         if (!emailResult.success) {
           console.error('Failed to send invitation email:', emailResult.error);
           // Update invitation status to reflect email failure
@@ -2719,6 +2727,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             status: 'pending',
             metadata: { emailError: emailResult.error }
           });
+        } else {
+          console.log('Invitation email sent successfully to:', email);
         }
         
         // Log audit

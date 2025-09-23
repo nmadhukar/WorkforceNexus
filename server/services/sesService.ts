@@ -67,14 +67,24 @@ export class SESService {
   async initialize(): Promise<boolean> {
     try {
       // Get SES configuration from database
+      console.log("SES Service: Fetching configuration from database...");
       const configs = await db.select().from(sesConfigurations).where(eq(sesConfigurations.enabled, true));
       
       if (configs.length === 0) {
-        console.log("SES Service: No enabled configuration found");
+        console.log("SES Service: No enabled configuration found in database");
+        // Try to get all configs to see what's there
+        const allConfigs = await db.select().from(sesConfigurations);
+        console.log("SES Service: Total configurations in database:", allConfigs.length);
+        if (allConfigs.length > 0) {
+          console.log("SES Service: Found disabled configuration(s). Enable SES in settings.");
+        }
         return false;
       }
 
       this.config = configs[0];
+      console.log("SES Service: Found configuration with ID:", this.config.id);
+      console.log("SES Service: From email:", this.config.fromEmail);
+      console.log("SES Service: Region:", this.config.region);
       
       // Decrypt credentials
       const accessKeyId = this.config.accessKeyId ? decrypt(this.config.accessKeyId) : process.env.AWS_SES_ACCESS_KEY_ID;
@@ -82,6 +92,10 @@ export class SESService {
       
       if (!accessKeyId || !secretAccessKey) {
         console.error("SES Service: Missing AWS credentials");
+        console.error("SES Service: Has encrypted accessKeyId:", !!this.config.accessKeyId);
+        console.error("SES Service: Has encrypted secretAccessKey:", !!this.config.secretAccessKey);
+        console.error("SES Service: Has env AWS_SES_ACCESS_KEY_ID:", !!process.env.AWS_SES_ACCESS_KEY_ID);
+        console.error("SES Service: Has env AWS_SES_SECRET_ACCESS_KEY:", !!process.env.AWS_SES_SECRET_ACCESS_KEY);
         return false;
       }
 
@@ -95,7 +109,7 @@ export class SESService {
       });
 
       this.initialized = true;
-      console.log("SES Service: Initialized successfully");
+      console.log("SES Service: Initialized successfully with region:", this.config.region || process.env.AWS_SES_REGION || "us-east-1");
       return true;
     } catch (error) {
       console.error("SES Service: Initialization failed", error);
