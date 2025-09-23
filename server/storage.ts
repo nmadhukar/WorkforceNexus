@@ -1152,7 +1152,13 @@ export class DatabaseStorage implements IStorage {
    * @returns {Promise<ApiKey>} Created API key record
    */
   async createApiKey(apiKey: InsertApiKey): Promise<ApiKey> {
-    const [created] = await db.insert(apiKeys).values(apiKey).returning();
+    // Ensure permissions is a proper JSON value for jsonb field
+    const apiKeyData = {
+      ...apiKey,
+      permissions: apiKey.permissions || []
+    };
+    console.log('Creating API key with data:', JSON.stringify(apiKeyData, null, 2));
+    const [created] = await db.insert(apiKeys).values(apiKeyData).returning();
     return created;
   }
   
