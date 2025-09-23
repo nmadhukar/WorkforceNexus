@@ -180,10 +180,10 @@ export default function Settings() {
     enabled: isAdmin || user?.role === 'hr'
   });
 
-  // S3 Configuration Query (Admin only)
+  // S3 Configuration Query (Admin and HR users)
   const { data: s3Config, isLoading: s3ConfigLoading } = useQuery<S3Configuration>({
     queryKey: ["/api/admin/s3-config"],
-    enabled: isAdmin
+    enabled: isAdmin || user?.role === 'hr'
   });
 
   // SES Configuration Query (Admin and HR users)
@@ -886,8 +886,8 @@ export default function Settings() {
                     </div>
                   )}
 
-                  {/* Admin S3 Configuration */}
-                  {isAdmin && (
+                  {/* S3 Configuration - Admin and HR users */}
+                  {(isAdmin || user?.role === 'hr') && (
                     <div className="pt-4 border-t">
                       <div className="flex items-center justify-between mb-3">
                         <Label className="text-base font-medium">S3 Configuration</Label>

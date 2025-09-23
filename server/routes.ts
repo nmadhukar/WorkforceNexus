@@ -1590,7 +1590,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    */
   app.get('/api/admin/s3-config',
     requireAuth,
-    requireRole(['admin']),
+    requireRole(['admin', 'hr']),
     async (req: AuditRequest, res: Response) => {
       try {
         // Get current configuration from database
@@ -1647,7 +1647,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    */
   app.put('/api/admin/s3-config',
     requireAuth,
-    requireRole(['admin']),
+    requireRole(['admin', 'hr']),
     [
       body('accessKeyId').notEmpty().withMessage('AWS Access Key ID is required'),
       body('secretAccessKey').notEmpty().withMessage('AWS Secret Access Key is required'),
@@ -1702,7 +1702,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    */
   app.post('/api/admin/s3-config/test',
     requireAuth,
-    requireRole(['admin']),
+    requireRole(['admin', 'hr']),
     [
       body('accessKeyId').notEmpty().withMessage('AWS Access Key ID is required'),
       body('secretAccessKey').notEmpty().withMessage('AWS Secret Access Key is required'),
@@ -1780,7 +1780,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    */
   app.post('/api/admin/s3-config/migrate',
     requireAuth,
-    requireRole(['admin']),
+    requireRole(['admin', 'hr']),
     async (req: AuditRequest, res: Response) => {
       try {
         // Check if environment variables are set
