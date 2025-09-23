@@ -803,26 +803,110 @@ export default function Settings() {
                 <div className="space-y-4">
                   {/* S3 Configuration Status */}
                   <div className="p-4 bg-muted/50 rounded-lg">
-                    <div className="flex items-center mb-3">
-                      {s3Status?.configured ? (
-                        <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
-                      ) : (
-                        <XCircle className="w-5 h-5 text-destructive mr-2" />
-                      )}
-                      <span className="font-medium">
-                        S3 Storage {s3Status?.configured ? 'Configured' : 'Not Configured'}
-                      </span>
+                    {/* Show both config saved status and bucket exists status */}
+                    <div className="space-y-3">
+                      {/* Configuration saved status */}
+                      <div className="flex items-center">
+                        {s3Config && s3Config.source !== 'none' ? (
+                          <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
+                        ) : (
+                          <XCircle className="w-5 h-5 text-yellow-500 mr-2" />
+                        )}
+                        <span className="font-medium">
+                          Configuration: {s3Config && s3Config.source !== 'none' ? 'Saved' : 'Not Set'}
+                        </span>
+                      </div>
+                      
+                      {/* Bucket exists status */}
+                      <div className="flex items-center">
+                        {s3Status?.configured ? (
+                          <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
+                        ) : (
+                          <XCircle className="w-5 h-5 text-destructive mr-2" />
+                        )}
+                        <span className="font-medium">
+                          Bucket Status: {s3Status?.configured ? 'Active & Accessible' : 'Not Accessible'}
+                        </span>
+                      </div>
                     </div>
                     
-                    {s3Status?.configured && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    {/* Show config details if saved */}
+                    {s3Config && s3Config.source !== 'none' && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm mt-3 pt-3 border-t">
                         <div>
-                          <span className="text-muted-foreground">Bucket:</span>{' '}
-                          <span className="font-medium">{s3Status?.bucketName || 'Not set'}</span>
+                          <span className="text-muted-foreground">Bucket Name:</span>{' '}
+                          <span className="font-medium">{s3Config?.bucketName || 'Not set'}</span>
                         </div>
                         <div>
                           <span className="text-muted-foreground">Region:</span>{' '}
-                          <span className="font-medium">{s3Status?.region || 'Not set'}</span>
+                          <span className="font-medium">{s3Config?.region || 'Not set'}</span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Show warning if config saved but bucket not accessible */}
+                    {s3Config && s3Config.source !== 'none' && !s3Status?.configured && (
+                      <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md">
+                        <p className="text-sm text-amber-900 dark:text-amber-200 mb-3">
+                          ⚠️ Configuration is saved but the bucket "{s3Config.bucketName}" is not accessible. 
+                          The bucket may not exist or you may not have permissions to access it.
+                        </p>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => {
+                              // Create bucket using saved config
+                              const createBucket = async () => {
+                                try {
+                                  const response = await apiRequest("POST", "/api/admin/s3-config/create-bucket", {
+                                    accessKeyId: "", // Will use saved config
+                                    secretAccessKey: "", // Will use saved config
+                                    region: s3Config.region,
+                                    bucketName: s3Config.bucketName,
+                                    endpoint: s3Config.endpoint
+                                  });
+                                  const data = await response.json();
+                                  
+                                  if (response.ok) {
+                                    toast({
+                                      title: "Bucket Created",
+                                      description: `Successfully created bucket: ${s3Config.bucketName}`,
+                                      variant: "default"
+                                    });
+                                    // Refresh status
+                                    queryClient.invalidateQueries({ queryKey: ["/api/storage/status"] });
+                                    queryClient.invalidateQueries({ queryKey: ["/api/admin/s3-config"] });
+                                  } else {
+                                    toast({
+                                      title: "Failed to Create Bucket",
+                                      description: data.error || data.message || "Unknown error",
+                                      variant: "destructive"
+                                    });
+                                  }
+                                } catch (error: any) {
+                                  toast({
+                                    title: "Error",
+                                    description: error.message,
+                                    variant: "destructive"
+                                  });
+                                }
+                              };
+                              createBucket();
+                            }}
+                            data-testid="button-create-s3-bucket"
+                          >
+                            <Plus className="w-4 h-4 mr-1" />
+                            Create Bucket
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setS3ConfigDialogOpen(true)}
+                            data-testid="button-update-s3-config"
+                          >
+                            Update Configuration
+                          </Button>
                         </div>
                       </div>
                     )}

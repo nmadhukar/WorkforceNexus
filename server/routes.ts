@@ -1839,15 +1839,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireAuth,
     requireRole(['admin', 'hr']),
     [
-      body('accessKeyId').notEmpty().withMessage('AWS Access Key ID is required'),
-      body('secretAccessKey').notEmpty().withMessage('AWS Secret Access Key is required'),
       body('region').notEmpty().withMessage('AWS Region is required'),
       body('bucketName').notEmpty().withMessage('S3 Bucket Name is required')
     ],
     handleValidationErrors,
     async (req: AuditRequest, res: Response) => {
       try {
-        const { accessKeyId, secretAccessKey, region, bucketName, endpoint } = req.body;
+        let { accessKeyId, secretAccessKey, region, bucketName, endpoint } = req.body;
+        
+        // If credentials not provided, try to use saved config
+        if (!accessKeyId || !secretAccessKey) {
+          const savedConfig = await storage.getS3Configuration();
+          if (savedConfig && savedConfig.enabled) {
+            accessKeyId = savedConfig.accessKeyId;
+            secretAccessKey = savedConfig.secretAccessKey;
+            
+            // Use saved region and bucket if not provided
+            if (!region) region = savedConfig.region;
+            if (!bucketName) bucketName = savedConfig.bucketName;
+            if (!endpoint && savedConfig.endpoint) endpoint = savedConfig.endpoint;
+          }
+        }
+        
+        // Check if we have credentials now
+        if (!accessKeyId || !secretAccessKey) {
+          return res.status(400).json({
+            success: false,
+            message: 'AWS credentials required',
+            error: 'Please provide AWS Access Key ID and Secret Access Key or save them first'
+          });
+        }
         
         // Import S3 client
         const { S3Client, CreateBucketCommand, PutBucketCorsCommand } = await import('@aws-sdk/client-s3');
