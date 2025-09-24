@@ -68,7 +68,10 @@ interface CreateSubmissionOptions {
     role?: string;
   }[];
   send_email?: boolean;
-  message?: string;
+  message?: {
+    subject?: string;
+    body: string;
+  } | string;
 }
 
 /**
@@ -308,11 +311,31 @@ export class DocuSealService {
     }
 
     try {
+      // Format message for DocuSeal API - must be an object
+      let formattedMessage;
+      if (options.message) {
+        if (typeof options.message === 'string') {
+          // Convert string message to object format for DocuSeal API
+          formattedMessage = {
+            subject: "Form Completion Required",
+            body: options.message
+          };
+        } else {
+          formattedMessage = options.message;
+        }
+      } else {
+        // Default message if none provided
+        formattedMessage = {
+          subject: "Form Completion Required",
+          body: "Please complete and sign this form at your earliest convenience."
+        };
+      }
+
       const payload = {
         template_id: options.template_id,
         send_email: options.send_email !== false, // Default to true
         submitters: options.submitters,
-        message: options.message
+        message: formattedMessage
       };
 
       const response = await fetch(`${this.baseUrl}/submissions`, {
@@ -326,14 +349,26 @@ export class DocuSealService {
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.error(`DocuSeal API error (${response.status}):`, {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText,
+          payload: JSON.stringify(payload, null, 2)
+        });
         throw new Error(`Failed to create submission: ${response.status} ${errorText}`);
       }
 
       const submission = await response.json();
       return submission;
     } catch (error) {
-      console.error("Failed to create DocuSeal submission:", error);
-      throw error;
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.error("Failed to create DocuSeal submission:", {
+        message: err.message,
+        template_id: options.template_id,
+        submitters: options.submitters?.map(s => ({ email: s.email, name: s.name })),
+        error: err.stack || err.message
+      });
+      throw err;
     }
   }
 
@@ -490,7 +525,11 @@ export class DocuSealService {
       const emp = employee[0];
       const tmpl = template[0];
 
-      // Create submission in DocuSeal
+      // Create submission in DocuSeal with properly formatted message
+      const messageContent = isOnboarding 
+        ? "Please complete this form as part of your onboarding process. This is required to complete your employee onboarding."
+        : "Please complete and sign this form at your earliest convenience.";
+      
       const apiSubmission = await this.createSubmission({
         template_id: tmpl.templateId,
         submitters: [{
@@ -499,9 +538,10 @@ export class DocuSealService {
           phone: emp.cellPhone || undefined
         }],
         send_email: true,
-        message: isOnboarding 
-          ? "Please complete this form as part of your onboarding process."
-          : "Please complete and sign this form at your earliest convenience."
+        message: {
+          subject: isOnboarding ? "Onboarding Form Completion Required" : "Form Completion Required",
+          body: messageContent
+        }
       });
 
       // Save submission to database
@@ -522,8 +562,15 @@ export class DocuSealService {
 
       return dbSubmission[0];
     } catch (error) {
-      console.error("Failed to send form to employee:", error);
-      throw error;
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.error("Failed to send form to employee:", {
+        message: err.message,
+        employeeId,
+        templateId,
+        isOnboarding,
+        error: err.stack || err.message
+      });
+      throw err;
     }
   }
 

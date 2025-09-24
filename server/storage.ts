@@ -289,6 +289,19 @@ export interface IStorage {
   }): Promise<{ employees: Employee[]; total: number }>;
   
   /**
+   * Retrieve employee by work email address
+   * @param {string} workEmail - Employee's work email address
+   * @returns {Promise<Employee | undefined>} Employee object or undefined if not found
+   * @throws {Error} Database query errors
+   * @example
+   * const employee = await storage.getEmployeeByWorkEmail('john.doe@hospital.com');
+   * if (employee) {
+   *   console.log(`Found employee: ${employee.firstName} ${employee.lastName}`);
+   * }
+   */
+  getEmployeeByWorkEmail(workEmail: string): Promise<Employee | undefined>;
+
+  /**
    * Create a new employee record
    * @param {InsertEmployee} employee - Employee data for creation
    * @returns {Promise<Employee>} Newly created employee with generated ID
@@ -1102,6 +1115,11 @@ export class DatabaseStorage implements IStorage {
   // Employee operations
   async getEmployee(id: number): Promise<Employee | undefined> {
     const [employee] = await db.select().from(employees).where(eq(employees.id, id));
+    return employee;
+  }
+
+  async getEmployeeByWorkEmail(workEmail: string): Promise<Employee | undefined> {
+    const [employee] = await db.select().from(employees).where(eq(employees.workEmail, workEmail));
     return employee;
   }
 

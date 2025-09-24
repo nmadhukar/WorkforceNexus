@@ -28,8 +28,27 @@ import { sesConfigurations, emailReminders } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import * as crypto from "crypto";
 
-// Encryption key from environment or generate one
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex').slice(0, 32);
+// Encryption key management with secure fallback handling
+const getEncryptionKey = (): string => {
+  // First try environment variable
+  if (process.env.ENCRYPTION_KEY) {
+    return process.env.ENCRYPTION_KEY.slice(0, 32);
+  }
+  
+  // In production, fail hard if encryption key is not set
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('ENCRYPTION_KEY environment variable must be set in production for SES service security');
+  }
+  
+  // Development fallback with strong warning
+  console.error('⚠️  CRITICAL SECURITY WARNING: ENCRYPTION_KEY not set! Using development fallback.');
+  console.error('⚠️  This is ONLY acceptable in development. Set ENCRYPTION_KEY in production!');
+  
+  const fallbackSeed = 'dev-encryption-key-for-ses-service-consistency';
+  return crypto.createHash('sha256').update(fallbackSeed).digest('hex').slice(0, 32);
+};
+
+const ENCRYPTION_KEY = getEncryptionKey();
 const ENCRYPTION_IV_LENGTH = 16;
 
 /**
@@ -79,13 +98,40 @@ function encrypt(text: string): string {
  * // Returns: "AKIA1234567890ABCDEF"
  */
 function decrypt(text: string): string {
-  const textParts = text.split(':');
-  const iv = Buffer.from(textParts.shift()!, 'hex');
-  const encryptedText = Buffer.from(textParts.join(':'), 'hex');
-  const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
-  let decrypted = decipher.update(encryptedText);
-  decrypted = Buffer.concat([decrypted, decipher.final()]);
-  return decrypted.toString();
+  try {
+    if (!text || typeof text !== 'string') {
+      console.error('SES Service: Invalid encrypted text provided for decryption');
+      return '';
+    }
+    
+    const textParts = text.split(':');
+    if (textParts.length !== 2) {
+      console.error('SES Service: Invalid encrypted text format (expected iv:encryptedData)');
+      return '';
+    }
+    
+    const iv = Buffer.from(textParts[0], 'hex');
+    const encryptedText = Buffer.from(textParts[1], 'hex');
+    
+    if (iv.length !== ENCRYPTION_IV_LENGTH) {
+      console.error(`SES Service: Invalid IV length (expected ${ENCRYPTION_IV_LENGTH}, got ${iv.length})`);
+      return '';
+    }
+    
+    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
+    let decrypted = decipher.update(encryptedText);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    return decrypted.toString();
+    
+  } catch (error: any) {
+    console.error('SES Service: Decryption failed:', {
+      error: error.message,
+      code: error.code,
+      hasEncryptionKey: !!ENCRYPTION_KEY,
+      inputLength: text?.length || 0
+    });
+    return '';
+  }
 }
 
 /**
@@ -170,6 +216,7 @@ export class SESService {
         if (allConfigs.length > 0) {
           console.log("SES Service: Found disabled configuration(s). Enable SES in settings.");
         }
+        this.initialized = false;
         return false;
       }
 
@@ -178,43 +225,95 @@ export class SESService {
       console.log("SES Service: From email:", this.config.fromEmail);
       console.log("SES Service: Region:", this.config.region);
       
-      // Decrypt credentials
-      const accessKeyId = this.config.accessKeyId ? decrypt(this.config.accessKeyId) : process.env.AWS_SES_ACCESS_KEY_ID;
-      const secretAccessKey = this.config.secretAccessKey ? decrypt(this.config.secretAccessKey) : process.env.AWS_SES_SECRET_ACCESS_KEY;
+      // Decrypt credentials with enhanced error handling
+      let accessKeyId = '';
+      let secretAccessKey = '';
+      
+      if (this.config.accessKeyId) {
+        console.log("SES Service: Attempting to decrypt access key...");
+        accessKeyId = decrypt(this.config.accessKeyId);
+        if (!accessKeyId) {
+          console.error("SES Service: Failed to decrypt access key from database");
+          this.initialized = false;
+          return false;
+        }
+      } else {
+        accessKeyId = process.env.AWS_SES_ACCESS_KEY_ID || '';
+      }
+      
+      if (this.config.secretAccessKey) {
+        console.log("SES Service: Attempting to decrypt secret key...");
+        secretAccessKey = decrypt(this.config.secretAccessKey);
+        if (!secretAccessKey) {
+          console.error("SES Service: Failed to decrypt secret key from database");
+          this.initialized = false;
+          return false;
+        }
+      } else {
+        secretAccessKey = process.env.AWS_SES_SECRET_ACCESS_KEY || '';
+      }
       
       if (!accessKeyId || !secretAccessKey) {
-        console.error("SES Service: Missing AWS credentials");
+        console.error("SES Service: Missing AWS credentials after decryption");
         console.error("SES Service: Has encrypted accessKeyId:", !!this.config.accessKeyId);
         console.error("SES Service: Has encrypted secretAccessKey:", !!this.config.secretAccessKey);
         console.error("SES Service: Has env AWS_SES_ACCESS_KEY_ID:", !!process.env.AWS_SES_ACCESS_KEY_ID);
         console.error("SES Service: Has env AWS_SES_SECRET_ACCESS_KEY:", !!process.env.AWS_SES_SECRET_ACCESS_KEY);
+        console.error("SES Service: Decrypted accessKeyId length:", accessKeyId.length);
+        console.error("SES Service: Decrypted secretAccessKey length:", secretAccessKey.length);
+        this.initialized = false;
         return false;
       }
 
-      // For development environment, check if these look like dummy/test credentials
-      if (accessKeyId.includes('dummy') || accessKeyId.includes('test') || secretAccessKey.includes('dummy') || secretAccessKey.includes('test')) {
-        console.log("SES Service: Detected test/dummy credentials, skipping AWS SES initialization for development");
+      // Check for development/test credentials
+      if (accessKeyId.includes('dummy') || accessKeyId.includes('test') || 
+          secretAccessKey.includes('dummy') || secretAccessKey.includes('test') ||
+          accessKeyId.toLowerCase().includes('fake') || secretAccessKey.toLowerCase().includes('fake')) {
+        console.log("SES Service: Detected test/dummy credentials, marking as development mode");
+        this.initialized = false;
         return false;
+      }
+
+      // Validate AWS credential format
+      if (!accessKeyId.startsWith('AKIA') && !accessKeyId.startsWith('ASIA')) {
+        console.warn("SES Service: Access key doesn't match AWS format (should start with AKIA or ASIA)");
+      }
+      
+      if (secretAccessKey.length < 20) {
+        console.warn("SES Service: Secret access key seems too short (AWS keys are typically 40+ characters)");
       }
 
       // Initialize SES client with timeout configuration
-      this.client = new SESClient({
-        region: this.config.region || process.env.AWS_SES_REGION || "us-east-1",
-        credentials: {
-          accessKeyId,
-          secretAccessKey
-        },
-        requestHandler: new NodeHttpHandler({
-          requestTimeout: 10000, // 10 second timeout
-          connectionTimeout: 5000 // 5 second connection timeout
-        })
+      try {
+        this.client = new SESClient({
+          region: this.config.region || process.env.AWS_SES_REGION || "us-east-1",
+          credentials: {
+            accessKeyId,
+            secretAccessKey
+          },
+          requestHandler: new NodeHttpHandler({
+            requestTimeout: 10000, // 10 second timeout
+            connectionTimeout: 5000 // 5 second connection timeout
+          })
+        });
+        
+        this.initialized = true;
+        console.log("SES Service: Initialized successfully with region:", this.config.region || process.env.AWS_SES_REGION || "us-east-1");
+        return true;
+        
+      } catch (clientError) {
+        console.error("SES Service: Failed to create SES client:", clientError);
+        this.initialized = false;
+        return false;
+      }
+      
+    } catch (error: any) {
+      console.error("SES Service: Initialization failed:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack?.split('\n').slice(0, 3).join('\n') // First 3 lines of stack
       });
-
-      this.initialized = true;
-      console.log("SES Service: Initialized successfully with region:", this.config.region || process.env.AWS_SES_REGION || "us-east-1");
-      return true;
-    } catch (error) {
-      console.error("SES Service: Initialization failed", error);
+      this.initialized = false;
       return false;
     }
   }

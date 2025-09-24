@@ -313,8 +313,8 @@ export async function apiKeyAuth(
     const isValid = await verifyApiKey(apiKey, storedKey.keyHash);
     
     if (!isValid) {
-      // Log failed authentication attempt
-      console.log(`API key authentication failed for key ${keyPrefix} from IP ${req.ip}`);
+      // Log failed authentication attempt (redacted for security)
+      console.log(`API key authentication failed for key ${keyPrefix.substring(0, 8)}*** (ID: ${storedKey.id}) from IP ${req.ip}`);
       res.status(401).json({ error: 'Invalid API key' });
       return;
     }
@@ -359,8 +359,8 @@ export async function apiKeyAuth(
     req.apiKey = storedKey;
     req.permissions = storedKey.permissions as string[];
     
-    // Log successful authentication
-    console.log(`API key authentication successful for key ${keyPrefix} from IP ${req.ip}`);
+    // Log successful authentication (redacted for security)
+    console.log(`API key authentication successful for key ${keyPrefix.substring(0, 8)}*** (ID: ${storedKey.id}) from IP ${req.ip}`);
     
     next();
   } catch (error) {

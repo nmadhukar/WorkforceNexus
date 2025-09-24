@@ -221,21 +221,38 @@ export function setupAuth(app: Express) {
       role: invitationToken ? "viewer" : (role || "hr"), // Onboarding employees start as viewers
     });
     
-    // If this is an onboarding registration, create employee record and send forms
+    // If this is an onboarding registration, handle employee record and send forms
     if (invitation) {
       try {
-        // Create employee record linked to the invitation
-        employee = await storage.createEmployee({
-          firstName: invitation.firstName,
-          lastName: invitation.lastName,
-          personalEmail: invitation.email,
-          workEmail: invitation.email,
-          cellPhone: invitation.cellPhone,
-          status: 'onboarding',
-          onboardingStatus: 'registered',
-          invitationId: invitation.id,
-          userId: user.id
-        });
+        // Check if employee with this email already exists
+        const existingEmployee = await storage.getEmployeeByWorkEmail(invitation.email);
+        
+        if (existingEmployee) {
+          // Employee already exists - link user account to existing employee
+          employee = await storage.updateEmployee(existingEmployee.id, {
+            userId: user.id,
+            status: 'onboarding',
+            onboardingStatus: 'registered',
+            invitationId: invitation.id
+          });
+          
+          console.log(`Linked user account to existing employee: ${existingEmployee.firstName} ${existingEmployee.lastName} (ID: ${existingEmployee.id})`);
+        } else {
+          // No existing employee - create new employee record
+          employee = await storage.createEmployee({
+            firstName: invitation.firstName,
+            lastName: invitation.lastName,
+            personalEmail: invitation.email,
+            workEmail: invitation.email,
+            cellPhone: invitation.cellPhone,
+            status: 'onboarding',
+            onboardingStatus: 'registered',
+            invitationId: invitation.id,
+            userId: user.id
+          });
+          
+          console.log(`Created new employee record: ${employee.firstName} ${employee.lastName} (ID: ${employee.id})`);
+        }
         
         // Update invitation status
         await storage.updateInvitation(invitation.id, {
@@ -275,10 +292,29 @@ export function setupAuth(app: Express) {
           console.error("Failed to send onboarding forms:", error);
         }
       } catch (error) {
-        // If employee creation fails, clean up user and return error
-        console.error("Failed to create employee record:", error);
-        // Note: In production, you might want to delete the user here
-        return res.status(500).json({ error: "Failed to complete registration. Please contact support." });
+        // If employee linking/creation fails, clean up user and return error
+        console.error("Failed to complete employee onboarding:", error);
+        
+        // Clean up the created user account to maintain data consistency
+        try {
+          await storage.deleteUser(user.id);
+          console.log(`Cleaned up user account ${user.id} due to employee onboarding failure`);
+        } catch (cleanupError) {
+          const cleanupErr = cleanupError instanceof Error ? cleanupError : new Error(String(cleanupError));
+          console.error("Failed to clean up user account after employee onboarding failure:", cleanupErr.message);
+        }
+        
+        // Return appropriate error message based on the original error
+        const err = error instanceof Error ? error : new Error(String(error));
+        if (err.message && err.message.includes('duplicate key value violates unique constraint')) {
+          return res.status(400).json({ 
+            error: "An employee with this email already has a user account. Please contact your administrator." 
+          });
+        }
+        
+        return res.status(500).json({ 
+          error: "Failed to complete registration. Please contact support." 
+        });
       }
     }
 
