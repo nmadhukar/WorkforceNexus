@@ -50,10 +50,7 @@ export function TaxFormsManager({ employeeId }: TaxFormsManagerProps) {
 
   const createMutation = useMutation({
     mutationFn: (data: TaxFormData) =>
-      apiRequest(`/api/employees/${employeeId}/tax-forms`, {
-        method: "POST",
-        body: JSON.stringify(data)
-      }),
+      apiRequest("POST", `/api/employees/${employeeId}/tax-forms`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "tax-forms"] });
       toast({ title: "Tax form added successfully" });
@@ -67,10 +64,7 @@ export function TaxFormsManager({ employeeId }: TaxFormsManagerProps) {
 
   const updateMutation = useMutation({
     mutationFn: (data: TaxFormData) =>
-      apiRequest(`/api/tax-forms/${selectedForm?.id}`, {
-        method: "PUT",
-        body: JSON.stringify(data)
-      }),
+      apiRequest("PUT", `/api/tax-forms/${selectedForm?.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "tax-forms"] });
       toast({ title: "Tax form updated successfully" });
@@ -85,9 +79,7 @@ export function TaxFormsManager({ employeeId }: TaxFormsManagerProps) {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) =>
-      apiRequest(`/api/tax-forms/${id}`, {
-        method: "DELETE"
-      }),
+      apiRequest("DELETE", `/api/tax-forms/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "tax-forms"] });
       toast({ title: "Tax form deleted successfully" });
