@@ -28,23 +28,7 @@ import {
 import { Link } from "wouter";
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
-import { 
-  PieChart, 
-  Pie, 
-  Cell, 
-  BarChart, 
-  Bar, 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  Legend, 
-  ResponsiveContainer,
-  Area,
-  AreaChart
-} from "recharts";
+// Charts removed - keeping only data statistics
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -197,35 +181,7 @@ export default function ComplianceDashboard() {
     ? Math.round((dashboardData.activeLicenses / Math.max(dashboardData.totalLicenses, 1)) * 100)
     : 0;
 
-  // Prepare chart data
-  const licenseStatusData = [
-    { name: 'Active', value: dashboardData?.activeLicenses || 0, color: '#10b981' },
-    { name: 'Expiring Soon', value: dashboardData?.expiringIn30Days || 0, color: '#f59e0b' },
-    { name: 'Expired', value: dashboardData?.expiredLicenses || 0, color: '#ef4444' }
-  ];
-
-  const locationChartData = locationSummaries.map(loc => ({
-    location: loc.locationName,
-    active: loc.activeLicenses,
-    expiring: loc.expiringLicenses,
-    expired: loc.expiredLicenses
-  }));
-
-  // Mock trend data (would come from API in production)
-  const trendData = [
-    { month: 'Jan', compliance: 95 },
-    { month: 'Feb', compliance: 93 },
-    { month: 'Mar', compliance: 96 },
-    { month: 'Apr', compliance: 94 },
-    { month: 'May', compliance: 98 },
-    { month: 'Jun', compliance: complianceScore }
-  ];
-
-  const expirationTimelineData = [
-    { name: '30 Days', value: dashboardData?.expiringIn30Days || 0 },
-    { name: '60 Days', value: (dashboardData?.expiringIn60Days || 0) - (dashboardData?.expiringIn30Days || 0) },
-    { name: '90 Days', value: (dashboardData?.expiringIn90Days || 0) - (dashboardData?.expiringIn60Days || 0) }
-  ];
+  // Chart data removed - no longer needed
 
   // Get alert icon based on severity
   const getAlertIcon = (severity: string) => {
@@ -388,107 +344,10 @@ export default function ComplianceDashboard() {
           </Card>
         </div>
 
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* License Distribution Pie Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">License Distribution</CardTitle>
-              <CardDescription>Current license status breakdown</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie
-                    data={licenseStatusData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                    label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  >
-                    {licenseStatusData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+        {/* Charts removed - keeping only statistics and data tables */}
 
-          {/* Compliance Trend Line Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Compliance Trend</CardTitle>
-              <CardDescription>6-month compliance score trend</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={trendData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis domain={[85, 100]} />
-                  <Tooltip />
-                  <Line 
-                    type="monotone" 
-                    dataKey="compliance" 
-                    stroke="#3b82f6" 
-                    strokeWidth={2}
-                    dot={{ fill: '#3b82f6' }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          {/* Expiration Timeline */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Expiration Timeline</CardTitle>
-              <CardDescription>Licenses expiring by timeframe</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={expirationTimelineData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#f59e0b" />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Location Compliance and Alerts */}
+        {/* Compliance Alerts & Location Summaries */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Location Compliance Status */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Location Compliance Status</CardTitle>
-              <CardDescription>License status by location</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={locationChartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="location" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="active" stackId="a" fill="#10b981" name="Active" />
-                  <Bar dataKey="expiring" stackId="a" fill="#f59e0b" name="Expiring" />
-                  <Bar dataKey="expired" stackId="a" fill="#ef4444" name="Expired" />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          {/* Compliance Alerts */}
           <Card>
             <CardHeader>
               <CardTitle>Compliance Alerts</CardTitle>
@@ -532,6 +391,66 @@ export default function ComplianceDashboard() {
                     </Button>
                   </Link>
                 )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Location Summaries Table */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Location Compliance Summary</CardTitle>
+              <CardDescription>License status by location</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border max-h-[250px] overflow-y-auto">
+                <table className="w-full">
+                  <thead className="border-b bg-muted/50">
+                    <tr>
+                      <th className="text-left p-2 text-xs font-medium">Location</th>
+                      <th className="text-right p-2 text-xs font-medium">Active</th>
+                      <th className="text-right p-2 text-xs font-medium">Expiring</th>
+                      <th className="text-right p-2 text-xs font-medium">Expired</th>
+                      <th className="text-left p-2 text-xs font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {locationSummaries.map((location, index) => (
+                      <tr key={location.locationId} className="border-b" data-testid={`location-summary-${index}`}>
+                        <td className="p-2 text-xs font-medium">{location.locationName}</td>
+                        <td className="p-2 text-xs text-right">
+                          <span className="text-green-600 font-semibold">{location.activeLicenses}</span>
+                        </td>
+                        <td className="p-2 text-xs text-right">
+                          <span className="text-yellow-600 font-semibold">{location.expiringLicenses}</span>
+                        </td>
+                        <td className="p-2 text-xs text-right">
+                          <span className="text-destructive font-semibold">{location.expiredLicenses}</span>
+                        </td>
+                        <td className="p-2">
+                          <Badge 
+                            variant={
+                              location.complianceStatus === 'compliant' ? 'default' :
+                              location.complianceStatus === 'warning' ? 'secondary' :
+                              'destructive'
+                            }
+                            className="text-xs"
+                          >
+                            {location.complianceStatus === 'non_compliant' ? 'Non-Compliant' :
+                             location.complianceStatus === 'warning' ? 'Warning' :
+                             'Compliant'}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                    {locationSummaries.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="p-4 text-center text-xs text-muted-foreground">
+                          No location data available
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </CardContent>
           </Card>

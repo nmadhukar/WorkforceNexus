@@ -2700,6 +2700,17 @@ export class DatabaseStorage implements IStorage {
     
     const conditions = [];
     
+    // Always exclude deleted locations unless explicitly requested
+    if (options?.status && options.status !== 'deleted') {
+      conditions.push(eq(locations.status, options.status));
+    } else if (!options?.status) {
+      // If no status filter specified, exclude deleted locations by default
+      conditions.push(sql`${locations.status} != 'deleted'`);
+    } else if (options.status === 'deleted') {
+      // Only show deleted if explicitly requested
+      conditions.push(eq(locations.status, 'deleted'));
+    }
+    
     if (options?.search) {
       conditions.push(or(
         like(locations.name, `%${options.search}%`),
@@ -2710,10 +2721,6 @@ export class DatabaseStorage implements IStorage {
     
     if (options?.type) {
       conditions.push(eq(locations.type, options.type));
-    }
-    
-    if (options?.status) {
-      conditions.push(eq(locations.status, options.status));
     }
     
     if (options?.parentId !== undefined) {
@@ -3002,10 +3009,41 @@ export class DatabaseStorage implements IStorage {
     const limit = options?.limit || 10;
     const offset = options?.offset || 0;
     
-    let query = db.select().from(clinicLicenses);
-    let countQuery = db.select({ count: count() }).from(clinicLicenses);
+    // Join with locations to exclude licenses from deleted locations
+    let query = db.select({
+      id: clinicLicenses.id,
+      locationId: clinicLicenses.locationId,
+      licenseTypeId: clinicLicenses.licenseTypeId,
+      responsiblePersonId: clinicLicenses.responsiblePersonId,
+      licenseNumber: clinicLicenses.licenseNumber,
+      issueDate: clinicLicenses.issueDate,
+      expirationDate: clinicLicenses.expirationDate,
+      renewalDate: clinicLicenses.renewalDate,
+      status: clinicLicenses.status,
+      renewalCost: clinicLicenses.renewalCost,
+      renewalFrequency: clinicLicenses.renewalFrequency,
+      notes: clinicLicenses.notes,
+      lastPaymentDate: clinicLicenses.lastPaymentDate,
+      paymentMethod: clinicLicenses.paymentMethod,
+      complianceStatus: clinicLicenses.complianceStatus,
+      renewalStatus: clinicLicenses.renewalStatus,
+      createdAt: clinicLicenses.createdAt,
+      updatedAt: clinicLicenses.updatedAt,
+      createdBy: clinicLicenses.createdBy,
+      lastReviewedBy: clinicLicenses.lastReviewedBy,
+      lastReviewedAt: clinicLicenses.lastReviewedAt
+    })
+    .from(clinicLicenses)
+    .innerJoin(locations, eq(clinicLicenses.locationId, locations.id));
+    
+    let countQuery = db.select({ count: count() })
+      .from(clinicLicenses)
+      .innerJoin(locations, eq(clinicLicenses.locationId, locations.id));
     
     const conditions = [];
+    
+    // Always exclude licenses from deleted locations
+    conditions.push(sql`${locations.status} != 'deleted'`);
     
     if (options?.search) {
       conditions.push(or(
@@ -3030,15 +3068,15 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(clinicLicenses.responsiblePersonId, options.responsiblePersonId));
     }
     
-    const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
+    const whereCondition = and(...conditions);
     
-    const [totalResult] = whereCondition 
-      ? await countQuery.where(whereCondition)
-      : await countQuery;
+    const [totalResult] = await countQuery.where(whereCondition);
     
-    const licensesList = whereCondition
-      ? await query.where(whereCondition).limit(limit).offset(offset).orderBy(clinicLicenses.expirationDate)
-      : await query.limit(limit).offset(offset).orderBy(clinicLicenses.expirationDate);
+    const licensesList = await query
+      .where(whereCondition)
+      .limit(limit)
+      .offset(offset)
+      .orderBy(clinicLicenses.expirationDate);
     
     return {
       licenses: licensesList,
@@ -3127,11 +3165,36 @@ export class DatabaseStorage implements IStorage {
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + days);
     
-    return await db.select()
+    // Join with locations to exclude licenses from deleted locations
+    return await db.select({
+      id: clinicLicenses.id,
+      locationId: clinicLicenses.locationId,
+      licenseTypeId: clinicLicenses.licenseTypeId,
+      responsiblePersonId: clinicLicenses.responsiblePersonId,
+      licenseNumber: clinicLicenses.licenseNumber,
+      issueDate: clinicLicenses.issueDate,
+      expirationDate: clinicLicenses.expirationDate,
+      renewalDate: clinicLicenses.renewalDate,
+      status: clinicLicenses.status,
+      renewalCost: clinicLicenses.renewalCost,
+      renewalFrequency: clinicLicenses.renewalFrequency,
+      notes: clinicLicenses.notes,
+      lastPaymentDate: clinicLicenses.lastPaymentDate,
+      paymentMethod: clinicLicenses.paymentMethod,
+      complianceStatus: clinicLicenses.complianceStatus,
+      renewalStatus: clinicLicenses.renewalStatus,
+      createdAt: clinicLicenses.createdAt,
+      updatedAt: clinicLicenses.updatedAt,
+      createdBy: clinicLicenses.createdBy,
+      lastReviewedBy: clinicLicenses.lastReviewedBy,
+      lastReviewedAt: clinicLicenses.lastReviewedAt
+    })
       .from(clinicLicenses)
+      .innerJoin(locations, eq(clinicLicenses.locationId, locations.id))
       .where(and(
         lte(clinicLicenses.expirationDate, futureDate.toISOString()),
-        sql`${clinicLicenses.status} != 'expired'`
+        sql`${clinicLicenses.status} != 'expired'`,
+        sql`${locations.status} != 'deleted'`
       ))
       .orderBy(clinicLicenses.expirationDate);
   }
@@ -3174,12 +3237,15 @@ export class DatabaseStorage implements IStorage {
     expiringSoon: number;
     expired: number;
   }> {
+    // Join with locations to exclude licenses from deleted locations
     const results = await db.select({
       status: clinicLicenses.status,
       complianceStatus: clinicLicenses.complianceStatus,
       count: count()
     })
     .from(clinicLicenses)
+    .innerJoin(locations, eq(clinicLicenses.locationId, locations.id))
+    .where(sql`${locations.status} != 'deleted'`)
     .groupBy(clinicLicenses.status, clinicLicenses.complianceStatus);
     
     const summary = {
@@ -3331,20 +3397,24 @@ export class DatabaseStorage implements IStorage {
     const [locationStats] = await db.select({
       total: count(),
       active: sql<number>`sum(case when ${locations.status} = 'active' then 1 else 0 end)`
-    }).from(locations);
+    }).from(locations)
+    .where(sql`${locations.status} != 'deleted'`);
     
+    // Join with locations to exclude licenses from deleted locations
     const [licenseStats] = await db.select({
       total: count(),
       active: sql<number>`sum(case when ${clinicLicenses.status} = 'active' then 1 else 0 end)`,
       expired: sql<number>`sum(case when ${clinicLicenses.status} = 'expired' then 1 else 0 end)`,
       nonCompliant: sql<number>`sum(case when ${clinicLicenses.complianceStatus} = 'non_compliant' then 1 else 0 end)`
-    }).from(clinicLicenses);
+    }).from(clinicLicenses)
+    .innerJoin(locations, eq(clinicLicenses.locationId, locations.id))
+    .where(sql`${locations.status} != 'deleted'`);
     
     const [documentStats] = await db.select({
       total: count()
     }).from(complianceDocuments);
     
-    // Get expiring licenses counts
+    // Get expiring licenses counts - exclude licenses from deleted locations
     const today = new Date();
     const in30Days = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
     const in60Days = new Date(today.getTime() + 60 * 24 * 60 * 60 * 1000);
@@ -3352,25 +3422,32 @@ export class DatabaseStorage implements IStorage {
     
     const [expiring30] = await db.select({ count: count() })
       .from(clinicLicenses)
+      .innerJoin(locations, eq(clinicLicenses.locationId, locations.id))
       .where(and(
         lte(clinicLicenses.expirationDate, in30Days.toISOString()),
-        sql`${clinicLicenses.status} != 'expired'`
+        sql`${clinicLicenses.status} != 'expired'`,
+        sql`${locations.status} != 'deleted'`
       ));
     
     const [expiring60] = await db.select({ count: count() })
       .from(clinicLicenses)
+      .innerJoin(locations, eq(clinicLicenses.locationId, locations.id))
       .where(and(
         lte(clinicLicenses.expirationDate, in60Days.toISOString()),
-        sql`${clinicLicenses.status} != 'expired'`
+        sql`${clinicLicenses.status} != 'expired'`,
+        sql`${locations.status} != 'deleted'`
       ));
     
     const [expiring90] = await db.select({ count: count() })
       .from(clinicLicenses)
+      .innerJoin(locations, eq(clinicLicenses.locationId, locations.id))
       .where(and(
         lte(clinicLicenses.expirationDate, in90Days.toISOString()),
-        sql`${clinicLicenses.status} != 'expired'`
+        sql`${clinicLicenses.status} != 'expired'`,
+        sql`${locations.status} != 'deleted'`
       ));
     
+    // Handle edge case where there are no licenses (avoid division by zero)
     return {
       totalLocations: locationStats?.total || 0,
       activeLocations: locationStats?.active || 0,
@@ -3405,6 +3482,7 @@ export class DatabaseStorage implements IStorage {
     })
     .from(locations)
     .leftJoin(clinicLicenses, eq(locations.id, clinicLicenses.locationId))
+    .where(sql`${locations.status} != 'deleted'`)
     .groupBy(locations.id, locations.name)
     .orderBy(locations.name);
     
@@ -3440,15 +3518,19 @@ export class DatabaseStorage implements IStorage {
       dueDate?: Date;
     }> = [];
     
-    // Get expired licenses
+    // Get expired licenses - exclude licenses from deleted locations
     const expiredLicenses = await db.select({
       id: clinicLicenses.id,
       licenseNumber: clinicLicenses.licenseNumber,
       expirationDate: clinicLicenses.expirationDate,
       locationId: clinicLicenses.locationId
     })
-    .from(clinicLicenses)
-    .where(eq(clinicLicenses.status, 'expired'));
+      .from(clinicLicenses)
+      .innerJoin(locations, eq(clinicLicenses.locationId, locations.id))
+      .where(and(
+        eq(clinicLicenses.status, 'expired'),
+        sql`${locations.status} != 'deleted'`
+      ));
     
     expiredLicenses.forEach(license => {
       alerts.push({
@@ -3478,19 +3560,31 @@ export class DatabaseStorage implements IStorage {
       });
     });
     
-    // Get licenses missing documents
-    const licensesWithoutDocs = await db.select({
+    // Get licenses missing documents - exclude licenses from deleted locations
+    // Since Drizzle has issues with complex queries, we'll keep it simple
+    // Get all active licenses from non-deleted locations
+    const allActiveLicenses = await db.select({
       id: clinicLicenses.id,
-      licenseNumber: clinicLicenses.licenseNumber,
-      docCount: sql<number>`count(${complianceDocuments.id})`
+      licenseNumber: clinicLicenses.licenseNumber
     })
-    .from(clinicLicenses)
-    .leftJoin(complianceDocuments, eq(clinicLicenses.id, complianceDocuments.clinicLicenseId))
-    .groupBy(clinicLicenses.id, clinicLicenses.licenseNumber)
-    .having(sql`count(${complianceDocuments.id}) = 0`);
+      .from(clinicLicenses)
+      .innerJoin(locations, eq(clinicLicenses.locationId, locations.id))
+      .where(and(
+        sql`${locations.status} != 'deleted'`,
+        sql`${clinicLicenses.status} != 'expired'`
+      ));
     
-    licensesWithoutDocs.forEach(license => {
-      if (license.docCount === 0) {
+    // Get all licenses that have documents
+    const licensesWithDocs = await db.select({
+      clinicLicenseId: complianceDocuments.clinicLicenseId
+    })
+      .from(complianceDocuments);
+    
+    const docsSet = new Set(licensesWithDocs.map(doc => doc.clinicLicenseId).filter(id => id));
+    
+    // Find licenses without documents
+    allActiveLicenses.forEach(license => {
+      if (!docsSet.has(license.id)) {
         alerts.push({
           id: alerts.length + 1,
           type: 'missing_documents',
