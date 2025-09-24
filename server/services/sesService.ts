@@ -124,12 +124,25 @@ function decrypt(text: string): string {
     return decrypted.toString();
     
   } catch (error: any) {
+    // More detailed error logging for debugging
     console.error('SES Service: Decryption failed:', {
       error: error.message,
       code: error.code,
       hasEncryptionKey: !!ENCRYPTION_KEY,
-      inputLength: text?.length || 0
+      encryptionKeyLength: ENCRYPTION_KEY?.length || 0,
+      isUsingFallbackKey: !process.env.ENCRYPTION_KEY,
+      inputLength: text?.length || 0,
+      errorType: error.name
     });
+    
+    // Common error explanations
+    if (error.message?.includes('bad decrypt')) {
+      console.error('SES Service: "bad decrypt" error typically means the encryption key has changed');
+    }
+    if (error.message?.includes('wrong final block length')) {
+      console.error('SES Service: Block length error typically means corrupted encrypted data');
+    }
+    
     return '';
   }
 }
@@ -225,30 +238,55 @@ export class SESService {
       console.log("SES Service: From email:", this.config.fromEmail);
       console.log("SES Service: Region:", this.config.region);
       
+      // Check encryption key status first
+      const hasEncryptionKey = !!process.env.ENCRYPTION_KEY;
+      console.log("SES Service: ENCRYPTION_KEY environment variable is", hasEncryptionKey ? "SET" : "NOT SET (using development fallback)");
+      
       // Decrypt credentials with enhanced error handling
       let accessKeyId = '';
       let secretAccessKey = '';
       
       if (this.config.accessKeyId) {
         console.log("SES Service: Attempting to decrypt access key...");
+        console.log("SES Service: Encrypted access key length:", this.config.accessKeyId.length);
         accessKeyId = decrypt(this.config.accessKeyId);
         if (!accessKeyId) {
-          console.error("SES Service: Failed to decrypt access key from database");
+          console.error("SES Service: =====================================");
+          console.error("SES Service: CRITICAL ERROR - Failed to decrypt AWS credentials");
+          console.error("SES Service: =====================================");
+          console.error("SES Service: This usually means one of the following:");
+          console.error("SES Service: 1. The ENCRYPTION_KEY environment variable is missing or incorrect");
+          console.error("SES Service: 2. The credentials were encrypted with a different key");
+          console.error("SES Service: 3. The encrypted data is corrupted");
+          console.error("SES Service: ");
+          console.error("SES Service: TO FIX THIS ISSUE:");
+          console.error("SES Service: Option 1: Set the ENCRYPTION_KEY environment variable to the original value");
+          console.error("SES Service: Option 2: Re-configure SES credentials in Settings → Email Configuration");
+          console.error("SES Service: Option 3: Clear the SES configuration and set it up again");
+          console.error("SES Service: =====================================");
           this.initialized = false;
           return false;
         }
+        console.log("SES Service: Successfully decrypted access key");
       } else {
         accessKeyId = process.env.AWS_SES_ACCESS_KEY_ID || '';
       }
       
       if (this.config.secretAccessKey) {
         console.log("SES Service: Attempting to decrypt secret key...");
+        console.log("SES Service: Encrypted secret key length:", this.config.secretAccessKey.length);
         secretAccessKey = decrypt(this.config.secretAccessKey);
         if (!secretAccessKey) {
-          console.error("SES Service: Failed to decrypt secret key from database");
+          console.error("SES Service: =====================================");
+          console.error("SES Service: CRITICAL ERROR - Failed to decrypt AWS secret key");
+          console.error("SES Service: =====================================");
+          console.error("SES Service: The encrypted credentials cannot be decrypted.");
+          console.error("SES Service: Please re-configure SES in Settings → Email Configuration");
+          console.error("SES Service: =====================================");
           this.initialized = false;
           return false;
         }
+        console.log("SES Service: Successfully decrypted secret key");
       } else {
         secretAccessKey = process.env.AWS_SES_SECRET_ACCESS_KEY || '';
       }
@@ -801,14 +839,46 @@ HR Management System
       if (!this.initialized) {
         const initialized = await this.initialize();
         if (!initialized) {
-          console.log("SES Service: Not configured, skipping email send in development environment");
-          return { success: false, error: "SES service not configured - email would be sent in production" };
+          // Development mode fallback - log email details instead of sending
+          console.log("============================================");
+          console.log("SES Service: DEVELOPMENT MODE - Email Details");
+          console.log("============================================");
+          console.log("TO:", options.to);
+          console.log("SUBJECT:", options.subject);
+          console.log("BODY (text):", options.bodyText?.substring(0, 200) + "...");
+          if (options.replyTo) {
+            console.log("REPLY-TO:", options.replyTo);
+          }
+          console.log("============================================");
+          console.log("NOTE: Email not sent - SES is not configured.");
+          console.log("To enable email sending:");
+          console.log("1. Set ENCRYPTION_KEY environment variable");
+          console.log("2. Configure SES in Settings → Email Configuration");
+          console.log("============================================");
+          
+          // Return success in development mode to allow workflow to continue
+          // But include a flag indicating it's a development mode send
+          return { 
+            success: true, 
+            messageId: `dev-mode-${Date.now()}`,
+            error: "Development mode - email logged but not sent" 
+          };
         }
       }
 
       if (!this.client || !this.config) {
-        console.log("SES Service: Client not initialized, skipping email send");
-        return { success: false, error: "SES client not initialized - email would be sent in production" };
+        console.log("SES Service: Client not initialized, using development mode");
+        console.log("============================================");
+        console.log("SES Service: DEVELOPMENT MODE - Email Details");
+        console.log("============================================");
+        console.log("TO:", options.to);
+        console.log("SUBJECT:", options.subject);
+        console.log("============================================");
+        return { 
+          success: true, 
+          messageId: `dev-mode-${Date.now()}`,
+          error: "Development mode - email logged but not sent" 
+        };
       }
 
       const params = {

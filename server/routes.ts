@@ -3503,7 +3503,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         console.log('Email send result:', emailResult);
         
-        if (!emailResult.success) {
+        // Check if email was sent in development mode
+        const isDevelopmentMode = emailResult.error?.includes('Development mode');
+        
+        if (!emailResult.success && !isDevelopmentMode) {
           console.error('Failed to send invitation email:', emailResult.error);
           // Update invitation status to reflect email failure
           await storage.updateInvitation(invitation.id, {
@@ -3528,6 +3531,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               note: 'Invitation was created but email delivery failed. You can try resending the invitation.'
             }
           });
+        } else if (isDevelopmentMode) {
+          console.log('Invitation email logged in development mode for:', email);
+          console.log('Invitation link:', invitationLink);
         } else {
           console.log('Invitation email sent successfully to:', email);
         }
@@ -3732,11 +3738,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
           0 // Manual resend, not a reminder
         );
         
+        // Check if email was sent in development mode
+        const isDevelopmentMode = emailResult.error?.includes('Development mode');
+        
         // Always return success, but include SES status in response
-        if (emailResult.success) {
+        if (emailResult.success && !isDevelopmentMode) {
           res.json({ 
             message: 'Invitation email resent successfully',
             email: invitation.email 
+          });
+        } else if (isDevelopmentMode) {
+          // Development mode - email logged but not sent
+          console.log('Resend invitation link for development mode:', invitationLink);
+          res.json({
+            message: 'Invitation resend completed (Development Mode)',
+            email: invitation.email,
+            emailStatus: 'development',
+            note: 'Email logged to console - check server logs for invitation link',
+            developmentInfo: 'SES not configured - set ENCRYPTION_KEY and configure SES in Settings'
           });
         } else {
           // Don't fail the request if email fails - return success with details
