@@ -19,7 +19,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { insertLicenseTypeSchema, type LicenseType, type InsertLicenseType } from "@shared/schema";
-import { Award, Building2, Pill, Briefcase, Package, Plus, Edit, Trash2, Search, AlertTriangle, Clock, FileText, CheckCircle } from "lucide-react";
+import { Award, Building2, Pill, Briefcase, Package, Plus, Edit, Trash2, Search, AlertTriangle, Clock, FileText, CheckCircle, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface LicenseTypesResponse {

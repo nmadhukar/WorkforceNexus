@@ -132,12 +132,24 @@ export function setupAuth(app: Express) {
    */
   passport.use(
     new LocalStrategy(async (username, password, done) => {
+      console.log(`Authentication attempt for username: ${username}`);
+      
       const user = await storage.getUserByUsername(username);
-      if (!user || !(await comparePasswords(password, user.passwordHash))) {
+      
+      if (!user) {
+        console.log(`Authentication failed: User '${username}' not found`);
         return done(null, false);
-      } else {
-        return done(null, user);
       }
+      
+      const passwordMatch = await comparePasswords(password, user.passwordHash);
+      
+      if (!passwordMatch) {
+        console.log(`Authentication failed: Invalid password for user '${username}'`);
+        return done(null, false);
+      }
+      
+      console.log(`Authentication successful for user '${username}' (ID: ${user.id}, Role: ${user.role})`);
+      return done(null, user);
     }),
   );
 
