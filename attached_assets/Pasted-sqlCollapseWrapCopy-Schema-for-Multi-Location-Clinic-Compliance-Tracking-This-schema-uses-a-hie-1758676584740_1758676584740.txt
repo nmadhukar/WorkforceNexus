@@ -1,0 +1,273 @@
+sqlCollapseWrapCopy-- Schema for Multi-Location Clinic Compliance Tracking
+-- This schema uses a hierarchical structure for organizations (main org and sublocations).
+-- Licenses are tied to organizations with flexible JSONB fields for adaptability.
+-- Responsible persons are linked to licenses.
+-- SOP documents are attached to licenses.
+-- Dashboard items can be derived via queries/views on aggregated license data (e.g., expiry counts, compliance status).
+
+-- Enable extensions for JSONB support and UUIDs (optional, for better scalability)
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Table for organizations (main and sublocations)
+CREATE TABLE organizations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    parent_id UUID REFERENCES organizations(id) ON DELETE CASCADE,  -- Self-referential for hierarchy (null for main org)
+    type ENUM('main', 'sublocation') NOT NULL DEFAULT 'sublocation',
+    address TEXT,
+    contact_email VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index for hierarchy queries
+CREATE INDEX idx_organizations_parent ON organizations(parent_id);
+
+-- Table for responsible persons (can be shared across licenses/orgs)
+CREATE TABLE responsible_persons (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL,  -- Optional tie to org
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    phone VARCHAR(50),
+    role VARCHAR(100),  -- e.g., 'Compliance Officer', 'License Holder'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table for license types (to define standard licenses, extensible via description or future columns)
+CREATE TABLE license_types (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) NOT NULL UNIQUE,  -- e.g., 'Medical License', 'DEA Registration'
+    description TEXT,
+    renewal_frequency INTERVAL,  -- e.g., '1 year' for automatic expiry calculations
+    required_fields JSONB DEFAULT '{}',  -- For adaptability: {"field1": "type:string", "field2": "type:date"}
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table for licenses (core compliance tracking, tied to orgs)
+CREATE TABLE licenses (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    license_type_id UUID NOT NULL REFERENCES license_types(id) ON DELETE RESTRICT,
+    license_number VARCHAR(100) NOT NULL,
+    issue_date DATE,
+    expiry_date DATE,  -- Can auto-populate via trigger based on renewal_frequency
+    status ENUM('active', 'expired', 'pending_renewal', 'revoked') NOT NULL DEFAULT 'active',
+    responsible_person_id UUID REFERENCES responsible_persons(id) ON DELETE SET NULL,
+    custom_fields JSONB DEFAULT '{}',  -- For adaptability: extra fields like {"state": "CA", "notes": "Special condition"}
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes for performance
+CREATE INDEX idx_licenses_org ON licenses(organization_id);
+CREATE INDEX idx_licenses_type ON licenses(license_type_id);
+CREATE INDEX idx_licenses_expiry ON licenses(expiry_date);
+CREATE INDEX idx_licenses_status ON licenses(status);
+
+-- Table for SOP and compliance documents (attached to licenses)
+CREATE TABLE compliance_documents (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    license_id UUID NOT NULL REFERENCES licenses(id) ON DELETE CASCADE,
+    document_type ENUM('SOP', 'Renewal_Guide', 'Compliance_Cert', 'Other') NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    file_url TEXT NOT NULL,  -- S3 URL or similar
+    description TEXT,
+    version VARCHAR(50),  -- For tracking updates
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index for quick doc lookup
+CREATE INDEX idx_docs_license ON compliance_documents(license_id);
+
+-- Optional: Trigger to auto-update expiry_date on insert/update based on renewal_frequency
+CREATE OR REPLACE FUNCTION update_expiry_date()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.issue_date IS NOT NULL AND (TG_OP = 'INSERT' OR NEW.issue_date <> OLD.issue_date) THEN
+        SELECT issue_date + renewal_frequency INTO NEW.expiry_date
+        FROM licenses l
+        JOIN license_types lt ON l.license_type_id = lt.id
+        WHERE l.id = NEW.id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_update_expiry
+    BEFORE INSERT OR UPDATE OF issue_date ON licenses
+    FOR EACH ROW EXECUTE FUNCTION update_expiry_date();
+
+-- For dashboard-level items: Use a view for aggregated metrics (e.g., compliance overview)
+-- This can be queried for dashboard (e.g., # expired licenses per org, renewal due soon)
+CREATE VIEW dashboard_compliance_summary AS
+SELECT 
+    o.id AS org_id,
+    o.name AS org_name,
+    o.type,
+    COUNT(l.id) AS total_licenses,
+    COUNT(CASE WHEN l.status = 'active' THEN 1 END) AS active_licenses,
+    COUNT(CASE WHEN l.status = 'expired' THEN 1 END) AS expired_licenses,
+    COUNT(CASE WHEN l.expiry_date <= CURRENT_DATE + INTERVAL '30 days' THEN 1 END) AS due_soon,
+    AVG(EXTRACT(EPOCH FROM (l.expiry_date - CURRENT_DATE)) / 86400) AS avg_days_to_expiry  -- In days
+FROM organizations o
+LEFT JOIN licenses l ON o.id = l.organization_id
+GROUP BY o.id, o.name, o.type
+ORDER BY o.type DESC, o.name;  -- Main org first
+
+-- Example usage for dashboard:
+-- SELECT * FROM dashboard_compliance_summary WHERE type = 'sublocation';
+-- Or for main org: SELECT * FROM dashboard_compliance_summary WHERE type = 'main';
+
+-- To add new license data fields:
+-- 1. Update license_types.required_fields JSONB with new schema.
+-- 2. Add to licenses.custom_fields when inserting data.
+-- 3. For global fields, add columns to licenses table directly.
+-- 4. For new license types, INSERT into license_types.
+
+-- Sample data insertion (for testing):
+-- INSERT INTO organizations (name, type) VALUES ('Main Clinic Org', 'main');
+-- INSERT INTO organizations (name, parent_id, type) VALUES ('Branch A', (SELECT id FROM organizations WHERE name = 'Main Clinic Org'), 'sublocation');
+-- INSERT INTO license_types (name, renewal_frequency) VALUES ('State Medical License', '1 year');
+-- INSERT INTO responsible_persons (name, email, role) VALUES ('Dr. Jane Doe', 'jane@clinic.com', 'Lead Physician');
+-- INSERT INTO licenses (organization_id, license_type_id, license_number, issue_date, responsible_person_id, custom_fields)
+--     VALUES ((SELECT id FROM organizations WHERE name = 'Branch A'), (SELECT id FROM license_types WHERE name = 'State Medical License'),
+--             'LIC-12345', '2024-01-01', (SELECT id FROM responsible_persons WHERE name = 'Dr. Jane Doe'),
+--             '{"state": "CA", "specialty": "General Practice"}');
+-- INSERT INTO compliance_documents (license_id, document_type, file_name, file_url)
+--     VALUES ((SELECT id FROM licenses WHERE license_number = 'LIC-12345'), 'SOP', 'renewal_sop.pdf', 'https://s3.example.com/renewal_sop.pdf');
+Explanation
+
+Organizations: Hierarchical (main org has parent_id NULL; sublocations reference parent). Easily extensible for more locations.
+Responsible Persons: Reusable across licenses/orgs, with optional org tie.
+License Types: Defines standards; required_fields JSONB allows schema evolution without table changes (e.g., add "federal_id": "type:string" for new types).
+Licenses: Core table with fixed fields + custom_fields JSONB for flexibility (store any new data like notes, attachments metadata). Auto-expiry trigger for convenience.
+Compliance Documents: Handles SOPs, certs, etc., per license.
+Dashboard Summary View: Aggregates for quick dashboard queries (e.g., totals, expiries). Extend with more views as needed (e.g., per-person responsibilities).
+Adaptability: JSONB fields let you add license-specific data without schema migrations. For frequent new fields, add columns to licenses. Hierarchy supports main/sub reporting.
+Best Practices: Uses UUIDs for scalability, timestamps for auditing, enums for status/types, indexes for queries. Assumes file storage external (e.g., S3 for docs). Test with the sample inserts. If you need migrations, views, or constraints tweaked, provide more details!```sql
+-- Schema for Multi-Location Clinic Compliance Tracking
+-- This schema supports hierarchical locations (main org and sub-locations),
+-- multiple license types, responsible persons, compliance and SOP documents.
+-- It includes JSONB fields for extensibility (e.g., adding new license data fields).
+-- Dashboard-level items can be derived from expiration dates, status, etc.
+
+-- Enable UUID extension if not already enabled
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Table for locations (hierarchical: main has parent_id NULL)
+CREATE TABLE locations (
+id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+name VARCHAR(255) NOT NULL,
+parent_id UUID REFERENCES locations(id) ON DELETE SET NULL,  -- Hierarchy: sub-locations point to parent
+address TEXT,
+city VARCHAR(100),
+state VARCHAR(50),
+zip_code VARCHAR(20),
+country VARCHAR(100) DEFAULT 'USA',
+is_main BOOLEAN DEFAULT FALSE,  -- Flag for the main organization
+created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+-- Table for persons (responsible people)
+CREATE TABLE persons (
+id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+first_name VARCHAR(100) NOT NULL,
+last_name VARCHAR(100) NOT NULL,
+email VARCHAR(255) UNIQUE,
+phone VARCHAR(50),
+role VARCHAR(100),  -- e.g., 'Compliance Officer', 'Manager'
+location_id UUID REFERENCES locations(id) ON DELETE SET NULL,  -- Optional association to a location
+created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+-- Table for license types (e.g., Medical License, DEA, etc.)
+CREATE TABLE license_types (
+id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+name VARCHAR(255) NOT NULL UNIQUE,
+description TEXT,
+renewal_frequency INTERVAL,  -- e.g., '1 year' for automated calculations
+created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+-- Table for licenses (associated with locations or org)
+CREATE TABLE licenses (
+id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+location_id UUID REFERENCES locations(id) ON DELETE CASCADE,
+license_type_id UUID REFERENCES license_types(id) ON DELETE RESTRICT,
+license_number VARCHAR(100) NOT NULL,
+issue_date DATE,
+expiration_date DATE,
+responsible_person_id UUID REFERENCES persons(id) ON DELETE SET NULL,
+status VARCHAR(50) DEFAULT 'Active',  -- e.g., 'Active', 'Expired', 'Pending Renewal'
+notes TEXT,
+additional_data JSONB,  -- Flexible fields for new data (e.g., {"custom_field": "value"})
+created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+-- Table for documents (compliance docs, SOPs, etc.)
+CREATE TABLE documents (
+id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+name VARCHAR(255) NOT NULL,
+type VARCHAR(50) NOT NULL,  -- e.g., 'Compliance', 'SOP', 'License Scan'
+file_path TEXT,  -- Path or URL to the document
+location_id UUID REFERENCES locations(id) ON DELETE SET NULL,  -- Optional: for location-specific docs
+license_id UUID REFERENCES licenses(id) ON DELETE CASCADE,  -- Optional: for license-specific docs (e.g., SOP for renewal)
+license_type_id UUID REFERENCES license_types(id) ON DELETE SET NULL,  -- Optional: for type-specific SOPs
+upload_date DATE DEFAULT CURRENT_DATE,
+version INTEGER DEFAULT 1,
+notes TEXT,
+created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+-- Indexes for performance (e.g., dashboard queries on expirations)
+CREATE INDEX idx_licenses_expiration ON licenses (expiration_date);
+CREATE INDEX idx_licenses_status ON licenses (status);
+CREATE INDEX idx_licenses_location ON licenses (location_id);
+CREATE INDEX idx_documents_type ON documents (type);
+CREATE INDEX idx_documents_license ON documents (license_id);
+-- Example View for Dashboard: Upcoming Expirations
+CREATE VIEW dashboard_upcoming_expirations AS
+SELECT
+l.name AS location_name,
+lt.name AS license_type,
+lic.license_number,
+lic.expiration_date,
+p.first_name || ' ' || p.last_name AS responsible_person,
+lic.status
+FROM licenses lic
+JOIN locations l ON lic.location_id = l.id
+JOIN license_types lt ON lic.license_type_id = lt.id
+LEFT JOIN persons p ON lic.responsible_person_id = p.id
+WHERE lic.expiration_date <= CURRENT_DATE + INTERVAL '30 days'
+ORDER BY lic.expiration_date ASC;
+-- Trigger for updating timestamps
+CREATE OR REPLACE FUNCTION update_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+NEW.updated_at = CURRENT_TIMESTAMP;
+RETURN NEW;
+END;
+$$
+CREATE TRIGGER update_locations_timestamp
+BEFORE UPDATE ON locations
+FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+CREATE TRIGGER update_persons_timestamp
+BEFORE UPDATE ON persons
+FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+CREATE TRIGGER update_license_types_timestamp
+BEFORE UPDATE ON license_types
+FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+CREATE TRIGGER update_licenses_timestamp
+BEFORE UPDATE ON licenses
+FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+CREATE TRIGGER update_documents_timestamp
+BEFORE UPDATE ON documents
+FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+```
+
+This schema provides a structured yet flexible foundation. The `additional_data` JSONB column in `licenses` allows adding new fields (e.g., via JSON objects) without altering the table. Hierarchy is handled via `parent_id` in `locations`. Documents can be linked to locations, licenses, or types for compliance and SOP tracking. The dashboard view example shows how to query for key metrics like upcoming expirations. You can extend with more views or tables as needed.$$
