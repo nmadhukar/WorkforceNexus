@@ -2745,6 +2745,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   /**
+   * POST /api/admin/ses-config/verify-email
+   * Verify an email address with AWS SES (alternative endpoint)
+   * This endpoint specifically verifies admin@atcemr.com for sending
+   */
+  app.post('/api/admin/ses-config/verify-email',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { sesService } = await import('./services/sesService');
+        
+        // Default to admin@atcemr.com if no email provided
+        const emailToVerify = req.body.email || 'admin@atcemr.com';
+        
+        console.log(`Attempting to verify email address: ${emailToVerify}`);
+        const success = await sesService.verifyEmailAddress(emailToVerify);
+        
+        if (success) {
+          res.json({ 
+            message: `Verification request sent for ${emailToVerify}`,
+            details: 'Please check the email inbox and follow the AWS verification link',
+            email: emailToVerify
+          });
+        } else {
+          res.status(400).json({ 
+            error: `Failed to send verification email to ${emailToVerify}`,
+            details: 'The email may already be verified or there might be an AWS configuration issue'
+          });
+        }
+      } catch (error: any) {
+        console.error('Error verifying email address:', error);
+        res.status(500).json({ 
+          error: 'Failed to verify email address',
+          details: error.message || 'Unknown error occurred'
+        });
+      }
+    }
+  );
+
+  /**
    * DocuSeal Forms Configuration Routes
    * 
    * Endpoints for managing DocuSeal API integration for document signing.

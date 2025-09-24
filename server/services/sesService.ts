@@ -121,7 +121,16 @@ export class SESService {
       console.log("SES Service: From email:", this.config.fromEmail);
       console.log("SES Service: Region:", this.config.region);
       
-      // Check encryption key status first
+      // Check if we should use environment credentials directly
+      const useEnvCredentials = process.env.AWS_SES_ACCESS_KEY_ID && process.env.AWS_SES_SECRET_ACCESS_KEY;
+      
+      if (useEnvCredentials) {
+        console.log("SES Service: Using environment credentials directly (bypassing decryption)");
+      } else {
+        console.log("SES Service: Using database credentials with decryption");
+      }
+      
+      // Check encryption key status
       const hasEncryptionKey = !!process.env.ENCRYPTION_KEY;
       console.log("SES Service: ENCRYPTION_KEY environment variable is", hasEncryptionKey ? "SET" : "NOT SET (using development fallback)");
       
@@ -129,8 +138,20 @@ export class SESService {
       let accessKeyId = '';
       let secretAccessKey = '';
       
-      if (this.config.accessKeyId && this.config.accessKeyId !== '') {
-        console.log("SES Service: Attempting to decrypt access key...");
+      // Try environment credentials first (direct use without decryption)
+      // First try SES-specific credentials, then fall back to general AWS credentials
+      if (process.env.AWS_SES_ACCESS_KEY_ID && process.env.AWS_SES_SECRET_ACCESS_KEY) {
+        console.log("SES Service: Using SES-specific environment credentials directly");
+        accessKeyId = process.env.AWS_SES_ACCESS_KEY_ID;
+        secretAccessKey = process.env.AWS_SES_SECRET_ACCESS_KEY;
+        console.log("SES Service: SES environment credentials loaded successfully");
+      } else if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+        console.log("SES Service: Using general AWS environment credentials as fallback");
+        accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+        secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+        console.log("SES Service: General AWS credentials loaded successfully");
+      } else if (this.config.accessKeyId && this.config.accessKeyId !== '') {
+        console.log("SES Service: Attempting to decrypt access key from database...");
         console.log("SES Service: Encrypted access key length:", this.config.accessKeyId.length);
         
         try {
@@ -149,38 +170,33 @@ export class SESService {
           return false;
         }
       } else {
-        // Check environment variable fallback
-        accessKeyId = process.env.AWS_SES_ACCESS_KEY_ID || '';
-        if (!accessKeyId) {
-          console.log("SES Service: No access key configured. Please configure SES in Settings.");
-          this.initialized = false;
-          return false;
-        }
+        console.log("SES Service: No access key configured. Please configure SES in Settings.");
+        this.initialized = false;
+        return false;
       }
       
-      if (this.config.secretAccessKey && this.config.secretAccessKey !== '') {
-        console.log("SES Service: Attempting to decrypt secret key...");
-        console.log("SES Service: Encrypted secret key length:", this.config.secretAccessKey.length);
-        
-        try {
-          secretAccessKey = decrypt(this.config.secretAccessKey);
-          if (!secretAccessKey) {
-            console.log("SES Service: Decryption returned empty. Configuration needs to be reset.");
+      // Only decrypt secret key if we're not using environment credentials directly
+      if (!(process.env.AWS_SES_ACCESS_KEY_ID && process.env.AWS_SES_SECRET_ACCESS_KEY)) {
+        if (this.config.secretAccessKey && this.config.secretAccessKey !== '') {
+          console.log("SES Service: Attempting to decrypt secret key from database...");
+          console.log("SES Service: Encrypted secret key length:", this.config.secretAccessKey.length);
+          
+          try {
+            secretAccessKey = decrypt(this.config.secretAccessKey);
+            if (!secretAccessKey) {
+              console.log("SES Service: Decryption returned empty. Configuration needs to be reset.");
+              console.log("SES Service: Please reconfigure SES credentials in Settings → Email Configuration");
+              this.initialized = false;
+              return false;
+            }
+            console.log("SES Service: Successfully decrypted secret key");
+          } catch (error) {
+            console.error("SES Service: Failed to decrypt secret key:", error);
             console.log("SES Service: Please reconfigure SES credentials in Settings → Email Configuration");
             this.initialized = false;
             return false;
           }
-          console.log("SES Service: Successfully decrypted secret key");
-        } catch (error) {
-          console.error("SES Service: Failed to decrypt secret key:", error);
-          console.log("SES Service: Please reconfigure SES credentials in Settings → Email Configuration");
-          this.initialized = false;
-          return false;
-        }
-      } else {
-        // Check environment variable fallback
-        secretAccessKey = process.env.AWS_SES_SECRET_ACCESS_KEY || '';
-        if (!secretAccessKey) {
+        } else {
           console.log("SES Service: No secret key configured. Please configure SES in Settings.");
           this.initialized = false;
           return false;
@@ -776,8 +792,12 @@ HR Management System
         };
       }
 
+      // Use simple email format without display name to avoid permission issues
+      const sourceEmail = this.config.fromEmail || 'admin@atcemr.com';
+      console.log(`SES Service: Using source email: ${sourceEmail}`);
+      
       const params = {
-        Source: `${this.config.fromName} <${this.config.fromEmail}>`,
+        Source: sourceEmail, // Use just the email address without display name
         Destination: {
           ToAddresses: [options.to]
         },
