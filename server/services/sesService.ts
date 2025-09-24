@@ -732,34 +732,33 @@ HR Management System
    */
   async sendEmail(options: EmailOptions): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
-      if (!this.initialized) {
-        const initialized = await this.initialize();
-        if (!initialized) {
-          // Development mode fallback - log email details instead of sending
-          console.log("============================================");
-          console.log("SES Service: DEVELOPMENT MODE - Email Details");
-          console.log("============================================");
-          console.log("TO:", options.to);
-          console.log("SUBJECT:", options.subject);
-          console.log("BODY (text):", options.bodyText?.substring(0, 200) + "...");
-          if (options.replyTo) {
-            console.log("REPLY-TO:", options.replyTo);
-          }
-          console.log("============================================");
-          console.log("NOTE: Email not sent - SES is not configured.");
-          console.log("To enable email sending:");
-          console.log("1. Set ENCRYPTION_KEY environment variable");
-          console.log("2. Configure SES in Settings → Email Configuration");
-          console.log("============================================");
-          
-          // Return success in development mode to allow workflow to continue
-          // But include a flag indicating it's a development mode send
-          return { 
-            success: true, 
-            messageId: `dev-mode-${Date.now()}`,
-            error: "Development mode - email logged but not sent" 
-          };
+      // Always re-initialize to get latest configuration from database
+      const initialized = await this.initialize();
+      if (!initialized) {
+        // Development mode fallback - log email details instead of sending
+        console.log("============================================");
+        console.log("SES Service: DEVELOPMENT MODE - Email Details");
+        console.log("============================================");
+        console.log("TO:", options.to);
+        console.log("SUBJECT:", options.subject);
+        console.log("BODY (text):", options.bodyText?.substring(0, 200) + "...");
+        if (options.replyTo) {
+          console.log("REPLY-TO:", options.replyTo);
         }
+        console.log("============================================");
+        console.log("NOTE: Email not sent - SES is not configured.");
+        console.log("To enable email sending:");
+        console.log("1. Set ENCRYPTION_KEY environment variable");
+        console.log("2. Configure SES in Settings → Email Configuration");
+        console.log("============================================");
+        
+        // Return success in development mode to allow workflow to continue
+        // But include a flag indicating it's a development mode send
+        return { 
+          success: true, 
+          messageId: `dev-mode-${Date.now()}`,
+          error: "Development mode - email logged but not sent" 
+        };
       }
 
       if (!this.client || !this.config) {
