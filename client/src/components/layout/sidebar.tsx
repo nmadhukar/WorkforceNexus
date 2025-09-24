@@ -13,7 +13,8 @@ import {
   ChevronDown,
   ChevronRight,
   Building2,
-  FileCheck
+  FileCheck,
+  LayoutDashboard
 } from "lucide-react";
 
 const navigationItems = [
@@ -25,6 +26,7 @@ const navigationItems = [
     label: "Compliance", 
     icon: Award,
     submenu: [
+      { path: "/compliance-dashboard", label: "Dashboard", icon: LayoutDashboard },
       { path: "/locations", label: "Locations", icon: Building2 },
       { path: "/licenses", label: "Licenses", icon: Award },
       { path: "/license-types", label: "License Types", icon: FileCheck },

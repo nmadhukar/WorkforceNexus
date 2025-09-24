@@ -22,6 +22,7 @@ import LicensesPage from "@/pages/compliance/licenses";
 import LicenseTypesPage from "@/pages/compliance/license-types";
 import ResponsiblePersonsPage from "@/pages/compliance/responsible-persons";
 import ComplianceDocumentsPage from "@/pages/compliance/compliance-documents";
+import ComplianceDashboard from "@/pages/compliance/compliance-dashboard";
 
 function Router() {
   return (
@@ -39,6 +40,7 @@ function Router() {
       <ProtectedRoute path="/license-types" component={LicenseTypesPage} />
       <ProtectedRoute path="/responsible-persons" component={ResponsiblePersonsPage} />
       <ProtectedRoute path="/compliance-documents" component={ComplianceDocumentsPage} />
+      <ProtectedRoute path="/compliance-dashboard" component={ComplianceDashboard} />
       <ProtectedRoute path="/settings" component={Settings} />
       <ProtectedRoute path="/settings/api-keys" component={ApiKeysPage} />
       <ProtectedRoute path="/settings/users" component={UsersManagement} />

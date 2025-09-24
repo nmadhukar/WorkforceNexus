@@ -2,9 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { MainLayout } from "@/components/layout/main-layout";
-import { Users, UserCheck, AlertTriangle, UserPlus, Download, Upload, TrendingUp } from "lucide-react";
+import { Users, UserCheck, AlertTriangle, UserPlus, Download, Upload, TrendingUp, Award, Clock, FileText, AlertCircle, CheckCircle, Building2 } from "lucide-react";
 import { Link, useLocation } from "wouter";
+import { format } from "date-fns";
 
 /**
  * Statistical data for dashboard overview cards
@@ -14,6 +16,28 @@ interface DashboardStats {
   activeLicenses: number;
   expiringSoon: number;
   complianceRate: number;
+}
+
+interface ComplianceMetrics {
+  totalLocations: number;
+  totalLicenses: number;
+  activeLicenses: number;
+  expiringIn30Days: number;
+  expiringIn60Days: number;
+  expiringIn90Days: number;
+  expiredLicenses: number;
+  documentsCount: number;
+}
+
+interface ComplianceAlert {
+  id: number;
+  type: string;
+  severity: string;
+  message: string;
+  entityId: number;
+  entityType: string;
+  responsiblePerson?: string;
+  daysUntilExpiration?: number;
 }
 
 /**
@@ -73,6 +97,21 @@ export default function Dashboard() {
       return res.json();
     }
   });
+
+  // Fetch compliance dashboard data
+  const { data: complianceData } = useQuery<ComplianceMetrics>({
+    queryKey: ["/api/compliance/dashboard"]
+  });
+
+  // Fetch compliance alerts
+  const { data: complianceAlerts = [] } = useQuery<ComplianceAlert[]>({
+    queryKey: ["/api/compliance/alerts"]
+  });
+
+  // Calculate compliance score
+  const complianceScore = complianceData 
+    ? Math.round((complianceData.activeLicenses / Math.max(complianceData.totalLicenses, 1)) * 100)
+    : 0;
 
   return (
     <MainLayout>
@@ -155,6 +194,137 @@ export default function Dashboard() {
               </CardContent>
             </Card>
           </Link>
+        </div>
+
+        {/* Compliance Overview Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {/* Compliance Overview Card */}
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Award className="w-5 h-5 text-primary" />
+                    Compliance Overview
+                  </CardTitle>
+                  <CardDescription>Real-time compliance status and metrics</CardDescription>
+                </div>
+                <Link href="/compliance-dashboard">
+                  <Button variant="outline" size="sm" data-testid="button-view-compliance-dashboard">
+                    View Full Dashboard
+                  </Button>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center">
+                  <p className="text-sm text-muted-foreground">Compliance Score</p>
+                  <p className="text-2xl font-bold">
+                    <span className={complianceScore >= 90 ? "text-green-600" : complianceScore >= 70 ? "text-yellow-600" : "text-destructive"}>
+                      {complianceScore}%
+                    </span>
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm text-muted-foreground">Active Licenses</p>
+                  <p className="text-2xl font-bold text-green-600">{complianceData?.activeLicenses || 0}</p>
+                  <p className="text-xs text-muted-foreground">of {complianceData?.totalLicenses || 0}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm text-muted-foreground">Expiring (30d)</p>
+                  <p className="text-2xl font-bold text-yellow-600">{complianceData?.expiringIn30Days || 0}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm text-muted-foreground">Expired</p>
+                  <p className="text-2xl font-bold text-destructive">{complianceData?.expiredLicenses || 0}</p>
+                </div>
+              </div>
+
+              {/* Compliance Alerts */}
+              {complianceAlerts.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  <p className="text-sm font-medium mb-2">Recent Compliance Alerts</p>
+                  {complianceAlerts.slice(0, 3).map((alert) => (
+                    <Alert 
+                      key={alert.id} 
+                      variant={alert.severity === 'high' ? 'destructive' : 'default'}
+                      className="py-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        {alert.severity === 'high' ? (
+                          <AlertCircle className="w-4 h-4" />
+                        ) : (
+                          <Clock className="w-4 h-4" />
+                        )}
+                        <AlertDescription className="text-sm">
+                          {alert.message}
+                          {alert.responsiblePerson && (
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              ({alert.responsiblePerson})
+                            </span>
+                          )}
+                        </AlertDescription>
+                      </div>
+                    </Alert>
+                  ))}
+                </div>
+              )}
+
+              {/* Expiration Breakdown */}
+              <div className="mt-4 grid grid-cols-3 gap-4 pt-4 border-t">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-yellow-500" />
+                    <span className="text-sm font-medium">30 Days</span>
+                  </div>
+                  <p className="text-xl font-bold text-yellow-600 mt-1">
+                    {complianceData?.expiringIn30Days || 0}
+                  </p>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-orange-500" />
+                    <span className="text-sm font-medium">60 Days</span>
+                  </div>
+                  <p className="text-xl font-bold text-orange-600 mt-1">
+                    {(complianceData?.expiringIn60Days || 0) - (complianceData?.expiringIn30Days || 0)}
+                  </p>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-blue-500" />
+                    <span className="text-sm font-medium">90 Days</span>
+                  </div>
+                  <p className="text-xl font-bold text-blue-600 mt-1">
+                    {(complianceData?.expiringIn90Days || 0) - (complianceData?.expiringIn60Days || 0)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Quick Actions */}
+              <div className="mt-4 pt-4 border-t flex gap-2">
+                <Link href="/licenses/new">
+                  <Button variant="outline" size="sm" data-testid="button-add-license">
+                    <Award className="w-4 h-4 mr-2" />
+                    Add License
+                  </Button>
+                </Link>
+                <Link href="/compliance-documents/upload">
+                  <Button variant="outline" size="sm" data-testid="button-upload-compliance-doc">
+                    <FileText className="w-4 h-4 mr-2" />
+                    Upload Document
+                  </Button>
+                </Link>
+                <Link href="/licenses?filter=expiring">
+                  <Button variant="outline" size="sm" data-testid="button-view-expiring-licenses">
+                    <AlertTriangle className="w-4 h-4 mr-2" />
+                    View Expiring
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Recent Activity and Quick Actions */}
