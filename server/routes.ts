@@ -66,6 +66,7 @@ import { db } from "./db";
 import { documents, users } from "@shared/schema";
 import { eq, or, sql, count } from "drizzle-orm";
 import { encrypt, decrypt, mask } from "./utils/encryption";
+import { getBaseUrl } from "./utils/url";
 import crypto from "crypto";
 
 // Import password hashing utilities from auth module
@@ -3557,9 +3558,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           nextReminderAt
         });
         
-        // Generate invitation link
-        const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+        // Generate invitation link using proper domain detection
+        const baseUrl = getBaseUrl(req);
         const invitationLink = `${baseUrl}/onboarding/register?token=${invitationToken}`;
+        console.log(`Invitation link generated: ${invitationLink}`);
         
         // Send invitation email
         const { sesService } = await import('./services/sesService');
@@ -3809,9 +3811,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         });
         
-        // Generate invitation link
-        const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+        // Generate invitation link using proper domain detection
+        const baseUrl = getBaseUrl(req);
         const invitationLink = `${baseUrl}/onboarding/register?token=${invitation.invitationToken}`;
+        console.log(`Resend invitation link generated: ${invitationLink}`);
         
         // Calculate time until expiration
         const expiresAt = newExpiresAt;

@@ -6,6 +6,13 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+// Enable trust proxy for production deployments
+// This allows proper protocol and host detection when behind proxies
+if (process.env.NODE_ENV === 'production' || process.env.REPLIT_DOMAINS) {
+  app.set('trust proxy', 1);
+  console.log('Trust proxy enabled for production environment');
+}
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
