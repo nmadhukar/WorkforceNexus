@@ -25,7 +25,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   FileSignature,
@@ -39,6 +46,11 @@ import {
   Plus,
   Mail,
   FileCheck,
+  PenTool,
+  ClipboardSignature,
+  FileText,
+  AlertCircle,
+  UserCheck,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 
@@ -50,11 +62,17 @@ interface FormSubmission {
   status: 'pending' | 'sent' | 'viewed' | 'completed' | 'expired' | 'declined';
   submittedAt: string | null;
   completedAt: string | null;
-  documentUrl: string | null;
-  submissionUrl: string | null;
+  documentUrl?: string | null; // Made optional - won't be sent in list responses
+  submissionUrl?: string | null; // Made optional - won't be sent in list responses
   sentAt: string | null;
   viewedAt: string | null;
   metadata?: any;
+  submissionData?: {
+    employeeSigned?: boolean;
+    hrSigned?: boolean;
+    requiresHrSignature?: boolean;
+    requiresEmployeeFirst?: boolean;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -73,15 +91,34 @@ interface FormsManagerProps {
   employeeId: number;
 }
 
+interface Employee {
+  id: number;
+  userId: number | null;
+  firstName: string;
+  lastName: string;
+  [key: string]: any;
+}
+
 export function FormsManager({ employeeId }: FormsManagerProps) {
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
   const [sendFormDialogOpen, setSendFormDialogOpen] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [sendingForm, setSendingForm] = useState(false);
 
+  // Fetch employee data to get userId for context detection
+  const { data: employee } = useQuery<Employee>({
+    queryKey: [`/api/employees/${employeeId}`],
+  });
+
+  // Determine viewing context
+  const isOwnProfile = employee?.userId === currentUser?.id;
+  const isManagementView = currentUser?.role === 'admin' || currentUser?.role === 'hr';
+  const showEmployeeView = isOwnProfile && !isManagementView;
+
   // Fetch form submissions for the employee
   const { data: submissions = [], isLoading: submissionsLoading } = useQuery<FormSubmission[]>({
-    queryKey: ["/api/forms/submissions", employeeId],
+    queryKey: [`/api/forms/submissions?employeeId=${employeeId}`],
   });
 
   // Fetch available templates
@@ -103,7 +140,7 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
         title: "Form Sent",
         description: "The form has been sent to the employee successfully.",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/forms/submissions", employeeId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/forms/submissions?employeeId=${employeeId}`] });
       setSendFormDialogOpen(false);
       setSelectedTemplateId("");
     },
@@ -126,7 +163,7 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
         title: "Form Resent",
         description: "The form has been resent to the employee successfully.",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/forms/submissions", employeeId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/forms/submissions?employeeId=${employeeId}`] });
     },
     onError: (error) => {
       toast({
@@ -212,15 +249,216 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
     setSendingForm(false);
   };
 
-  const handleViewForm = (submission: FormSubmission) => {
-    if (submission.submissionUrl) {
-      window.open(submission.submissionUrl, '_blank');
+  const handleViewForm = async (submission: FormSubmission) => {
+    try {
+      // Fetch signing URL on-demand for security
+      const response = await apiRequest("GET", `/api/forms/submissions/${submission.id}/sign`);
+      const data = await response.json();
+      if (data.signingUrl) {
+        window.open(data.signingUrl, '_blank');
+      }
+    } catch (error: any) {
+      toast({
+        title: "Failed to Access Form",
+        description: error.message || "Unable to retrieve form URL. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
-  const handleDownloadForm = (submission: FormSubmission) => {
-    if (submission.documentUrl) {
-      window.open(submission.documentUrl, '_blank');
+  const handleDownloadForm = async (submission: FormSubmission) => {
+    try {
+      // Use secure download endpoint
+      window.open(`/api/forms/submission/${submission.id}/download`, '_blank');
+    } catch (error: any) {
+      toast({
+        title: "Failed to Download",
+        description: "Unable to download document. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSignDocument = async (submission: FormSubmission) => {
+    try {
+      // For HR/Admin signing HR signature on multi-party forms
+      const submissionData = submission.metadata || submission.submissionData || {};
+      const isHrUser = currentUser?.role === 'admin' || currentUser?.role === 'hr';
+      
+      if (isHrUser && submissionData.requiresHrSignature && !submissionData.hrSigned) {
+        // HR needs to counter-sign
+        const response = await apiRequest("GET", `/api/forms/submissions/${submission.id}/hr-sign`);
+        const data = await response.json();
+        if (data.signingUrl) {
+          window.open(data.signingUrl, '_blank');
+        }
+      } else {
+        // Employee signing or general signing
+        const response = await apiRequest("GET", `/api/forms/submissions/${submission.id}/sign`);
+        const data = await response.json();
+        if (data.signingUrl) {
+          window.open(data.signingUrl, '_blank');
+        }
+      }
+    } catch (error: any) {
+      toast({
+        title: "Failed to Access Signing Form",
+        description: error.message || "Unable to retrieve signing URL. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleViewDocument = async (submission: FormSubmission) => {
+    try {
+      if (submission.status === 'completed') {
+        // View completed document
+        window.open(`/api/forms/submission/${submission.id}/download`, '_blank');
+      } else {
+        // Get signing URL for in-progress document
+        const response = await apiRequest("GET", `/api/forms/submissions/${submission.id}/sign`);
+        const data = await response.json();
+        if (data.signingUrl) {
+          window.open(data.signingUrl, '_blank');
+        }
+      }
+    } catch (error: any) {
+      toast({
+        title: "Failed to View Document",
+        description: "Unable to access document. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleReviewDocument = async (submission: FormSubmission) => {
+    try {
+      // HR/Admin review - check if they need to counter-sign
+      const submissionData = submission.metadata || submission.submissionData || {};
+      
+      if (submissionData.requiresHrSignature && !submissionData.hrSigned && submissionData.employeeSigned) {
+        // Get HR signing URL
+        const response = await apiRequest("GET", `/api/forms/submissions/${submission.id}/hr-sign`);
+        const data = await response.json();
+        if (data.signingUrl) {
+          window.open(data.signingUrl, '_blank');
+        }
+      } else if (submission.status === 'completed') {
+        // View completed document
+        window.open(`/api/forms/submission/${submission.id}/download`, '_blank');
+      } else {
+        // Get employee signing URL for review
+        const response = await apiRequest("GET", `/api/forms/submissions/${submission.id}/sign`);
+        const data = await response.json();
+        if (data.signingUrl) {
+          window.open(data.signingUrl, '_blank');
+        }
+      }
+    } catch (error: any) {
+      toast({
+        title: "Failed to Review Document",
+        description: error.message || "Unable to access document. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getEmployeeActionButton = (submission: FormSubmission) => {
+    const submissionData = submission.metadata || submission.submissionData || {};
+    const employeeSigned = submissionData.employeeSigned || false;
+    
+    // If employee has already signed, show view button
+    if (employeeSigned) {
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleViewDocument(submission)}
+                data-testid={`button-view-document-${submission.id}`}
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                {submission.status === 'completed' ? 'View Document' : 'View Status'}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{submission.status === 'completed' ? 'View the completed document' : 'View document status'}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+    
+    // Otherwise show sign button based on status
+    switch (submission.status) {
+      case 'pending':
+      case 'sent':
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => handleSignDocument(submission)}
+                  data-testid={`button-sign-${submission.id}`}
+                >
+                  <PenTool className="h-4 w-4 mr-2" />
+                  Sign Document
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Click to sign this document</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      case 'viewed':
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => handleSignDocument(submission)}
+                  data-testid={`button-continue-signing-${submission.id}`}
+                >
+                  <ClipboardSignature className="h-4 w-4 mr-2" />
+                  Continue Signing
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Continue signing this document</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      case 'completed':
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleViewDocument(submission)}
+                  data-testid={`button-view-document-${submission.id}`}
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  View Document
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>View the completed document</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      default:
+        return null;
     }
   };
 
@@ -229,16 +467,18 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
         <CardTitle className="flex items-center gap-2">
           <FileSignature className="h-5 w-5" />
-          Document Forms
+          {showEmployeeView ? "My Documents" : "Document Forms"}
         </CardTitle>
-        <Button
-          onClick={() => setSendFormDialogOpen(true)}
-          size="sm"
-          data-testid="button-send-form"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Send Form
-        </Button>
+        {!showEmployeeView && (
+          <Button
+            onClick={() => setSendFormDialogOpen(true)}
+            size="sm"
+            data-testid="button-send-form"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Send Form
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         {submissionsLoading ? (
@@ -248,15 +488,21 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
         ) : submissions.length === 0 ? (
           <div className="text-center py-12">
             <FileCheck className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
-            <p className="text-muted-foreground mb-4">No forms have been sent to this employee yet.</p>
-            <Button
-              variant="outline"
-              onClick={() => setSendFormDialogOpen(true)}
-              data-testid="button-send-first-form"
-            >
-              <Send className="h-4 w-4 mr-2" />
-              Send First Form
-            </Button>
+            <p className="text-muted-foreground mb-4">
+              {showEmployeeView 
+                ? "No documents require your signature at this time" 
+                : "No forms have been sent to this employee yet."}
+            </p>
+            {!showEmployeeView && (
+              <Button
+                variant="outline"
+                onClick={() => setSendFormDialogOpen(true)}
+                data-testid="button-send-first-form"
+              >
+                <Send className="h-4 w-4 mr-2" />
+                Send First Form
+              </Button>
+            )}
           </div>
         ) : (
           <div className="relative overflow-x-auto">
@@ -267,6 +513,9 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
                   <TableHead>Status</TableHead>
                   <TableHead>Sent Date</TableHead>
                   <TableHead>Completed Date</TableHead>
+                  {isManagementView && !showEmployeeView && (
+                    <TableHead>Required Signers</TableHead>
+                  )}
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -282,38 +531,167 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
                     <TableCell>{getStatusBadge(submission.status)}</TableCell>
                     <TableCell>{formatDate(submission.sentAt || submission.createdAt)}</TableCell>
                     <TableCell>{formatDate(submission.completedAt)}</TableCell>
+                    {isManagementView && !showEmployeeView && (
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          {/* Employee Signature Status */}
+                          <Badge 
+                            variant={submission.metadata?.employeeSigned || submission.submissionData?.employeeSigned ? "default" : "outline"} 
+                            className={`text-xs ${
+                              submission.metadata?.employeeSigned || submission.submissionData?.employeeSigned 
+                                ? "bg-green-100 text-green-800 border-green-200" 
+                                : ""
+                            }`}
+                          >
+                            {(submission.metadata?.employeeSigned || submission.submissionData?.employeeSigned) ? (
+                              <>
+                                <UserCheck className="h-3 w-3 mr-1" />
+                                Employee
+                              </>
+                            ) : (
+                              <>Employee</>  
+                            )}
+                          </Badge>
+                          
+                          {/* HR Signature Status if required */}
+                          {(submission.metadata?.requiresHrSignature || submission.submissionData?.requiresHrSignature) && (
+                            <>
+                              <Badge 
+                                variant={(submission.metadata?.hrSigned || submission.submissionData?.hrSigned) ? "default" : "outline"} 
+                                className={`text-xs ${
+                                  (submission.metadata?.hrSigned || submission.submissionData?.hrSigned)
+                                    ? "bg-green-100 text-green-800 border-green-200" 
+                                    : ""
+                                }`}
+                              >
+                                {(submission.metadata?.hrSigned || submission.submissionData?.hrSigned) ? (
+                                  <>
+                                    <UserCheck className="h-3 w-3 mr-1" />
+                                    HR
+                                  </>
+                                ) : (
+                                  <>HR</>  
+                                )}
+                              </Badge>
+                              {!(submission.metadata?.hrSigned || submission.submissionData?.hrSigned) && 
+                               (submission.metadata?.employeeSigned || submission.submissionData?.employeeSigned) && (
+                                <AlertCircle className="h-3 w-3 text-amber-500" />
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </TableCell>
+                    )}
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {submission.status === 'completed' && submission.documentUrl && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDownloadForm(submission)}
-                            data-testid={`button-download-${submission.id}`}
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
-                        )}
-                        {submission.submissionUrl && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleViewForm(submission)}
-                            data-testid={`button-view-${submission.id}`}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        )}
-                        {(submission.status === 'sent' || submission.status === 'viewed') && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => resendFormMutation.mutate(submission.id)}
-                            disabled={resendFormMutation.isPending}
-                            data-testid={`button-resend-${submission.id}`}
-                          >
-                            <RefreshCw className="h-4 w-4" />
-                          </Button>
+                        {showEmployeeView ? (
+                          // Employee self-service actions
+                          getEmployeeActionButton(submission)
+                        ) : (
+                          // HR/Admin management actions
+                          <>
+                            {submission.status === 'completed' && (
+                              <>
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleDownloadForm(submission)}
+                                        data-testid={`button-download-${submission.id}`}
+                                      >
+                                        <Download className="h-4 w-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Download document</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => handleReviewDocument(submission)}
+                                        data-testid={`button-review-${submission.id}`}
+                                      >
+                                        <FileText className="h-4 w-4 mr-2" />
+                                        Review
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Review completed document</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                                {/* HR Counter-Sign Button - Only show if employee has signed and HR hasn't */}
+                                {((submission.metadata?.requiresHrSignature || submission.submissionData?.requiresHrSignature) && 
+                                  !(submission.metadata?.hrSigned || submission.submissionData?.hrSigned) &&
+                                  (submission.metadata?.employeeSigned || submission.submissionData?.employeeSigned || submission.status === 'completed')) && (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="default"
+                                          size="sm"
+                                          onClick={() => handleSignDocument(submission)}
+                                          data-testid={`button-hr-sign-${submission.id}`}
+                                        >
+                                          <UserCheck className="h-4 w-4 mr-2" />
+                                          Complete HR Signature
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Add HR signature to complete this document</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
+                              </>
+                            )}
+                            {submission.status !== 'completed' && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleViewForm(submission)}
+                                      data-testid={`button-view-${submission.id}`}
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>View form submission</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                            {(submission.status === 'sent' || submission.status === 'viewed') && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => resendFormMutation.mutate(submission.id)}
+                                      disabled={resendFormMutation.isPending}
+                                      data-testid={`button-resend-${submission.id}`}
+                                    >
+                                      <RefreshCw className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Resend form to employee</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </>
                         )}
                       </div>
                     </TableCell>

@@ -2900,6 +2900,92 @@ export async function registerRoutes(app: Express): Promise<Server> {
    */
 
   /**
+   * GET /api/forms/submissions
+   * Get form submissions for an employee (query parameter version for frontend compatibility)
+   * Accessible by the employee themselves or HR/admin
+   */
+  app.get('/api/forms/submissions',
+    requireAuth,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.query.employeeId as string);
+        
+        if (!employeeId || isNaN(employeeId)) {
+          return res.status(400).json({ error: 'Employee ID is required' });
+        }
+        
+        // Check if user is the employee themselves or has HR/admin role
+        const employee = await storage.getEmployee(employeeId);
+        if (!employee) {
+          return res.status(404).json({ error: 'Employee not found' });
+        }
+        
+        const isOwnProfile = employee.userId === req.user!.id;
+        const hasManagementRole = req.user!.role === 'admin' || req.user!.role === 'hr';
+        
+        if (!isOwnProfile && !hasManagementRole) {
+          return res.status(403).json({ error: 'Insufficient permissions' });
+        }
+        
+        // Get form submissions from storage
+        const submissions = await storage.getFormSubmissions(employeeId);
+        
+        // Include template details but REMOVE signing URLs for security
+        const submissionsWithTemplates = await Promise.all(
+          submissions.map(async (submission) => {
+            const template = await storage.getDocusealTemplate(submission.templateId);
+            
+            // Extract multi-party signing status from submissionData
+            const submissionData = submission.submissionData as any || {};
+            
+            // Create safe response without exposing signing URLs
+            const safeSubmission = {
+              id: submission.id,
+              employeeId: submission.employeeId,
+              templateId: submission.templateId,
+              templateName: template?.name || 'Unknown Template',
+              templateDescription: template?.description,
+              status: submission.status,
+              submittedAt: submission.sentAt,
+              completedAt: submission.completedAt,
+              sentAt: submission.sentAt,
+              viewedAt: submission.openedAt,
+              createdAt: submission.createdAt,
+              updatedAt: submission.updatedAt,
+              expiresAt: submission.expiresAt,
+              invitationId: submission.invitationId,
+              // Include multi-party signing metadata
+              metadata: {
+                requiresHrSignature: submissionData.requiresHrSignature || false,
+                requiresEmployeeFirst: submissionData.requiresEmployeeFirst || false,
+                employeeSigned: submissionData.employeeSigned || false,
+                hrSigned: submissionData.hrSigned || false
+              },
+              submissionData: {
+                requiresHrSignature: submissionData.requiresHrSignature || false,
+                requiresEmployeeFirst: submissionData.requiresEmployeeFirst || false,
+                employeeSigned: submissionData.employeeSigned || false,
+                hrSigned: submissionData.hrSigned || false
+              }
+              // NOTE: documentUrl and submissionUrl are intentionally NOT included for security
+            };
+            
+            return safeSubmission;
+          })
+        );
+        
+        // Log access for audit trail
+        await logAudit(req, 8, { employeeId, isOwnProfile, count: submissionsWithTemplates.length });
+        
+        res.json(submissionsWithTemplates);
+      } catch (error) {
+        console.error('Error fetching form submissions:', error);
+        res.status(500).json({ error: 'Failed to fetch form submissions' });
+      }
+    }
+  );
+
+  /**
    * GET /api/forms/employee/:employeeId
    * Get all form submissions for an employee
    */
@@ -2910,15 +2996,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const employeeId = parseInt(req.params.employeeId);
         const submissions = await storage.getFormSubmissions(employeeId);
         
-        // Include template details
+        // Include template details but REMOVE signing URLs for security
         const submissionsWithTemplates = await Promise.all(
           submissions.map(async (submission) => {
             const template = await storage.getDocusealTemplate(submission.templateId);
-            return {
-              ...submission,
+            
+            // Extract multi-party signing status from submissionData
+            const submissionData = submission.submissionData as any || {};
+            
+            // Create safe response without exposing signing URLs
+            const safeSubmission = {
+              id: submission.id,
+              employeeId: submission.employeeId,
+              templateId: submission.templateId,
               templateName: template?.name || 'Unknown Template',
-              templateDescription: template?.description
+              templateDescription: template?.description,
+              status: submission.status,
+              submittedAt: submission.sentAt,
+              completedAt: submission.completedAt,
+              sentAt: submission.sentAt,
+              viewedAt: submission.openedAt,
+              createdAt: submission.createdAt,
+              updatedAt: submission.updatedAt,
+              expiresAt: submission.expiresAt,
+              invitationId: submission.invitationId,
+              // Include multi-party signing metadata
+              metadata: {
+                requiresHrSignature: submissionData.requiresHrSignature || false,
+                requiresEmployeeFirst: submissionData.requiresEmployeeFirst || false,
+                employeeSigned: submissionData.employeeSigned || false,
+                hrSigned: submissionData.hrSigned || false
+              },
+              submissionData: {
+                requiresHrSignature: submissionData.requiresHrSignature || false,
+                requiresEmployeeFirst: submissionData.requiresEmployeeFirst || false,
+                employeeSigned: submissionData.employeeSigned || false,
+                hrSigned: submissionData.hrSigned || false
+              }
+              // NOTE: documentUrl and submissionUrl are intentionally NOT included for security
             };
+            
+            return safeSubmission;
           })
         );
         
@@ -3040,6 +3158,121 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error('Error downloading form documents:', error);
         res.status(500).json({ error: 'Failed to download form documents' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/forms/submissions/:id/sign
+   * Get signing URL for employee
+   * Returns the appropriate signing URL for the employee to sign the document
+   */
+  app.get('/api/forms/submissions/:id/sign',
+    requireAuth,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const submissionId = parseInt(req.params.id);
+        const submission = await storage.getFormSubmission(submissionId);
+        
+        if (!submission) {
+          return res.status(404).json({ error: 'Form submission not found' });
+        }
+        
+        // Verify the current user is the employee or has HR permissions
+        const employee = await storage.getEmployee(submission.employeeId);
+        if (!employee) {
+          return res.status(404).json({ error: 'Employee not found' });
+        }
+        
+        const isOwnProfile = employee.userId === req.user!.id;
+        const hasManagementRole = req.user!.role === 'admin' || req.user!.role === 'hr';
+        
+        if (!isOwnProfile && !hasManagementRole) {
+          return res.status(403).json({ error: 'Insufficient permissions to access signing URL' });
+        }
+        
+        // Check if form is already completed
+        if (submission.status === 'completed') {
+          return res.status(400).json({ error: 'Form has already been completed' });
+        }
+        
+        // Return the signing URL
+        // If submissionData contains multiple signing URLs, return the employee one
+        const submissionData = submission.submissionData as any;
+        let signingUrl = submissionData?.signingUrl;
+        
+        if (submissionData?.signingUrls?.employee) {
+          signingUrl = submissionData.signingUrls.employee;
+        }
+        
+        if (!signingUrl) {
+          return res.status(400).json({ error: 'No signing URL available for this submission' });
+        }
+        
+        res.json({
+          signingUrl,
+          submissionId: submission.id,
+          status: submission.status,
+          employeeId: submission.employeeId
+        });
+      } catch (error) {
+        console.error('Error fetching signing URL:', error);
+        res.status(500).json({ error: 'Failed to fetch signing URL' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/forms/submissions/:id/hr-sign
+   * Get signing URL for HR to complete second-party signature
+   * Returns the HR-specific signing URL if form requires HR signature
+   */
+  app.get('/api/forms/submissions/:id/hr-sign',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const submissionId = parseInt(req.params.id);
+        const submission = await storage.getFormSubmission(submissionId);
+        
+        if (!submission) {
+          return res.status(404).json({ error: 'Form submission not found' });
+        }
+        
+        // Check if form requires HR signature
+        const submissionData = submission.submissionData as any;
+        if (!submissionData?.requiresHrSignature) {
+          return res.status(400).json({ error: 'This form does not require HR signature' });
+        }
+        
+        // Check if HR has already signed
+        if (submissionData?.hrSigned) {
+          return res.status(400).json({ error: 'HR has already signed this form' });
+        }
+        
+        // Check if employee has signed (if required)
+        if (submissionData?.requiresEmployeeFirst && !submissionData?.employeeSigned) {
+          return res.status(400).json({ error: 'Employee must sign first before HR can sign' });
+        }
+        
+        // Get HR signing URL
+        const hrSigningUrl = submissionData?.signingUrls?.hr;
+        
+        if (!hrSigningUrl) {
+          return res.status(400).json({ error: 'No HR signing URL available for this submission' });
+        }
+        
+        res.json({
+          signingUrl: hrSigningUrl,
+          submissionId: submission.id,
+          status: submission.status,
+          employeeId: submission.employeeId,
+          employeeSigned: submissionData?.employeeSigned || false,
+          requiresEmployeeFirst: submissionData?.requiresEmployeeFirst || false
+        });
+      } catch (error) {
+        console.error('Error fetching HR signing URL:', error);
+        res.status(500).json({ error: 'Failed to fetch HR signing URL' });
       }
     }
   );
@@ -4245,10 +4478,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const location = await storage.createLocation(req.body);
         
         await logAudit(
-          req.user!.id,
-          'CREATE',
-          'Location created',
-          { locationId: location.id, name: location.name }
+          req,
+          location.id,
+          null,
+          location
         );
         
         res.status(201).json(location);
@@ -4272,10 +4505,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const location = await storage.updateLocation(parseInt(req.params.id), req.body);
         
         await logAudit(
-          req.user!.id,
-          'UPDATE',
-          'Location updated',
-          { locationId: location.id, name: location.name }
+          req,
+          location.id,
+          null,
+          location
         );
         
         res.json(location);
@@ -4299,10 +4532,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.deleteLocation(locationId);
         
         await logAudit(
-          req.user!.id,
-          'DELETE',
-          'Location deleted',
-          { locationId }
+          req,
+          locationId,
+          null,
+          null
         );
         
         res.status(204).send();
@@ -4437,10 +4670,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const licenseType = await storage.createLicenseType(req.body);
         
         await logAudit(
-          req.user!.id,
-          'CREATE',
-          'License type created',
-          { licenseTypeId: licenseType.id, name: licenseType.name }
+          req,
+          licenseType.id,
+          null,
+          licenseType
         );
         
         res.status(201).json(licenseType);
@@ -4464,10 +4697,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const licenseType = await storage.updateLicenseType(parseInt(req.params.id), req.body);
         
         await logAudit(
-          req.user!.id,
-          'UPDATE',
-          'License type updated',
-          { licenseTypeId: licenseType.id, name: licenseType.name }
+          req,
+          licenseType.id,
+          null,
+          licenseType
         );
         
         res.json(licenseType);
@@ -4491,10 +4724,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.deleteLicenseType(licenseTypeId);
         
         await logAudit(
-          req.user!.id,
-          'DELETE',
-          'License type deleted',
-          { licenseTypeId }
+          req,
+          licenseTypeId,
+          null,
+          null
         );
         
         res.status(204).send();
@@ -4576,10 +4809,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const person = await storage.createResponsiblePerson(req.body);
         
         await logAudit(
-          req.user!.id,
-          'CREATE',
-          'Responsible person created',
-          { personId: person.id, email: person.email }
+          req,
+          person.id,
+          null,
+          person
         );
         
         res.status(201).json(person);
@@ -4603,10 +4836,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const person = await storage.updateResponsiblePerson(parseInt(req.params.id), req.body);
         
         await logAudit(
-          req.user!.id,
-          'UPDATE',
-          'Responsible person updated',
-          { personId: person.id, email: person.email }
+          req,
+          person.id,
+          null,
+          person
         );
         
         res.json(person);
@@ -4630,10 +4863,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.deleteResponsiblePerson(personId);
         
         await logAudit(
-          req.user!.id,
-          'DELETE',
-          'Responsible person deleted',
-          { personId }
+          req,
+          personId,
+          null,
+          null
         );
         
         res.status(204).send();
@@ -4738,10 +4971,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const license = await storage.createClinicLicense(req.body);
         
         await logAudit(
-          req.user!.id,
-          'CREATE',
-          'Clinic license created',
-          { licenseId: license.id, licenseNumber: license.licenseNumber }
+          req,
+          license.id,
+          null,
+          license
         );
         
         res.status(201).json(license);
@@ -4765,10 +4998,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const license = await storage.updateClinicLicense(parseInt(req.params.id), req.body);
         
         await logAudit(
-          req.user!.id,
-          'UPDATE',
-          'Clinic license updated',
-          { licenseId: license.id, licenseNumber: license.licenseNumber }
+          req,
+          license.id,
+          null,
+          license
         );
         
         res.json(license);
@@ -4792,10 +5025,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.deleteClinicLicense(licenseId);
         
         await logAudit(
-          req.user!.id,
-          'DELETE',
-          'Clinic license deleted',
-          { licenseId }
+          req,
+          licenseId,
+          null,
+          null
         );
         
         res.status(204).send();
@@ -4879,10 +5112,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const license = await storage.renewClinicLicense(licenseId, req.body);
         
         await logAudit(
-          req.user!.id,
-          'UPDATE',
-          'Clinic license renewed',
-          { licenseId, newExpirationDate: req.body.newExpirationDate }
+          req,
+          licenseId,
+          null,
+          license
         );
         
         res.json(license);
@@ -4984,15 +5217,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Generate S3 key for compliance document
         const s3Key = generateDocumentKey(
-          'compliance',
-          req.body.clinicLicenseId,
+          parseInt(req.body.clinicLicenseId),
+          req.body.documentType || 'compliance',
           file.originalname
         );
         
+        // Read file into buffer for upload
+        const fileBuffer = fs.readFileSync(file.path);
+        
         // Upload to S3
         const uploadResult = await s3Service.uploadComplianceDocument(
-          file.path,
-          s3Key,
+          fileBuffer,
+          file.originalname,
+          file.mimetype,
           {
             locationId: req.body.locationId,
             licenseId: req.body.clinicLicenseId,
@@ -5022,10 +5259,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         
         await logAudit(
-          req.user!.id,
-          'CREATE',
-          'Compliance document uploaded',
-          { documentId: document.id, fileName: file.originalname }
+          req,
+          document.id,
+          null,
+          document
         );
         
         res.status(201).json(document);
@@ -5052,10 +5289,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const document = await storage.updateComplianceDocument(parseInt(req.params.id), req.body);
         
         await logAudit(
-          req.user!.id,
-          'UPDATE',
-          'Compliance document metadata updated',
-          { documentId: document.id, documentName: document.documentName }
+          req,
+          document.id,
+          null,
+          document
         );
         
         res.json(document);
@@ -5091,10 +5328,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.deleteComplianceDocument(documentId);
         
         await logAudit(
-          req.user!.id,
-          'DELETE',
-          'Compliance document deleted',
-          { documentId, fileName: document.fileName }
+          req,
+          documentId,
+          document,
+          null
         );
         
         res.status(204).send();

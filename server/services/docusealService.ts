@@ -492,7 +492,7 @@ export class DocuSealService {
   }
 
   /**
-   * Send form to employee
+   * Send form to employee with support for multi-party signing
    */
   async sendFormToEmployee(
     employeeId: number, 
@@ -525,6 +525,44 @@ export class DocuSealService {
       const emp = employee[0];
       const tmpl = template[0];
 
+      // Check if template requires multi-party signing
+      // This can be configured in template metadata or determined by template name/category
+      const requiresHrSignature = tmpl.metadata?.requiresHrSignature || 
+                                 tmpl.category === 'employment_agreement' ||
+                                 tmpl.name?.toLowerCase().includes('agreement') ||
+                                 tmpl.name?.toLowerCase().includes('contract');
+
+      // Create submitters array based on signing requirements
+      const submitters = [];
+      let metadata: any = {
+        requiresHrSignature,
+        requiresEmployeeFirst: true,
+        employeeSigned: false,
+        hrSigned: false,
+        signingUrls: {}
+      };
+
+      // Always add employee as first submitter
+      submitters.push({
+        email: emp.workEmail,
+        name: `${emp.firstName} ${emp.lastName}`,
+        phone: emp.cellPhone || undefined,
+        role: 'employee'
+      });
+
+      // Add HR as second submitter if required
+      if (requiresHrSignature) {
+        // Get HR manager details (you might want to configure this)
+        const hrEmail = process.env.HR_EMAIL || 'hr@company.com';
+        const hrName = process.env.HR_NAME || 'HR Department';
+        
+        submitters.push({
+          email: hrEmail,
+          name: hrName,
+          role: 'hr'
+        });
+      }
+
       // Create submission in DocuSeal with properly formatted message
       const messageContent = isOnboarding 
         ? "Please complete this form as part of your onboarding process. This is required to complete your employee onboarding."
@@ -532,11 +570,7 @@ export class DocuSealService {
       
       const apiSubmission = await this.createSubmission({
         template_id: tmpl.templateId,
-        submitters: [{
-          email: emp.workEmail,
-          name: `${emp.firstName} ${emp.lastName}`,
-          phone: emp.cellPhone || undefined
-        }],
+        submitters,
         send_email: true,
         message: {
           subject: isOnboarding ? "Onboarding Form Completion Required" : "Form Completion Required",
@@ -544,11 +578,29 @@ export class DocuSealService {
         }
       });
 
-      // Save submission to database
+      // Extract signing URLs from the API submission
+      if (apiSubmission.submitters) {
+        // Employee signing URL (first submitter)
+        if (apiSubmission.submitters[0]) {
+          metadata.signingUrls.employee = `https://docuseal.co/s/${apiSubmission.submitters[0].id}`;
+        }
+        
+        // HR signing URL (second submitter if exists)
+        if (requiresHrSignature && apiSubmission.submitters[1]) {
+          metadata.signingUrls.hr = `https://docuseal.co/s/${apiSubmission.submitters[1].id}`;
+        }
+      }
+
+      // Store the primary submission URL (for the employee)
+      const submissionUrl = metadata.signingUrls.employee || 
+                          `https://docuseal.co/submissions/${apiSubmission.id}`;
+
+      // Save submission to database with metadata
       const dbSubmission = await db.insert(formSubmissions).values({
         submissionId: apiSubmission.id,
         employeeId: employeeId,
         templateId: templateId,
+        templateName: tmpl.name,
         recipientEmail: emp.workEmail,
         recipientName: `${emp.firstName} ${emp.lastName}`,
         recipientPhone: emp.cellPhone,
@@ -557,7 +609,9 @@ export class DocuSealService {
         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
         isOnboardingRequirement: isOnboarding,
         invitationId: invitationId,
-        createdBy: createdBy
+        createdBy: createdBy,
+        submissionUrl,
+        metadata
       }).returning();
 
       return dbSubmission[0];
