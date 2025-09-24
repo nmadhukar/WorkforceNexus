@@ -3754,13 +3754,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
         
+        // Extend expiration date by 7 days from now when resending
+        const now = new Date();
+        const newExpiresAt = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000));
+        
+        // Update the invitation with new expiration date
+        await storage.updateInvitation(invitationId, {
+          expiresAt: newExpiresAt,
+          metadata: {
+            ...invitation.metadata,
+            lastResendAt: now.toISOString(),
+            resendCount: ((invitation.metadata as any)?.resendCount || 0) + 1
+          }
+        });
+        
         // Generate invitation link
         const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
         const invitationLink = `${baseUrl}/onboarding/register?token=${invitation.invitationToken}`;
         
         // Calculate time until expiration
-        const now = new Date();
-        const expiresAt = new Date(invitation.expiresAt);
+        const expiresAt = newExpiresAt;
         const daysRemaining = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
         
         // Send email with timeout handling
