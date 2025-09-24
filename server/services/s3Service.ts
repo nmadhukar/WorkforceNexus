@@ -185,13 +185,39 @@ class S3Service {
           return null;
         }
         
+        // Try to decrypt credentials if they exist
+        let decryptedAccessKey = '';
+        let decryptedSecretKey = '';
+        
+        if (config.accessKeyId && config.secretAccessKey) {
+          try {
+            decryptedAccessKey = decrypt(config.accessKeyId);
+            decryptedSecretKey = decrypt(config.secretAccessKey);
+            
+            // Check if decryption actually succeeded (returns empty string on failure)
+            if (!decryptedAccessKey || !decryptedSecretKey) {
+              console.warn('S3 Service: Decryption returned empty credentials from cache. Configuration may need to be reset.');
+              // Clear cache to force reload from DB
+              this.cachedConfig = null;
+              this.configCacheTime = 0;
+              return null;
+            }
+          } catch (error) {
+            console.error('S3 Service: Failed to decrypt cached credentials:', error);
+            // Clear cache to force reload from DB
+            this.cachedConfig = null;
+            this.configCacheTime = 0;
+            return null;
+          }
+        }
+        
         return {
           region: config.region || 'us-east-1',
           bucketName: config.bucketName || '',
           endpoint: config.endpoint || undefined,
-          credentials: config.accessKeyId && config.secretAccessKey ? {
-            accessKeyId: decrypt(config.accessKeyId),
-            secretAccessKey: decrypt(config.secretAccessKey)
+          credentials: decryptedAccessKey && decryptedSecretKey ? {
+            accessKeyId: decryptedAccessKey,
+            secretAccessKey: decryptedSecretKey
           } : undefined
         };
       }
@@ -206,14 +232,42 @@ class S3Service {
       this.cachedConfig = config;
       this.configCacheTime = Date.now();
       
-      // Decrypt sensitive fields
+      // Try to decrypt sensitive fields if they exist
+      let decryptedAccessKey = '';
+      let decryptedSecretKey = '';
+      
+      if (config.accessKeyId && config.secretAccessKey) {
+        try {
+          // Skip decryption if fields are empty (already cleared)
+          if (config.accessKeyId === '' || config.secretAccessKey === '') {
+            console.log('S3 Service: Credentials are empty, skipping decryption. Please reconfigure S3.');
+            return null;
+          }
+          
+          decryptedAccessKey = decrypt(config.accessKeyId);
+          decryptedSecretKey = decrypt(config.secretAccessKey);
+          
+          // Check if decryption actually succeeded
+          if (!decryptedAccessKey || !decryptedSecretKey) {
+            console.warn('S3 Service: Decryption returned empty credentials. Configuration needs to be reset.');
+            console.log('S3 Service: Please reconfigure S3 credentials in Settings.');
+            return null;
+          }
+        } catch (error) {
+          console.error('S3 Service: Failed to decrypt stored credentials:', error);
+          console.log('S3 Service: This usually means the ENCRYPTION_KEY has changed.');
+          console.log('S3 Service: Please reconfigure S3 credentials in Settings.');
+          return null;
+        }
+      }
+      
       const decryptedConfig: S3Config = {
         region: config.region || 'us-east-1',
         bucketName: config.bucketName || '',
         endpoint: config.endpoint || undefined,
-        credentials: config.accessKeyId && config.secretAccessKey ? {
-          accessKeyId: decrypt(config.accessKeyId),
-          secretAccessKey: decrypt(config.secretAccessKey)
+        credentials: decryptedAccessKey && decryptedSecretKey ? {
+          accessKeyId: decryptedAccessKey,
+          secretAccessKey: decryptedSecretKey
         } : undefined
       };
       

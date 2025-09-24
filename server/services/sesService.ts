@@ -26,126 +26,9 @@ import { NodeHttpHandler } from "@aws-sdk/node-http-handler";
 import { db } from "../db";
 import { sesConfigurations, emailReminders } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
-import * as crypto from "crypto";
+import { encrypt, decrypt } from "../utils/encryption";
 
-// Encryption key management with secure fallback handling
-const getEncryptionKey = (): string => {
-  // First try environment variable
-  if (process.env.ENCRYPTION_KEY) {
-    return process.env.ENCRYPTION_KEY.slice(0, 32);
-  }
-  
-  // In production, fail hard if encryption key is not set
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('ENCRYPTION_KEY environment variable must be set in production for SES service security');
-  }
-  
-  // Development fallback with strong warning
-  console.error('⚠️  CRITICAL SECURITY WARNING: ENCRYPTION_KEY not set! Using development fallback.');
-  console.error('⚠️  This is ONLY acceptable in development. Set ENCRYPTION_KEY in production!');
-  
-  const fallbackSeed = 'dev-encryption-key-for-ses-service-consistency';
-  return crypto.createHash('sha256').update(fallbackSeed).digest('hex').slice(0, 32);
-};
 
-const ENCRYPTION_KEY = getEncryptionKey();
-const ENCRYPTION_IV_LENGTH = 16;
-
-/**
- * Encrypt sensitive data using AES-256-CBC encryption
- * 
- * @function encrypt
- * @param {string} text - Plain text to encrypt
- * @returns {string} Encrypted text in format "iv:encryptedData"
- * 
- * @description
- * Encrypts sensitive configuration data such as AWS credentials
- * using AES-256-CBC encryption. The function generates a random
- * initialization vector (IV) for each encryption to ensure security.
- * 
- * @throws {Error} Encryption fails due to invalid input or crypto errors
- * 
- * @example
- * const accessKey = "AKIA1234567890ABCDEF";
- * const encrypted = encrypt(accessKey);
- * // Returns: "a1b2c3d4e5f6....:x9y8z7w6v5u4...."
- */
-function encrypt(text: string): string {
-  const iv = crypto.randomBytes(ENCRYPTION_IV_LENGTH);
-  const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
-  let encrypted = cipher.update(text);
-  encrypted = Buffer.concat([encrypted, cipher.final()]);
-  return iv.toString('hex') + ':' + encrypted.toString('hex');
-}
-
-/**
- * Decrypt AES-256-CBC encrypted sensitive data
- * 
- * @function decrypt
- * @param {string} text - Encrypted text in format "iv:encryptedData"
- * @returns {string} Decrypted plain text
- * 
- * @description
- * Decrypts data that was encrypted using the encrypt() function.
- * Expects input in the format "iv:encryptedData" where both
- * components are hex-encoded.
- * 
- * @throws {Error} Decryption fails due to invalid format, wrong key, or corrupted data
- * 
- * @example
- * const encrypted = "a1b2c3d4e5f6....:x9y8z7w6v5u4....";
- * const decrypted = decrypt(encrypted);
- * // Returns: "AKIA1234567890ABCDEF"
- */
-function decrypt(text: string): string {
-  try {
-    if (!text || typeof text !== 'string') {
-      console.error('SES Service: Invalid encrypted text provided for decryption');
-      return '';
-    }
-    
-    const textParts = text.split(':');
-    if (textParts.length !== 2) {
-      console.error('SES Service: Invalid encrypted text format (expected iv:encryptedData)');
-      return '';
-    }
-    
-    const iv = Buffer.from(textParts[0], 'hex');
-    const encryptedText = Buffer.from(textParts[1], 'hex');
-    
-    if (iv.length !== ENCRYPTION_IV_LENGTH) {
-      console.error(`SES Service: Invalid IV length (expected ${ENCRYPTION_IV_LENGTH}, got ${iv.length})`);
-      return '';
-    }
-    
-    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), iv);
-    let decrypted = decipher.update(encryptedText);
-    decrypted = Buffer.concat([decrypted, decipher.final()]);
-    return decrypted.toString();
-    
-  } catch (error: any) {
-    // More detailed error logging for debugging
-    console.error('SES Service: Decryption failed:', {
-      error: error.message,
-      code: error.code,
-      hasEncryptionKey: !!ENCRYPTION_KEY,
-      encryptionKeyLength: ENCRYPTION_KEY?.length || 0,
-      isUsingFallbackKey: !process.env.ENCRYPTION_KEY,
-      inputLength: text?.length || 0,
-      errorType: error.name
-    });
-    
-    // Common error explanations
-    if (error.message?.includes('bad decrypt')) {
-      console.error('SES Service: "bad decrypt" error typically means the encryption key has changed');
-    }
-    if (error.message?.includes('wrong final block length')) {
-      console.error('SES Service: Block length error typically means corrupted encrypted data');
-    }
-    
-    return '';
-  }
-}
 
 /**
  * Email options for sending messages via SES
@@ -246,49 +129,62 @@ export class SESService {
       let accessKeyId = '';
       let secretAccessKey = '';
       
-      if (this.config.accessKeyId) {
+      if (this.config.accessKeyId && this.config.accessKeyId !== '') {
         console.log("SES Service: Attempting to decrypt access key...");
         console.log("SES Service: Encrypted access key length:", this.config.accessKeyId.length);
-        accessKeyId = decrypt(this.config.accessKeyId);
-        if (!accessKeyId) {
-          console.error("SES Service: =====================================");
-          console.error("SES Service: CRITICAL ERROR - Failed to decrypt AWS credentials");
-          console.error("SES Service: =====================================");
-          console.error("SES Service: This usually means one of the following:");
-          console.error("SES Service: 1. The ENCRYPTION_KEY environment variable is missing or incorrect");
-          console.error("SES Service: 2. The credentials were encrypted with a different key");
-          console.error("SES Service: 3. The encrypted data is corrupted");
-          console.error("SES Service: ");
-          console.error("SES Service: TO FIX THIS ISSUE:");
-          console.error("SES Service: Option 1: Set the ENCRYPTION_KEY environment variable to the original value");
-          console.error("SES Service: Option 2: Re-configure SES credentials in Settings → Email Configuration");
-          console.error("SES Service: Option 3: Clear the SES configuration and set it up again");
-          console.error("SES Service: =====================================");
+        
+        try {
+          accessKeyId = decrypt(this.config.accessKeyId);
+          if (!accessKeyId) {
+            console.log("SES Service: Decryption returned empty. Configuration needs to be reset.");
+            console.log("SES Service: Please reconfigure SES credentials in Settings → Email Configuration");
+            this.initialized = false;
+            return false;
+          }
+          console.log("SES Service: Successfully decrypted access key");
+        } catch (error) {
+          console.error("SES Service: Failed to decrypt access key:", error);
+          console.log("SES Service: Please reconfigure SES credentials in Settings → Email Configuration");
           this.initialized = false;
           return false;
         }
-        console.log("SES Service: Successfully decrypted access key");
       } else {
+        // Check environment variable fallback
         accessKeyId = process.env.AWS_SES_ACCESS_KEY_ID || '';
+        if (!accessKeyId) {
+          console.log("SES Service: No access key configured. Please configure SES in Settings.");
+          this.initialized = false;
+          return false;
+        }
       }
       
-      if (this.config.secretAccessKey) {
+      if (this.config.secretAccessKey && this.config.secretAccessKey !== '') {
         console.log("SES Service: Attempting to decrypt secret key...");
         console.log("SES Service: Encrypted secret key length:", this.config.secretAccessKey.length);
-        secretAccessKey = decrypt(this.config.secretAccessKey);
-        if (!secretAccessKey) {
-          console.error("SES Service: =====================================");
-          console.error("SES Service: CRITICAL ERROR - Failed to decrypt AWS secret key");
-          console.error("SES Service: =====================================");
-          console.error("SES Service: The encrypted credentials cannot be decrypted.");
-          console.error("SES Service: Please re-configure SES in Settings → Email Configuration");
-          console.error("SES Service: =====================================");
+        
+        try {
+          secretAccessKey = decrypt(this.config.secretAccessKey);
+          if (!secretAccessKey) {
+            console.log("SES Service: Decryption returned empty. Configuration needs to be reset.");
+            console.log("SES Service: Please reconfigure SES credentials in Settings → Email Configuration");
+            this.initialized = false;
+            return false;
+          }
+          console.log("SES Service: Successfully decrypted secret key");
+        } catch (error) {
+          console.error("SES Service: Failed to decrypt secret key:", error);
+          console.log("SES Service: Please reconfigure SES credentials in Settings → Email Configuration");
           this.initialized = false;
           return false;
         }
-        console.log("SES Service: Successfully decrypted secret key");
       } else {
+        // Check environment variable fallback
         secretAccessKey = process.env.AWS_SES_SECRET_ACCESS_KEY || '';
+        if (!secretAccessKey) {
+          console.log("SES Service: No secret key configured. Please configure SES in Settings.");
+          this.initialized = false;
+          return false;
+        }
       }
       
       if (!accessKeyId || !secretAccessKey) {
