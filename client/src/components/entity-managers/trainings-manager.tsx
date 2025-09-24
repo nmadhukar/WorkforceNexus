@@ -14,16 +14,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, Edit, Trash2, BookOpen } from "lucide-react";
+import { insertTrainingSchema } from "@shared/schema";
 
-const trainingSchema = z.object({
-  trainingName: z.string().min(1, "Training name is required"),
-  provider: z.string().optional(),
-  completionDate: z.string().optional(),
-  expirationDate: z.string().optional(),
-  certificateNumber: z.string().optional()
-});
-
-type TrainingFormData = z.infer<typeof trainingSchema>;
+type TrainingFormData = z.infer<typeof insertTrainingSchema>;
 
 interface TrainingsManagerProps {
   employeeId: number;
@@ -41,7 +34,7 @@ export function TrainingsManager({ employeeId }: TrainingsManagerProps) {
   });
 
   const form = useForm<TrainingFormData>({
-    resolver: zodResolver(trainingSchema),
+    resolver: zodResolver(insertTrainingSchema),
     defaultValues: {
       trainingName: "",
       provider: "",

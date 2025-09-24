@@ -654,7 +654,7 @@ export default function ResponsiblePersonsPage() {
                 <div>
                   <p className="text-sm text-muted-foreground">Primary Contacts</p>
                   <p className="text-2xl font-bold text-green-600">
-                    {data?.responsiblePersons.filter(p => p.isPrimary).length || 0}
+                    {data?.responsiblePersons?.filter(p => p.isPrimary).length || 0}
                   </p>
                 </div>
                 <UserCheck className="h-8 w-8 text-green-600" />
@@ -667,7 +667,7 @@ export default function ResponsiblePersonsPage() {
                 <div>
                   <p className="text-sm text-muted-foreground">Backup Contacts</p>
                   <p className="text-2xl font-bold text-blue-600">
-                    {data?.responsiblePersons.filter(p => p.isBackup).length || 0}
+                    {data?.responsiblePersons?.filter(p => p.isBackup).length || 0}
                   </p>
                 </div>
                 <Users className="h-8 w-8 text-blue-600" />
@@ -680,7 +680,7 @@ export default function ResponsiblePersonsPage() {
                 <div>
                   <p className="text-sm text-muted-foreground">Can Approve</p>
                   <p className="text-2xl font-bold text-purple-600">
-                    {data?.responsiblePersons.filter(p => p.canApprove).length || 0}
+                    {data?.responsiblePersons?.filter(p => p.canApprove).length || 0}
                   </p>
                 </div>
                 <CheckCircle className="h-8 w-8 text-purple-600" />

@@ -11,15 +11,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, Edit, Trash2, Award } from "lucide-react";
+import { insertBoardCertificationSchema } from "@shared/schema";
 
-const certificationSchema = z.object({
-  boardName: z.string().optional(),
-  certification: z.string().optional(),
-  issueDate: z.string().optional(),
-  expirationDate: z.string().optional()
-});
-
-type CertificationFormData = z.infer<typeof certificationSchema>;
+type CertificationFormData = z.infer<typeof insertBoardCertificationSchema>;
 
 interface EmployeeCertificationsProps {
   data: any;
@@ -33,7 +27,7 @@ export function EmployeeCertifications({ data, onChange, employeeId }: EmployeeC
   const [localCertifications, setLocalCertifications] = useState<any[]>(data.boardCertifications || []);
 
   const form = useForm<CertificationFormData>({
-    resolver: zodResolver(certificationSchema),
+    resolver: zodResolver(insertBoardCertificationSchema),
     defaultValues: {
       boardName: "",
       certification: "",

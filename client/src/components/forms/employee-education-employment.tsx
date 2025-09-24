@@ -14,26 +14,10 @@ import { z } from "zod";
 import { Plus, Edit, Trash2, GraduationCap, Briefcase } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { insertEducationSchema, insertEmploymentSchema } from "@shared/schema";
 
-const educationSchema = z.object({
-  educationType: z.string().optional(),
-  schoolInstitution: z.string().optional(),
-  degree: z.string().optional(),
-  specialtyMajor: z.string().optional(),
-  startDate: z.string().optional(),
-  endDate: z.string().optional()
-});
-
-const employmentSchema = z.object({
-  employer: z.string().optional(),
-  position: z.string().optional(),
-  startDate: z.string().optional(),
-  endDate: z.string().optional(),
-  description: z.string().optional()
-});
-
-type EducationFormData = z.infer<typeof educationSchema>;
-type EmploymentFormData = z.infer<typeof employmentSchema>;
+type EducationFormData = z.infer<typeof insertEducationSchema>;
+type EmploymentFormData = z.infer<typeof insertEmploymentSchema>;
 
 interface EmployeeEducationEmploymentProps {
   data: any;
@@ -51,7 +35,7 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId }: Empl
   const [localEmployments, setLocalEmployments] = useState<any[]>(data.employments || []);
 
   const educationForm = useForm<EducationFormData>({
-    resolver: zodResolver(educationSchema),
+    resolver: zodResolver(insertEducationSchema),
     defaultValues: {
       educationType: "",
       schoolInstitution: "",
@@ -63,7 +47,7 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId }: Empl
   });
 
   const employmentForm = useForm<EmploymentFormData>({
-    resolver: zodResolver(employmentSchema),
+    resolver: zodResolver(insertEmploymentSchema),
     defaultValues: {
       employer: "",
       position: "",

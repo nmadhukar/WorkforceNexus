@@ -23,6 +23,7 @@ import LicenseTypesPage from "@/pages/compliance/license-types";
 import ResponsiblePersonsPage from "@/pages/compliance/responsible-persons";
 import ComplianceDocumentsPage from "@/pages/compliance/compliance-documents";
 import ComplianceDashboard from "@/pages/compliance/compliance-dashboard";
+import { DateValidationTest } from "./test-date-validation";
 
 function Router() {
   return (
@@ -44,6 +45,7 @@ function Router() {
       <ProtectedRoute path="/settings" component={Settings} />
       <ProtectedRoute path="/settings/api-keys" component={ApiKeysPage} />
       <ProtectedRoute path="/settings/users" component={UsersManagement} />
+      <ProtectedRoute path="/test-date-validation" component={DateValidationTest} />
       <Route path="/auth" component={AuthPage} />
       <Route component={NotFound} />
     </Switch>

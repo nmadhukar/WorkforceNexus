@@ -12,16 +12,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, Edit, Trash2, FileText, Shield } from "lucide-react";
+import { insertStateLicenseSchema, insertDeaLicenseSchema } from "@shared/schema";
 
-const licenseSchema = z.object({
-  licenseNumber: z.string().min(1, "License number is required"),
-  state: z.string().optional(),
-  issueDate: z.string().optional(),
-  expirationDate: z.string().optional(),
-  status: z.string().optional()
-});
-
-type LicenseFormData = z.infer<typeof licenseSchema>;
+type StateLicenseFormData = z.infer<typeof insertStateLicenseSchema>;
+type DeaLicenseFormData = z.infer<typeof insertDeaLicenseSchema>;
 
 interface EmployeeLicensesProps {
   data: any;
@@ -37,8 +31,8 @@ export function EmployeeLicenses({ data, onChange, employeeId }: EmployeeLicense
   const [localStateLicenses, setLocalStateLicenses] = useState<any[]>(data.stateLicenses || []);
   const [localDeaLicenses, setLocalDeaLicenses] = useState<any[]>(data.deaLicenses || []);
 
-  const stateForm = useForm<LicenseFormData>({
-    resolver: zodResolver(licenseSchema),
+  const stateForm = useForm<StateLicenseFormData>({
+    resolver: zodResolver(insertStateLicenseSchema),
     defaultValues: {
       licenseNumber: "",
       state: "",
@@ -48,8 +42,8 @@ export function EmployeeLicenses({ data, onChange, employeeId }: EmployeeLicense
     }
   });
 
-  const deaForm = useForm<LicenseFormData>({
-    resolver: zodResolver(licenseSchema),
+  const deaForm = useForm<DeaLicenseFormData>({
+    resolver: zodResolver(insertDeaLicenseSchema),
     defaultValues: {
       licenseNumber: "",
       state: "",
@@ -95,7 +89,7 @@ export function EmployeeLicenses({ data, onChange, employeeId }: EmployeeLicense
   };
 
   // State License handlers
-  const handleStateSubmit = (formData: LicenseFormData) => {
+  const handleStateSubmit = (formData: StateLicenseFormData) => {
     if (selectedStateLicense) {
       const updated = localStateLicenses.map(lic => 
         lic.id === selectedStateLicense.id ? { ...lic, ...formData } : lic
@@ -126,7 +120,7 @@ export function EmployeeLicenses({ data, onChange, employeeId }: EmployeeLicense
   };
 
   // DEA License handlers
-  const handleDeaSubmit = (formData: LicenseFormData) => {
+  const handleDeaSubmit = (formData: DeaLicenseFormData) => {
     if (selectedDeaLicense) {
       const updated = localDeaLicenses.map(lic => 
         lic.id === selectedDeaLicense.id ? { ...lic, ...formData } : lic
