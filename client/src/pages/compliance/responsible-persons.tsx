@@ -266,7 +266,7 @@ export default function ResponsiblePersonsPage() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="">None (External Person)</SelectItem>
+                            <SelectItem value="none">None (External Person)</SelectItem>
                             {employeesData?.employees.map((employee) => (
                               <SelectItem key={employee.id} value={employee.id.toString()}>
                                 {employee.firstName} {employee.lastName} - {employee.jobTitle}
@@ -710,7 +710,7 @@ export default function ResponsiblePersonsPage() {
                   <SelectValue placeholder="All Statuses" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Statuses</SelectItem>
+                  <SelectItem value="all">All Statuses</SelectItem>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="inactive">Inactive</SelectItem>
                   <SelectItem value="on_leave">On Leave</SelectItem>

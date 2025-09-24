@@ -425,7 +425,7 @@ export default function ComplianceDocumentsPage() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="">None</SelectItem>
+                              <SelectItem value="none">None</SelectItem>
                               {locationsData?.locations.map((location) => (
                                 <SelectItem key={location.id} value={location.id.toString()}>
                                   {location.name}
@@ -714,7 +714,7 @@ export default function ComplianceDocumentsPage() {
                   <SelectValue placeholder="All Types" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Types</SelectItem>
+                  <SelectItem value="all">All Types</SelectItem>
                   <SelectItem value="license_certificate">License Certificate</SelectItem>
                   <SelectItem value="renewal_application">Renewal Application</SelectItem>
                   <SelectItem value="inspection_report">Inspection Report</SelectItem>
@@ -728,7 +728,7 @@ export default function ComplianceDocumentsPage() {
                   <SelectValue placeholder="All Licenses" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Licenses</SelectItem>
+                  <SelectItem value="all">All Licenses</SelectItem>
                   {licensesData?.licenses.map((license) => (
                     <SelectItem key={license.id} value={license.id.toString()}>
                       {license.licenseNumber}
@@ -741,7 +741,7 @@ export default function ComplianceDocumentsPage() {
                   <SelectValue placeholder="All Locations" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Locations</SelectItem>
+                  <SelectItem value="all">All Locations</SelectItem>
                   {locationsData?.locations.map((location) => (
                     <SelectItem key={location.id} value={location.id.toString()}>
                       {location.name}

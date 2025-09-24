@@ -609,7 +609,7 @@ export default function LicenseTypesPage() {
                   <SelectValue placeholder="All Categories" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Categories</SelectItem>
+                  <SelectItem value="all">All Categories</SelectItem>
                   <SelectItem value="medical">Medical</SelectItem>
                   <SelectItem value="pharmacy">Pharmacy</SelectItem>
                   <SelectItem value="facility">Facility</SelectItem>

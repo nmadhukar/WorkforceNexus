@@ -433,7 +433,7 @@ export default function LicensesPage() {
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                <SelectItem value="">None</SelectItem>
+                                <SelectItem value="none">None</SelectItem>
                                 {personsData?.responsiblePersons.map((person) => (
                                   <SelectItem key={person.id} value={person.id.toString()}>
                                     {person.firstName} {person.lastName}
@@ -461,7 +461,7 @@ export default function LicensesPage() {
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                <SelectItem value="">None</SelectItem>
+                                <SelectItem value="none">None</SelectItem>
                                 {personsData?.responsiblePersons.map((person) => (
                                   <SelectItem key={person.id} value={person.id.toString()}>
                                     {person.firstName} {person.lastName}
@@ -517,7 +517,7 @@ export default function LicensesPage() {
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                <SelectItem value="">None</SelectItem>
+                                <SelectItem value="none">None</SelectItem>
                                 <SelectItem value="not_started">Not Started</SelectItem>
                                 <SelectItem value="in_progress">In Progress</SelectItem>
                                 <SelectItem value="submitted">Submitted</SelectItem>
@@ -744,7 +744,7 @@ export default function LicensesPage() {
                   <SelectValue placeholder="All Locations" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Locations</SelectItem>
+                  <SelectItem value="all">All Locations</SelectItem>
                   {locationsData?.locations.map((location) => (
                     <SelectItem key={location.id} value={location.id.toString()}>
                       {location.name}
@@ -757,7 +757,7 @@ export default function LicensesPage() {
                   <SelectValue placeholder="All Types" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Types</SelectItem>
+                  <SelectItem value="all">All Types</SelectItem>
                   {typesData?.licenseTypes.map((type) => (
                     <SelectItem key={type.id} value={type.id.toString()}>
                       {type.name}
@@ -770,7 +770,7 @@ export default function LicensesPage() {
                   <SelectValue placeholder="All Statuses" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Statuses</SelectItem>
+                  <SelectItem value="all">All Statuses</SelectItem>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="expiring_soon">Expiring Soon</SelectItem>
                   <SelectItem value="expired">Expired</SelectItem>
