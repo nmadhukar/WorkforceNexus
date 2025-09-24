@@ -320,6 +320,65 @@ export const validatePasswordResetConfirm = (): ValidationChain[] => [
  *   ]
  * }
  */
+// Location validation
+export const validateLocation = (): ValidationChain[] => [
+  body('name').notEmpty().withMessage('Location name is required'),
+  body('type').isIn(['main_org', 'sub_location', 'department', 'facility']).withMessage('Invalid location type'),
+  body('status').optional().isIn(['active', 'inactive', 'suspended', 'closed']).withMessage('Invalid status'),
+  body('parentId').optional().isInt({ min: 1 }).withMessage('Parent ID must be a positive integer'),
+  body('email').optional().isEmail().withMessage('Valid email required')
+];
+
+// License Type validation
+export const validateLicenseType = (): ValidationChain[] => [
+  body('name').notEmpty().withMessage('License type name is required'),
+  body('code').notEmpty().withMessage('License type code is required'),
+  body('category').isIn(['medical', 'pharmacy', 'facility', 'business', 'other']).withMessage('Invalid category'),
+  body('renewalPeriodMonths').optional().isInt({ min: 1 }).withMessage('Renewal period must be positive'),
+  body('leadTimeDays').optional().isInt({ min: 1 }).withMessage('Lead time must be positive'),
+  body('alertDaysBefore').optional().isInt({ min: 1 }).withMessage('Alert days must be positive')
+];
+
+// Responsible Person validation
+export const validateResponsiblePerson = (): ValidationChain[] => [
+  body('email').notEmpty().isEmail().withMessage('Valid email is required'),
+  body('employeeId').optional().isInt({ min: 1 }).withMessage('Employee ID must be a positive integer'),
+  body('firstName').optional().if((value: any, { req }: any) => !req.body.employeeId).notEmpty().withMessage('First name required when not linked to employee'),
+  body('lastName').optional().if((value: any, { req }: any) => !req.body.employeeId).notEmpty().withMessage('Last name required when not linked to employee'),
+  body('preferredContactMethod').optional().isIn(['email', 'phone', 'sms']).withMessage('Invalid contact method'),
+  body('status').optional().isIn(['active', 'inactive', 'on_leave']).withMessage('Invalid status')
+];
+
+// Clinic License validation
+export const validateClinicLicense = (): ValidationChain[] => [
+  body('locationId').isInt({ min: 1 }).withMessage('Location ID is required'),
+  body('licenseTypeId').isInt({ min: 1 }).withMessage('License type ID is required'),
+  body('licenseNumber').notEmpty().withMessage('License number is required'),
+  body('issueDate').isDate().withMessage('Valid issue date required'),
+  body('expirationDate').isDate().withMessage('Valid expiration date required'),
+  body('responsiblePersonId').optional().isInt({ min: 1 }).withMessage('Responsible person ID must be positive'),
+  body('status').optional().isIn(['active', 'expiring_soon', 'expired', 'suspended', 'revoked', 'pending_renewal']).withMessage('Invalid status'),
+  body('renewalStatus').optional().isIn(['not_started', 'in_progress', 'submitted', 'approved', 'rejected']).withMessage('Invalid renewal status'),
+  body('complianceStatus').optional().isIn(['compliant', 'warning', 'non_compliant']).withMessage('Invalid compliance status')
+];
+
+// Compliance Document validation
+export const validateComplianceDocument = (): ValidationChain[] => [
+  body('clinicLicenseId').isInt({ min: 1 }).withMessage('Clinic license ID is required'),
+  body('documentType').isIn(['license_certificate', 'renewal_application', 'inspection_report', 'sop', 'policy', 'other']).withMessage('Invalid document type'),
+  body('documentName').notEmpty().withMessage('Document name is required'),
+  body('locationId').optional().isInt({ min: 1 }).withMessage('Location ID must be positive'),
+  body('status').optional().isIn(['active', 'archived', 'superseded', 'draft', 'pending_approval']).withMessage('Invalid status'),
+  body('confidentialityLevel').optional().isIn(['public', 'internal', 'confidential', 'restricted']).withMessage('Invalid confidentiality level')
+];
+
+// License renewal validation
+export const validateLicenseRenewal = (): ValidationChain[] => [
+  body('newIssueDate').isDate().withMessage('Valid issue date required'),
+  body('newExpirationDate').isDate().withMessage('Valid expiration date required'),
+  body('renewalCost').optional().isNumeric().withMessage('Renewal cost must be numeric')
+];
+
 export const handleValidationErrors = (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {

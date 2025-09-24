@@ -23,6 +23,10 @@ import {
   boardCertifications,
   documents,
   complianceDocuments,
+  locations,
+  licenseTypes,
+  responsiblePersons,
+  clinicLicenses,
   emergencyContacts,
   taxForms,
   trainings,
@@ -87,7 +91,15 @@ import {
   type FormSubmission,
   type InsertFormSubmission,
   type ComplianceDocument,
-  type InsertComplianceDocument
+  type InsertComplianceDocument,
+  type Location,
+  type InsertLocation,
+  type LicenseType,
+  type InsertLicenseType,
+  type ResponsiblePerson,
+  type InsertResponsiblePerson,
+  type ClinicLicense,
+  type InsertClinicLicense
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, like, and, or, lte, sql, count } from "drizzle-orm";
@@ -943,6 +955,128 @@ export interface IStorage {
   deleteFormSubmission(id: number): Promise<void>;
   getFormSubmissionsByInvitation(invitationId: number): Promise<FormSubmission[]>;
   getPendingFormSubmissions(): Promise<FormSubmission[]>;
+  
+  // Location Management operations
+  getLocations(options?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    type?: string;
+    status?: string;
+    parentId?: number | null;
+  }): Promise<{ locations: Location[]; total: number }>;
+  getLocation(id: number): Promise<Location | undefined>;
+  createLocation(location: InsertLocation): Promise<Location>;
+  updateLocation(id: number, location: Partial<InsertLocation>): Promise<Location>;
+  deleteLocation(id: number): Promise<void>;
+  getLocationHierarchy(): Promise<Location[]>;
+  getSubLocations(parentId: number): Promise<Location[]>;
+  getLocationsByStatus(status: string): Promise<Location[]>;
+  
+  // License Type Management operations
+  getLicenseTypes(options?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    category?: string;
+  }): Promise<{ licenseTypes: LicenseType[]; total: number }>;
+  getLicenseType(id: number): Promise<LicenseType | undefined>;
+  createLicenseType(licenseType: InsertLicenseType): Promise<LicenseType>;
+  updateLicenseType(id: number, licenseType: Partial<InsertLicenseType>): Promise<LicenseType>;
+  deleteLicenseType(id: number): Promise<void>;
+  getLicenseTypesByCategory(category: string): Promise<LicenseType[]>;
+  
+  // Responsible Person Management operations
+  getResponsiblePersons(options?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    isPrimary?: boolean;
+  }): Promise<{ persons: ResponsiblePerson[]; total: number }>;
+  getResponsiblePerson(id: number): Promise<ResponsiblePerson | undefined>;
+  createResponsiblePerson(person: InsertResponsiblePerson): Promise<ResponsiblePerson>;
+  updateResponsiblePerson(id: number, person: Partial<InsertResponsiblePerson>): Promise<ResponsiblePerson>;
+  deleteResponsiblePerson(id: number): Promise<void>;
+  getResponsiblePersonByEmployee(employeeId: number): Promise<ResponsiblePerson | undefined>;
+  
+  // Clinic License Management operations
+  getClinicLicenses(options?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    status?: string;
+    locationId?: number;
+    licenseTypeId?: number;
+    responsiblePersonId?: number;
+  }): Promise<{ licenses: ClinicLicense[]; total: number }>;
+  getClinicLicense(id: number): Promise<ClinicLicense | undefined>;
+  createClinicLicense(license: InsertClinicLicense): Promise<ClinicLicense>;
+  updateClinicLicense(id: number, license: Partial<InsertClinicLicense>): Promise<ClinicLicense>;
+  deleteClinicLicense(id: number): Promise<void>;
+  getClinicLicensesByLocation(locationId: number): Promise<ClinicLicense[]>;
+  getExpiringClinicLicenses(days: number): Promise<ClinicLicense[]>;
+  renewClinicLicense(id: number, renewalData: {
+    newIssueDate: Date;
+    newExpirationDate: Date;
+    renewalCost?: number;
+  }): Promise<ClinicLicense>;
+  getClinicLicensesComplianceStatus(): Promise<{
+    compliant: number;
+    warning: number;
+    nonCompliant: number;
+    expiringSoon: number;
+    expired: number;
+  }>;
+  
+  // Compliance Document Management operations
+  getComplianceDocuments(options?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    documentType?: string;
+    clinicLicenseId?: number;
+    locationId?: number;
+    status?: string;
+  }): Promise<{ documents: ComplianceDocument[]; total: number }>;
+  getComplianceDocument(id: number): Promise<ComplianceDocument | undefined>;
+  createComplianceDocument(document: InsertComplianceDocument): Promise<ComplianceDocument>;
+  updateComplianceDocument(id: number, document: Partial<InsertComplianceDocument>): Promise<ComplianceDocument>;
+  deleteComplianceDocument(id: number): Promise<void>;
+  getComplianceDocumentsByLicense(clinicLicenseId: number): Promise<ComplianceDocument[]>;
+  getComplianceDocumentsByLocation(locationId: number): Promise<ComplianceDocument[]>;
+  getComplianceDocumentVersions(documentNumber: string): Promise<ComplianceDocument[]>;
+  
+  // Compliance Dashboard & Reporting operations
+  getComplianceDashboard(): Promise<{
+    totalLocations: number;
+    activeLocations: number;
+    totalLicenses: number;
+    activeLicenses: number;
+    expiringIn30Days: number;
+    expiringIn60Days: number;
+    expiringIn90Days: number;
+    expiredLicenses: number;
+    documentsCount: number;
+    nonCompliantCount: number;
+  }>;
+  getComplianceSummaryByLocation(): Promise<Array<{
+    locationId: number;
+    locationName: string;
+    totalLicenses: number;
+    activeLicenses: number;
+    expiringLicenses: number;
+    expiredLicenses: number;
+    complianceStatus: string;
+  }>>;
+  getComplianceAlerts(): Promise<Array<{
+    id: number;
+    type: string;
+    severity: string;
+    message: string;
+    entityId: number;
+    entityType: string;
+    dueDate?: Date;
+  }>>;
   
   sessionStore: session.Store;
 }
@@ -2544,6 +2678,835 @@ export class DatabaseStorage implements IStorage {
         lte(formSubmissions.expiresAt, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)) // Within 7 days of expiry
       ))
       .orderBy(formSubmissions.expiresAt);
+  }
+  
+  // =====================
+  // LOCATION MANAGEMENT IMPLEMENTATION
+  // =====================
+  
+  async getLocations(options?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    type?: string;
+    status?: string;
+    parentId?: number | null;
+  }): Promise<{ locations: Location[]; total: number }> {
+    const limit = options?.limit || 10;
+    const offset = options?.offset || 0;
+    
+    let query = db.select().from(locations);
+    let countQuery = db.select({ count: count() }).from(locations);
+    
+    const conditions = [];
+    
+    if (options?.search) {
+      conditions.push(or(
+        like(locations.name, `%${options.search}%`),
+        like(locations.code, `%${options.search}%`),
+        like(locations.city, `%${options.search}%`)
+      ));
+    }
+    
+    if (options?.type) {
+      conditions.push(eq(locations.type, options.type));
+    }
+    
+    if (options?.status) {
+      conditions.push(eq(locations.status, options.status));
+    }
+    
+    if (options?.parentId !== undefined) {
+      conditions.push(options.parentId === null 
+        ? sql`${locations.parentId} IS NULL`
+        : eq(locations.parentId, options.parentId));
+    }
+    
+    const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
+    
+    const [totalResult] = whereCondition 
+      ? await countQuery.where(whereCondition)
+      : await countQuery;
+    
+    const locationsList = whereCondition
+      ? await query.where(whereCondition).limit(limit).offset(offset).orderBy(locations.level, locations.name)
+      : await query.limit(limit).offset(offset).orderBy(locations.level, locations.name);
+    
+    return {
+      locations: locationsList,
+      total: totalResult?.count || 0
+    };
+  }
+  
+  async getLocation(id: number): Promise<Location | undefined> {
+    const [location] = await db.select()
+      .from(locations)
+      .where(eq(locations.id, id));
+    return location;
+  }
+  
+  async createLocation(location: InsertLocation): Promise<Location> {
+    const [newLocation] = await db.insert(locations)
+      .values(location)
+      .returning();
+    return newLocation;
+  }
+  
+  async updateLocation(id: number, location: Partial<InsertLocation>): Promise<Location> {
+    const [updatedLocation] = await db.update(locations)
+      .set({
+        ...location,
+        updatedAt: new Date()
+      })
+      .where(eq(locations.id, id))
+      .returning();
+    return updatedLocation;
+  }
+  
+  async deleteLocation(id: number): Promise<void> {
+    // Check for dependencies first
+    const [hasSubLocations] = await db.select({ count: count() })
+      .from(locations)
+      .where(eq(locations.parentId, id));
+    
+    if (hasSubLocations?.count > 0) {
+      throw new Error('Cannot delete location with sub-locations');
+    }
+    
+    const [hasLicenses] = await db.select({ count: count() })
+      .from(clinicLicenses)
+      .where(eq(clinicLicenses.locationId, id));
+    
+    if (hasLicenses?.count > 0) {
+      throw new Error('Cannot delete location with associated licenses');
+    }
+    
+    await db.delete(locations).where(eq(locations.id, id));
+  }
+  
+  async getLocationHierarchy(): Promise<Location[]> {
+    return await db.select()
+      .from(locations)
+      .orderBy(locations.level, locations.parentId, locations.name);
+  }
+  
+  async getSubLocations(parentId: number): Promise<Location[]> {
+    return await db.select()
+      .from(locations)
+      .where(eq(locations.parentId, parentId))
+      .orderBy(locations.name);
+  }
+  
+  async getLocationsByStatus(status: string): Promise<Location[]> {
+    return await db.select()
+      .from(locations)
+      .where(eq(locations.status, status))
+      .orderBy(locations.name);
+  }
+  
+  // =====================
+  // LICENSE TYPE MANAGEMENT IMPLEMENTATION
+  // =====================
+  
+  async getLicenseTypes(options?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    category?: string;
+  }): Promise<{ licenseTypes: LicenseType[]; total: number }> {
+    const limit = options?.limit || 10;
+    const offset = options?.offset || 0;
+    
+    let query = db.select().from(licenseTypes);
+    let countQuery = db.select({ count: count() }).from(licenseTypes);
+    
+    const conditions = [];
+    
+    if (options?.search) {
+      conditions.push(or(
+        like(licenseTypes.name, `%${options.search}%`),
+        like(licenseTypes.code, `%${options.search}%`),
+        like(licenseTypes.description, `%${options.search}%`)
+      ));
+    }
+    
+    if (options?.category) {
+      conditions.push(eq(licenseTypes.category, options.category));
+    }
+    
+    const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
+    
+    const [totalResult] = whereCondition 
+      ? await countQuery.where(whereCondition)
+      : await countQuery;
+    
+    const licenseTypesList = whereCondition
+      ? await query.where(whereCondition).limit(limit).offset(offset).orderBy(licenseTypes.name)
+      : await query.limit(limit).offset(offset).orderBy(licenseTypes.name);
+    
+    return {
+      licenseTypes: licenseTypesList,
+      total: totalResult?.count || 0
+    };
+  }
+  
+  async getLicenseType(id: number): Promise<LicenseType | undefined> {
+    const [licenseType] = await db.select()
+      .from(licenseTypes)
+      .where(eq(licenseTypes.id, id));
+    return licenseType;
+  }
+  
+  async createLicenseType(licenseType: InsertLicenseType): Promise<LicenseType> {
+    const [newLicenseType] = await db.insert(licenseTypes)
+      .values(licenseType)
+      .returning();
+    return newLicenseType;
+  }
+  
+  async updateLicenseType(id: number, licenseType: Partial<InsertLicenseType>): Promise<LicenseType> {
+    const [updatedLicenseType] = await db.update(licenseTypes)
+      .set({
+        ...licenseType,
+        updatedAt: new Date()
+      })
+      .where(eq(licenseTypes.id, id))
+      .returning();
+    return updatedLicenseType;
+  }
+  
+  async deleteLicenseType(id: number): Promise<void> {
+    // Check for dependencies
+    const [hasLicenses] = await db.select({ count: count() })
+      .from(clinicLicenses)
+      .where(eq(clinicLicenses.licenseTypeId, id));
+    
+    if (hasLicenses?.count > 0) {
+      throw new Error('Cannot delete license type with associated licenses');
+    }
+    
+    await db.delete(licenseTypes).where(eq(licenseTypes.id, id));
+  }
+  
+  async getLicenseTypesByCategory(category: string): Promise<LicenseType[]> {
+    return await db.select()
+      .from(licenseTypes)
+      .where(eq(licenseTypes.category, category))
+      .orderBy(licenseTypes.name);
+  }
+  
+  // =====================
+  // RESPONSIBLE PERSON MANAGEMENT IMPLEMENTATION
+  // =====================
+  
+  async getResponsiblePersons(options?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    isPrimary?: boolean;
+  }): Promise<{ persons: ResponsiblePerson[]; total: number }> {
+    const limit = options?.limit || 10;
+    const offset = options?.offset || 0;
+    
+    let query = db.select().from(responsiblePersons);
+    let countQuery = db.select({ count: count() }).from(responsiblePersons);
+    
+    const conditions = [];
+    
+    if (options?.search) {
+      conditions.push(or(
+        like(responsiblePersons.firstName, `%${options.search}%`),
+        like(responsiblePersons.lastName, `%${options.search}%`),
+        like(responsiblePersons.email, `%${options.search}%`)
+      ));
+    }
+    
+    if (options?.isPrimary !== undefined) {
+      conditions.push(eq(responsiblePersons.isPrimary, options.isPrimary));
+    }
+    
+    const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
+    
+    const [totalResult] = whereCondition 
+      ? await countQuery.where(whereCondition)
+      : await countQuery;
+    
+    const personsList = whereCondition
+      ? await query.where(whereCondition).limit(limit).offset(offset).orderBy(responsiblePersons.lastName, responsiblePersons.firstName)
+      : await query.limit(limit).offset(offset).orderBy(responsiblePersons.lastName, responsiblePersons.firstName);
+    
+    return {
+      persons: personsList,
+      total: totalResult?.count || 0
+    };
+  }
+  
+  async getResponsiblePerson(id: number): Promise<ResponsiblePerson | undefined> {
+    const [person] = await db.select()
+      .from(responsiblePersons)
+      .where(eq(responsiblePersons.id, id));
+    return person;
+  }
+  
+  async createResponsiblePerson(person: InsertResponsiblePerson): Promise<ResponsiblePerson> {
+    const [newPerson] = await db.insert(responsiblePersons)
+      .values(person)
+      .returning();
+    return newPerson;
+  }
+  
+  async updateResponsiblePerson(id: number, person: Partial<InsertResponsiblePerson>): Promise<ResponsiblePerson> {
+    const [updatedPerson] = await db.update(responsiblePersons)
+      .set({
+        ...person,
+        updatedAt: new Date()
+      })
+      .where(eq(responsiblePersons.id, id))
+      .returning();
+    return updatedPerson;
+  }
+  
+  async deleteResponsiblePerson(id: number): Promise<void> {
+    // Check for dependencies
+    const [hasLicenses] = await db.select({ count: count() })
+      .from(clinicLicenses)
+      .where(eq(clinicLicenses.responsiblePersonId, id));
+    
+    if (hasLicenses?.count > 0) {
+      throw new Error('Cannot delete responsible person with associated licenses');
+    }
+    
+    await db.delete(responsiblePersons).where(eq(responsiblePersons.id, id));
+  }
+  
+  async getResponsiblePersonByEmployee(employeeId: number): Promise<ResponsiblePerson | undefined> {
+    const [person] = await db.select()
+      .from(responsiblePersons)
+      .where(eq(responsiblePersons.employeeId, employeeId));
+    return person;
+  }
+  
+  // =====================
+  // CLINIC LICENSE MANAGEMENT IMPLEMENTATION
+  // =====================
+  
+  async getClinicLicenses(options?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    status?: string;
+    locationId?: number;
+    licenseTypeId?: number;
+    responsiblePersonId?: number;
+  }): Promise<{ licenses: ClinicLicense[]; total: number }> {
+    const limit = options?.limit || 10;
+    const offset = options?.offset || 0;
+    
+    let query = db.select().from(clinicLicenses);
+    let countQuery = db.select({ count: count() }).from(clinicLicenses);
+    
+    const conditions = [];
+    
+    if (options?.search) {
+      conditions.push(or(
+        like(clinicLicenses.licenseNumber, `%${options.search}%`),
+        like(clinicLicenses.notes, `%${options.search}%`)
+      ));
+    }
+    
+    if (options?.status) {
+      conditions.push(eq(clinicLicenses.status, options.status));
+    }
+    
+    if (options?.locationId) {
+      conditions.push(eq(clinicLicenses.locationId, options.locationId));
+    }
+    
+    if (options?.licenseTypeId) {
+      conditions.push(eq(clinicLicenses.licenseTypeId, options.licenseTypeId));
+    }
+    
+    if (options?.responsiblePersonId) {
+      conditions.push(eq(clinicLicenses.responsiblePersonId, options.responsiblePersonId));
+    }
+    
+    const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
+    
+    const [totalResult] = whereCondition 
+      ? await countQuery.where(whereCondition)
+      : await countQuery;
+    
+    const licensesList = whereCondition
+      ? await query.where(whereCondition).limit(limit).offset(offset).orderBy(clinicLicenses.expirationDate)
+      : await query.limit(limit).offset(offset).orderBy(clinicLicenses.expirationDate);
+    
+    return {
+      licenses: licensesList,
+      total: totalResult?.count || 0
+    };
+  }
+  
+  async getClinicLicense(id: number): Promise<ClinicLicense | undefined> {
+    const [license] = await db.select()
+      .from(clinicLicenses)
+      .where(eq(clinicLicenses.id, id));
+    return license;
+  }
+  
+  async createClinicLicense(license: InsertClinicLicense): Promise<ClinicLicense> {
+    // Auto-set status based on expiration date
+    const today = new Date();
+    const expDate = new Date(license.expirationDate);
+    const daysDiff = Math.floor((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    
+    let status = 'active';
+    if (daysDiff < 0) {
+      status = 'expired';
+    } else if (daysDiff <= 30) {
+      status = 'expiring_soon';
+    }
+    
+    const [newLicense] = await db.insert(clinicLicenses)
+      .values({
+        ...license,
+        status
+      })
+      .returning();
+    return newLicense;
+  }
+  
+  async updateClinicLicense(id: number, license: Partial<InsertClinicLicense>): Promise<ClinicLicense> {
+    // Auto-update status if expiration date changed
+    let status = license.status;
+    if (license.expirationDate) {
+      const today = new Date();
+      const expDate = new Date(license.expirationDate);
+      const daysDiff = Math.floor((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (daysDiff < 0) {
+        status = 'expired';
+      } else if (daysDiff <= 30) {
+        status = 'expiring_soon';
+      } else if (!status) {
+        status = 'active';
+      }
+    }
+    
+    const [updatedLicense] = await db.update(clinicLicenses)
+      .set({
+        ...license,
+        status,
+        updatedAt: new Date()
+      })
+      .where(eq(clinicLicenses.id, id))
+      .returning();
+    return updatedLicense;
+  }
+  
+  async deleteClinicLicense(id: number): Promise<void> {
+    // Check for dependent documents
+    const [hasDocuments] = await db.select({ count: count() })
+      .from(complianceDocuments)
+      .where(eq(complianceDocuments.clinicLicenseId, id));
+    
+    if (hasDocuments?.count > 0) {
+      throw new Error('Cannot delete license with associated documents. Delete documents first.');
+    }
+    
+    await db.delete(clinicLicenses).where(eq(clinicLicenses.id, id));
+  }
+  
+  async getClinicLicensesByLocation(locationId: number): Promise<ClinicLicense[]> {
+    return await db.select()
+      .from(clinicLicenses)
+      .where(eq(clinicLicenses.locationId, locationId))
+      .orderBy(clinicLicenses.expirationDate);
+  }
+  
+  async getExpiringClinicLicenses(days: number): Promise<ClinicLicense[]> {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + days);
+    
+    return await db.select()
+      .from(clinicLicenses)
+      .where(and(
+        lte(clinicLicenses.expirationDate, futureDate.toISOString()),
+        sql`${clinicLicenses.status} != 'expired'`
+      ))
+      .orderBy(clinicLicenses.expirationDate);
+  }
+  
+  async renewClinicLicense(id: number, renewalData: {
+    newIssueDate: Date;
+    newExpirationDate: Date;
+    renewalCost?: number;
+  }): Promise<ClinicLicense> {
+    const today = new Date();
+    const expDate = new Date(renewalData.newExpirationDate);
+    const daysDiff = Math.floor((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    
+    let status = 'active';
+    if (daysDiff <= 30) {
+      status = 'expiring_soon';
+    }
+    
+    const [renewedLicense] = await db.update(clinicLicenses)
+      .set({
+        issueDate: renewalData.newIssueDate,
+        expirationDate: renewalData.newExpirationDate,
+        renewalDate: today,
+        renewalCost: renewalData.renewalCost,
+        lastPaymentDate: today,
+        status,
+        renewalStatus: 'approved',
+        updatedAt: today
+      })
+      .where(eq(clinicLicenses.id, id))
+      .returning();
+      
+    return renewedLicense;
+  }
+  
+  async getClinicLicensesComplianceStatus(): Promise<{
+    compliant: number;
+    warning: number;
+    nonCompliant: number;
+    expiringSoon: number;
+    expired: number;
+  }> {
+    const results = await db.select({
+      status: clinicLicenses.status,
+      complianceStatus: clinicLicenses.complianceStatus,
+      count: count()
+    })
+    .from(clinicLicenses)
+    .groupBy(clinicLicenses.status, clinicLicenses.complianceStatus);
+    
+    const summary = {
+      compliant: 0,
+      warning: 0,
+      nonCompliant: 0,
+      expiringSoon: 0,
+      expired: 0
+    };
+    
+    results.forEach(row => {
+      if (row.complianceStatus === 'compliant') summary.compliant += row.count;
+      if (row.complianceStatus === 'warning') summary.warning += row.count;
+      if (row.complianceStatus === 'non_compliant') summary.nonCompliant += row.count;
+      if (row.status === 'expiring_soon') summary.expiringSoon += row.count;
+      if (row.status === 'expired') summary.expired += row.count;
+    });
+    
+    return summary;
+  }
+  
+  // =====================
+  // COMPLIANCE DOCUMENT MANAGEMENT IMPLEMENTATION
+  // =====================
+  
+  async getComplianceDocuments(options?: {
+    limit?: number;
+    offset?: number;
+    search?: string;
+    documentType?: string;
+    clinicLicenseId?: number;
+    locationId?: number;
+    status?: string;
+  }): Promise<{ documents: ComplianceDocument[]; total: number }> {
+    const limit = options?.limit || 10;
+    const offset = options?.offset || 0;
+    
+    let query = db.select().from(complianceDocuments);
+    let countQuery = db.select({ count: count() }).from(complianceDocuments);
+    
+    const conditions = [];
+    
+    if (options?.search) {
+      conditions.push(or(
+        like(complianceDocuments.documentName, `%${options.search}%`),
+        like(complianceDocuments.documentNumber, `%${options.search}%`),
+        like(complianceDocuments.fileName, `%${options.search}%`)
+      ));
+    }
+    
+    if (options?.documentType) {
+      conditions.push(eq(complianceDocuments.documentType, options.documentType));
+    }
+    
+    if (options?.clinicLicenseId) {
+      conditions.push(eq(complianceDocuments.clinicLicenseId, options.clinicLicenseId));
+    }
+    
+    if (options?.locationId) {
+      conditions.push(eq(complianceDocuments.locationId, options.locationId));
+    }
+    
+    if (options?.status) {
+      conditions.push(eq(complianceDocuments.status, options.status));
+    }
+    
+    const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
+    
+    const [totalResult] = whereCondition 
+      ? await countQuery.where(whereCondition)
+      : await countQuery;
+    
+    const documentsList = whereCondition
+      ? await query.where(whereCondition).limit(limit).offset(offset).orderBy(desc(complianceDocuments.uploadedAt))
+      : await query.limit(limit).offset(offset).orderBy(desc(complianceDocuments.uploadedAt));
+    
+    return {
+      documents: documentsList,
+      total: totalResult?.count || 0
+    };
+  }
+  
+  async getComplianceDocument(id: number): Promise<ComplianceDocument | undefined> {
+    const [document] = await db.select()
+      .from(complianceDocuments)
+      .where(eq(complianceDocuments.id, id));
+    return document;
+  }
+  
+  async createComplianceDocument(document: InsertComplianceDocument): Promise<ComplianceDocument> {
+    const [newDocument] = await db.insert(complianceDocuments)
+      .values(document)
+      .returning();
+    return newDocument;
+  }
+  
+  async updateComplianceDocument(id: number, document: Partial<InsertComplianceDocument>): Promise<ComplianceDocument> {
+    const [updatedDocument] = await db.update(complianceDocuments)
+      .set({
+        ...document,
+        lastModifiedAt: new Date()
+      })
+      .where(eq(complianceDocuments.id, id))
+      .returning();
+    return updatedDocument;
+  }
+  
+  async deleteComplianceDocument(id: number): Promise<void> {
+    await db.delete(complianceDocuments).where(eq(complianceDocuments.id, id));
+  }
+  
+  async getComplianceDocumentsByLicense(clinicLicenseId: number): Promise<ComplianceDocument[]> {
+    return await db.select()
+      .from(complianceDocuments)
+      .where(eq(complianceDocuments.clinicLicenseId, clinicLicenseId))
+      .orderBy(desc(complianceDocuments.uploadedAt));
+  }
+  
+  async getComplianceDocumentsByLocation(locationId: number): Promise<ComplianceDocument[]> {
+    return await db.select()
+      .from(complianceDocuments)
+      .where(eq(complianceDocuments.locationId, locationId))
+      .orderBy(desc(complianceDocuments.uploadedAt));
+  }
+  
+  async getComplianceDocumentVersions(documentNumber: string): Promise<ComplianceDocument[]> {
+    return await db.select()
+      .from(complianceDocuments)
+      .where(eq(complianceDocuments.documentNumber, documentNumber))
+      .orderBy(desc(complianceDocuments.version));
+  }
+  
+  // =====================
+  // COMPLIANCE DASHBOARD & REPORTING IMPLEMENTATION
+  // =====================
+  
+  async getComplianceDashboard(): Promise<{
+    totalLocations: number;
+    activeLocations: number;
+    totalLicenses: number;
+    activeLicenses: number;
+    expiringIn30Days: number;
+    expiringIn60Days: number;
+    expiringIn90Days: number;
+    expiredLicenses: number;
+    documentsCount: number;
+    nonCompliantCount: number;
+  }> {
+    const [locationStats] = await db.select({
+      total: count(),
+      active: sql<number>`sum(case when ${locations.status} = 'active' then 1 else 0 end)`
+    }).from(locations);
+    
+    const [licenseStats] = await db.select({
+      total: count(),
+      active: sql<number>`sum(case when ${clinicLicenses.status} = 'active' then 1 else 0 end)`,
+      expired: sql<number>`sum(case when ${clinicLicenses.status} = 'expired' then 1 else 0 end)`,
+      nonCompliant: sql<number>`sum(case when ${clinicLicenses.complianceStatus} = 'non_compliant' then 1 else 0 end)`
+    }).from(clinicLicenses);
+    
+    const [documentStats] = await db.select({
+      total: count()
+    }).from(complianceDocuments);
+    
+    // Get expiring licenses counts
+    const today = new Date();
+    const in30Days = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const in60Days = new Date(today.getTime() + 60 * 24 * 60 * 60 * 1000);
+    const in90Days = new Date(today.getTime() + 90 * 24 * 60 * 60 * 1000);
+    
+    const [expiring30] = await db.select({ count: count() })
+      .from(clinicLicenses)
+      .where(and(
+        lte(clinicLicenses.expirationDate, in30Days.toISOString()),
+        sql`${clinicLicenses.status} != 'expired'`
+      ));
+    
+    const [expiring60] = await db.select({ count: count() })
+      .from(clinicLicenses)
+      .where(and(
+        lte(clinicLicenses.expirationDate, in60Days.toISOString()),
+        sql`${clinicLicenses.status} != 'expired'`
+      ));
+    
+    const [expiring90] = await db.select({ count: count() })
+      .from(clinicLicenses)
+      .where(and(
+        lte(clinicLicenses.expirationDate, in90Days.toISOString()),
+        sql`${clinicLicenses.status} != 'expired'`
+      ));
+    
+    return {
+      totalLocations: locationStats?.total || 0,
+      activeLocations: locationStats?.active || 0,
+      totalLicenses: licenseStats?.total || 0,
+      activeLicenses: licenseStats?.active || 0,
+      expiringIn30Days: expiring30?.count || 0,
+      expiringIn60Days: expiring60?.count || 0,
+      expiringIn90Days: expiring90?.count || 0,
+      expiredLicenses: licenseStats?.expired || 0,
+      documentsCount: documentStats?.total || 0,
+      nonCompliantCount: licenseStats?.nonCompliant || 0
+    };
+  }
+  
+  async getComplianceSummaryByLocation(): Promise<Array<{
+    locationId: number;
+    locationName: string;
+    totalLicenses: number;
+    activeLicenses: number;
+    expiringLicenses: number;
+    expiredLicenses: number;
+    complianceStatus: string;
+  }>> {
+    const results = await db.select({
+      locationId: locations.id,
+      locationName: locations.name,
+      totalLicenses: sql<number>`count(${clinicLicenses.id})`,
+      activeLicenses: sql<number>`sum(case when ${clinicLicenses.status} = 'active' then 1 else 0 end)`,
+      expiringLicenses: sql<number>`sum(case when ${clinicLicenses.status} = 'expiring_soon' then 1 else 0 end)`,
+      expiredLicenses: sql<number>`sum(case when ${clinicLicenses.status} = 'expired' then 1 else 0 end)`,
+      nonCompliant: sql<number>`sum(case when ${clinicLicenses.complianceStatus} = 'non_compliant' then 1 else 0 end)`
+    })
+    .from(locations)
+    .leftJoin(clinicLicenses, eq(locations.id, clinicLicenses.locationId))
+    .groupBy(locations.id, locations.name)
+    .orderBy(locations.name);
+    
+    return results.map(row => ({
+      locationId: row.locationId,
+      locationName: row.locationName,
+      totalLicenses: row.totalLicenses || 0,
+      activeLicenses: row.activeLicenses || 0,
+      expiringLicenses: row.expiringLicenses || 0,
+      expiredLicenses: row.expiredLicenses || 0,
+      complianceStatus: row.nonCompliant > 0 ? 'non_compliant' : 
+                       row.expiredLicenses > 0 ? 'warning' : 
+                       row.expiringLicenses > 0 ? 'warning' : 'compliant'
+    }));
+  }
+  
+  async getComplianceAlerts(): Promise<Array<{
+    id: number;
+    type: string;
+    severity: string;
+    message: string;
+    entityId: number;
+    entityType: string;
+    dueDate?: Date;
+  }>> {
+    const alerts: Array<{
+      id: number;
+      type: string;
+      severity: string;
+      message: string;
+      entityId: number;
+      entityType: string;
+      dueDate?: Date;
+    }> = [];
+    
+    // Get expired licenses
+    const expiredLicenses = await db.select({
+      id: clinicLicenses.id,
+      licenseNumber: clinicLicenses.licenseNumber,
+      expirationDate: clinicLicenses.expirationDate,
+      locationId: clinicLicenses.locationId
+    })
+    .from(clinicLicenses)
+    .where(eq(clinicLicenses.status, 'expired'));
+    
+    expiredLicenses.forEach(license => {
+      alerts.push({
+        id: alerts.length + 1,
+        type: 'license_expired',
+        severity: 'critical',
+        message: `License ${license.licenseNumber} has expired`,
+        entityId: license.id,
+        entityType: 'clinicLicense',
+        dueDate: new Date(license.expirationDate)
+      });
+    });
+    
+    // Get expiring licenses (within 30 days)
+    const expiringLicenses = await this.getExpiringClinicLicenses(30);
+    
+    expiringLicenses.forEach(license => {
+      const daysUntilExpiry = Math.floor((new Date(license.expirationDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+      alerts.push({
+        id: alerts.length + 1,
+        type: 'license_expiring',
+        severity: daysUntilExpiry <= 7 ? 'high' : 'medium',
+        message: `License ${license.licenseNumber} expires in ${daysUntilExpiry} days`,
+        entityId: license.id,
+        entityType: 'clinicLicense',
+        dueDate: new Date(license.expirationDate)
+      });
+    });
+    
+    // Get licenses missing documents
+    const licensesWithoutDocs = await db.select({
+      id: clinicLicenses.id,
+      licenseNumber: clinicLicenses.licenseNumber,
+      docCount: sql<number>`count(${complianceDocuments.id})`
+    })
+    .from(clinicLicenses)
+    .leftJoin(complianceDocuments, eq(clinicLicenses.id, complianceDocuments.clinicLicenseId))
+    .groupBy(clinicLicenses.id, clinicLicenses.licenseNumber)
+    .having(sql`count(${complianceDocuments.id}) = 0`);
+    
+    licensesWithoutDocs.forEach(license => {
+      if (license.docCount === 0) {
+        alerts.push({
+          id: alerts.length + 1,
+          type: 'missing_documents',
+          severity: 'medium',
+          message: `License ${license.licenseNumber} has no supporting documents`,
+          entityId: license.id,
+          entityType: 'clinicLicense'
+        });
+      }
+    });
+    
+    // Sort alerts by severity
+    const severityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+    alerts.sort((a, b) => severityOrder[a.severity as keyof typeof severityOrder] - severityOrder[b.severity as keyof typeof severityOrder]);
+    
+    return alerts;
   }
 }
 

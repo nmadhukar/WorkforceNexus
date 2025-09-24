@@ -36,6 +36,12 @@ import {
   validatePasswordChange,
   validatePasswordReset,
   validatePasswordResetConfirm,
+  validateLocation,
+  validateLicenseType,
+  validateResponsiblePerson,
+  validateClinicLicense,
+  validateComplianceDocument,
+  validateLicenseRenewal,
   handleValidationErrors 
 } from "./middleware/validation";
 import { 
@@ -4166,6 +4172,1108 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error('Error exporting employees:', error);
         res.status(500).json({ error: 'Failed to export employees' });
+      }
+    }
+  );
+
+  // =====================
+  // LOCATION MANAGEMENT APIs
+  // =====================
+  
+  // GET /api/locations - List all locations with hierarchy
+  app.get('/api/locations',
+    requireAuth,
+    validatePagination(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { page = '1', limit = '10', search, type, status, parentId } = req.query;
+        const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
+        
+        const result = await storage.getLocations({
+          limit: parseInt(limit as string),
+          offset,
+          search: search as string,
+          type: type as string,
+          status: status as string,
+          parentId: parentId ? (parentId === 'null' ? null : parseInt(parentId as string)) : undefined
+        });
+        
+        res.json({
+          locations: result.locations,
+          total: result.total,
+          page: parseInt(page as string),
+          totalPages: Math.ceil(result.total / parseInt(limit as string))
+        });
+      } catch (error) {
+        console.error('Error fetching locations:', error);
+        res.status(500).json({ error: 'Failed to fetch locations' });
+      }
+    }
+  );
+  
+  // GET /api/locations/:id - Get location details
+  app.get('/api/locations/:id',
+    requireAuth,
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const location = await storage.getLocation(parseInt(req.params.id));
+        if (!location) {
+          return res.status(404).json({ error: 'Location not found' });
+        }
+        res.json(location);
+      } catch (error) {
+        console.error('Error fetching location:', error);
+        res.status(500).json({ error: 'Failed to fetch location' });
+      }
+    }
+  );
+  
+  // POST /api/locations - Create new location
+  app.post('/api/locations',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateLocation(),
+    handleValidationErrors,
+    auditMiddleware('CREATE'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const location = await storage.createLocation(req.body);
+        
+        await logAudit(
+          req.user!.id,
+          'CREATE',
+          'Location created',
+          { locationId: location.id, name: location.name }
+        );
+        
+        res.status(201).json(location);
+      } catch (error) {
+        console.error('Error creating location:', error);
+        res.status(500).json({ error: 'Failed to create location' });
+      }
+    }
+  );
+  
+  // PUT /api/locations/:id - Update location
+  app.put('/api/locations/:id',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateId(),
+    validateLocation(),
+    handleValidationErrors,
+    auditMiddleware('UPDATE'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const location = await storage.updateLocation(parseInt(req.params.id), req.body);
+        
+        await logAudit(
+          req.user!.id,
+          'UPDATE',
+          'Location updated',
+          { locationId: location.id, name: location.name }
+        );
+        
+        res.json(location);
+      } catch (error) {
+        console.error('Error updating location:', error);
+        res.status(500).json({ error: 'Failed to update location' });
+      }
+    }
+  );
+  
+  // DELETE /api/locations/:id - Delete location
+  app.delete('/api/locations/:id',
+    requireAuth,
+    requireRole(['admin']),
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('DELETE'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const locationId = parseInt(req.params.id);
+        await storage.deleteLocation(locationId);
+        
+        await logAudit(
+          req.user!.id,
+          'DELETE',
+          'Location deleted',
+          { locationId }
+        );
+        
+        res.status(204).send();
+      } catch (error: any) {
+        console.error('Error deleting location:', error);
+        if (error.message?.includes('Cannot delete')) {
+          res.status(409).json({ error: error.message });
+        } else {
+          res.status(500).json({ error: 'Failed to delete location' });
+        }
+      }
+    }
+  );
+  
+  // GET /api/locations/:id/sublicenses - Get sub-location licenses
+  app.get('/api/locations/:id/sublicenses',
+    requireAuth,
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const locationId = parseInt(req.params.id);
+        const subLocations = await storage.getSubLocations(locationId);
+        
+        const licensesPromises = subLocations.map(loc => 
+          storage.getClinicLicensesByLocation(loc.id)
+        );
+        
+        const licensesArrays = await Promise.all(licensesPromises);
+        const allLicenses = licensesArrays.flat();
+        
+        res.json(allLicenses);
+      } catch (error) {
+        console.error('Error fetching sub-location licenses:', error);
+        res.status(500).json({ error: 'Failed to fetch sub-location licenses' });
+      }
+    }
+  );
+  
+  // GET /api/locations/hierarchy - Get hierarchical tree structure
+  app.get('/api/locations/hierarchy',
+    requireAuth,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const locations = await storage.getLocationHierarchy();
+        
+        // Build hierarchy tree
+        const buildHierarchy = (parentId: number | null = null): any[] => {
+          return locations
+            .filter(loc => loc.parentId === parentId)
+            .map(loc => ({
+              ...loc,
+              children: buildHierarchy(loc.id)
+            }));
+        };
+        
+        const hierarchy = buildHierarchy(null);
+        res.json(hierarchy);
+      } catch (error) {
+        console.error('Error fetching location hierarchy:', error);
+        res.status(500).json({ error: 'Failed to fetch location hierarchy' });
+      }
+    }
+  );
+  
+  // =====================
+  // LICENSE TYPE MANAGEMENT APIs
+  // =====================
+  
+  // GET /api/license-types - List all license types
+  app.get('/api/license-types',
+    requireAuth,
+    validatePagination(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { page = '1', limit = '10', search, category } = req.query;
+        const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
+        
+        const result = await storage.getLicenseTypes({
+          limit: parseInt(limit as string),
+          offset,
+          search: search as string,
+          category: category as string
+        });
+        
+        res.json({
+          licenseTypes: result.licenseTypes,
+          total: result.total,
+          page: parseInt(page as string),
+          totalPages: Math.ceil(result.total / parseInt(limit as string))
+        });
+      } catch (error) {
+        console.error('Error fetching license types:', error);
+        res.status(500).json({ error: 'Failed to fetch license types' });
+      }
+    }
+  );
+  
+  // GET /api/license-types/:id - Get license type details
+  app.get('/api/license-types/:id',
+    requireAuth,
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const licenseType = await storage.getLicenseType(parseInt(req.params.id));
+        if (!licenseType) {
+          return res.status(404).json({ error: 'License type not found' });
+        }
+        res.json(licenseType);
+      } catch (error) {
+        console.error('Error fetching license type:', error);
+        res.status(500).json({ error: 'Failed to fetch license type' });
+      }
+    }
+  );
+  
+  // POST /api/license-types - Create new license type
+  app.post('/api/license-types',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateLicenseType(),
+    handleValidationErrors,
+    auditMiddleware('CREATE'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const licenseType = await storage.createLicenseType(req.body);
+        
+        await logAudit(
+          req.user!.id,
+          'CREATE',
+          'License type created',
+          { licenseTypeId: licenseType.id, name: licenseType.name }
+        );
+        
+        res.status(201).json(licenseType);
+      } catch (error) {
+        console.error('Error creating license type:', error);
+        res.status(500).json({ error: 'Failed to create license type' });
+      }
+    }
+  );
+  
+  // PUT /api/license-types/:id - Update license type
+  app.put('/api/license-types/:id',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateId(),
+    validateLicenseType(),
+    handleValidationErrors,
+    auditMiddleware('UPDATE'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const licenseType = await storage.updateLicenseType(parseInt(req.params.id), req.body);
+        
+        await logAudit(
+          req.user!.id,
+          'UPDATE',
+          'License type updated',
+          { licenseTypeId: licenseType.id, name: licenseType.name }
+        );
+        
+        res.json(licenseType);
+      } catch (error) {
+        console.error('Error updating license type:', error);
+        res.status(500).json({ error: 'Failed to update license type' });
+      }
+    }
+  );
+  
+  // DELETE /api/license-types/:id - Delete license type
+  app.delete('/api/license-types/:id',
+    requireAuth,
+    requireRole(['admin']),
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('DELETE'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const licenseTypeId = parseInt(req.params.id);
+        await storage.deleteLicenseType(licenseTypeId);
+        
+        await logAudit(
+          req.user!.id,
+          'DELETE',
+          'License type deleted',
+          { licenseTypeId }
+        );
+        
+        res.status(204).send();
+      } catch (error: any) {
+        console.error('Error deleting license type:', error);
+        if (error.message?.includes('Cannot delete')) {
+          res.status(409).json({ error: error.message });
+        } else {
+          res.status(500).json({ error: 'Failed to delete license type' });
+        }
+      }
+    }
+  );
+  
+  // =====================
+  // RESPONSIBLE PERSON APIs
+  // =====================
+  
+  // GET /api/responsible-persons - List all responsible persons
+  app.get('/api/responsible-persons',
+    requireAuth,
+    validatePagination(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { page = '1', limit = '10', search, isPrimary } = req.query;
+        const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
+        
+        const result = await storage.getResponsiblePersons({
+          limit: parseInt(limit as string),
+          offset,
+          search: search as string,
+          isPrimary: isPrimary === 'true' ? true : isPrimary === 'false' ? false : undefined
+        });
+        
+        res.json({
+          persons: result.persons,
+          total: result.total,
+          page: parseInt(page as string),
+          totalPages: Math.ceil(result.total / parseInt(limit as string))
+        });
+      } catch (error) {
+        console.error('Error fetching responsible persons:', error);
+        res.status(500).json({ error: 'Failed to fetch responsible persons' });
+      }
+    }
+  );
+  
+  // GET /api/responsible-persons/:id - Get person details
+  app.get('/api/responsible-persons/:id',
+    requireAuth,
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const person = await storage.getResponsiblePerson(parseInt(req.params.id));
+        if (!person) {
+          return res.status(404).json({ error: 'Responsible person not found' });
+        }
+        res.json(person);
+      } catch (error) {
+        console.error('Error fetching responsible person:', error);
+        res.status(500).json({ error: 'Failed to fetch responsible person' });
+      }
+    }
+  );
+  
+  // POST /api/responsible-persons - Create responsible person
+  app.post('/api/responsible-persons',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateResponsiblePerson(),
+    handleValidationErrors,
+    auditMiddleware('CREATE'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const person = await storage.createResponsiblePerson(req.body);
+        
+        await logAudit(
+          req.user!.id,
+          'CREATE',
+          'Responsible person created',
+          { personId: person.id, email: person.email }
+        );
+        
+        res.status(201).json(person);
+      } catch (error) {
+        console.error('Error creating responsible person:', error);
+        res.status(500).json({ error: 'Failed to create responsible person' });
+      }
+    }
+  );
+  
+  // PUT /api/responsible-persons/:id - Update person
+  app.put('/api/responsible-persons/:id',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateId(),
+    validateResponsiblePerson(),
+    handleValidationErrors,
+    auditMiddleware('UPDATE'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const person = await storage.updateResponsiblePerson(parseInt(req.params.id), req.body);
+        
+        await logAudit(
+          req.user!.id,
+          'UPDATE',
+          'Responsible person updated',
+          { personId: person.id, email: person.email }
+        );
+        
+        res.json(person);
+      } catch (error) {
+        console.error('Error updating responsible person:', error);
+        res.status(500).json({ error: 'Failed to update responsible person' });
+      }
+    }
+  );
+  
+  // DELETE /api/responsible-persons/:id - Delete person
+  app.delete('/api/responsible-persons/:id',
+    requireAuth,
+    requireRole(['admin']),
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('DELETE'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const personId = parseInt(req.params.id);
+        await storage.deleteResponsiblePerson(personId);
+        
+        await logAudit(
+          req.user!.id,
+          'DELETE',
+          'Responsible person deleted',
+          { personId }
+        );
+        
+        res.status(204).send();
+      } catch (error: any) {
+        console.error('Error deleting responsible person:', error);
+        if (error.message?.includes('Cannot delete')) {
+          res.status(409).json({ error: error.message });
+        } else {
+          res.status(500).json({ error: 'Failed to delete responsible person' });
+        }
+      }
+    }
+  );
+  
+  // GET /api/responsible-persons/by-employee/:employeeId - Get by employee
+  app.get('/api/responsible-persons/by-employee/:employeeId',
+    requireAuth,
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const person = await storage.getResponsiblePersonByEmployee(parseInt(req.params.employeeId));
+        if (!person) {
+          return res.status(404).json({ error: 'No responsible person found for this employee' });
+        }
+        res.json(person);
+      } catch (error) {
+        console.error('Error fetching responsible person by employee:', error);
+        res.status(500).json({ error: 'Failed to fetch responsible person' });
+      }
+    }
+  );
+  
+  // =====================
+  // CLINIC LICENSE MANAGEMENT APIs
+  // =====================
+  
+  // GET /api/clinic-licenses - List all licenses with filters
+  app.get('/api/clinic-licenses',
+    requireAuth,
+    validatePagination(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { page = '1', limit = '10', search, status, locationId, licenseTypeId, responsiblePersonId } = req.query;
+        const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
+        
+        const result = await storage.getClinicLicenses({
+          limit: parseInt(limit as string),
+          offset,
+          search: search as string,
+          status: status as string,
+          locationId: locationId ? parseInt(locationId as string) : undefined,
+          licenseTypeId: licenseTypeId ? parseInt(licenseTypeId as string) : undefined,
+          responsiblePersonId: responsiblePersonId ? parseInt(responsiblePersonId as string) : undefined
+        });
+        
+        res.json({
+          licenses: result.licenses,
+          total: result.total,
+          page: parseInt(page as string),
+          totalPages: Math.ceil(result.total / parseInt(limit as string))
+        });
+      } catch (error) {
+        console.error('Error fetching clinic licenses:', error);
+        res.status(500).json({ error: 'Failed to fetch clinic licenses' });
+      }
+    }
+  );
+  
+  // GET /api/clinic-licenses/:id - Get license details
+  app.get('/api/clinic-licenses/:id',
+    requireAuth,
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const license = await storage.getClinicLicense(parseInt(req.params.id));
+        if (!license) {
+          return res.status(404).json({ error: 'Clinic license not found' });
+        }
+        res.json(license);
+      } catch (error) {
+        console.error('Error fetching clinic license:', error);
+        res.status(500).json({ error: 'Failed to fetch clinic license' });
+      }
+    }
+  );
+  
+  // POST /api/clinic-licenses - Create new license
+  app.post('/api/clinic-licenses',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateClinicLicense(),
+    handleValidationErrors,
+    auditMiddleware('CREATE'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const license = await storage.createClinicLicense(req.body);
+        
+        await logAudit(
+          req.user!.id,
+          'CREATE',
+          'Clinic license created',
+          { licenseId: license.id, licenseNumber: license.licenseNumber }
+        );
+        
+        res.status(201).json(license);
+      } catch (error) {
+        console.error('Error creating clinic license:', error);
+        res.status(500).json({ error: 'Failed to create clinic license' });
+      }
+    }
+  );
+  
+  // PUT /api/clinic-licenses/:id - Update license
+  app.put('/api/clinic-licenses/:id',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateId(),
+    validateClinicLicense(),
+    handleValidationErrors,
+    auditMiddleware('UPDATE'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const license = await storage.updateClinicLicense(parseInt(req.params.id), req.body);
+        
+        await logAudit(
+          req.user!.id,
+          'UPDATE',
+          'Clinic license updated',
+          { licenseId: license.id, licenseNumber: license.licenseNumber }
+        );
+        
+        res.json(license);
+      } catch (error) {
+        console.error('Error updating clinic license:', error);
+        res.status(500).json({ error: 'Failed to update clinic license' });
+      }
+    }
+  );
+  
+  // DELETE /api/clinic-licenses/:id - Delete license
+  app.delete('/api/clinic-licenses/:id',
+    requireAuth,
+    requireRole(['admin']),
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('DELETE'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const licenseId = parseInt(req.params.id);
+        await storage.deleteClinicLicense(licenseId);
+        
+        await logAudit(
+          req.user!.id,
+          'DELETE',
+          'Clinic license deleted',
+          { licenseId }
+        );
+        
+        res.status(204).send();
+      } catch (error: any) {
+        console.error('Error deleting clinic license:', error);
+        if (error.message?.includes('Cannot delete')) {
+          res.status(409).json({ error: error.message });
+        } else {
+          res.status(500).json({ error: 'Failed to delete clinic license' });
+        }
+      }
+    }
+  );
+  
+  // GET /api/clinic-licenses/expiring - Get expiring licenses
+  app.get('/api/clinic-licenses/expiring',
+    requireAuth,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { days = '30' } = req.query;
+        const daysNumber = parseInt(days as string);
+        
+        const licenses = await storage.getExpiringClinicLicenses(daysNumber);
+        
+        res.json({
+          licenses,
+          count: licenses.length,
+          withinDays: daysNumber
+        });
+      } catch (error) {
+        console.error('Error fetching expiring licenses:', error);
+        res.status(500).json({ error: 'Failed to fetch expiring licenses' });
+      }
+    }
+  );
+  
+  // GET /api/clinic-licenses/by-location/:locationId - Get licenses by location
+  app.get('/api/clinic-licenses/by-location/:locationId',
+    requireAuth,
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const licenses = await storage.getClinicLicensesByLocation(parseInt(req.params.locationId));
+        res.json(licenses);
+      } catch (error) {
+        console.error('Error fetching licenses by location:', error);
+        res.status(500).json({ error: 'Failed to fetch licenses by location' });
+      }
+    }
+  );
+  
+  // POST /api/clinic-licenses/:id/renew - Renew a license
+  app.post('/api/clinic-licenses/:id/renew',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateId(),
+    validateLicenseRenewal(),
+    handleValidationErrors,
+    auditMiddleware('UPDATE'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const licenseId = parseInt(req.params.id);
+        const license = await storage.renewClinicLicense(licenseId, req.body);
+        
+        await logAudit(
+          req.user!.id,
+          'UPDATE',
+          'Clinic license renewed',
+          { licenseId, newExpirationDate: req.body.newExpirationDate }
+        );
+        
+        res.json(license);
+      } catch (error) {
+        console.error('Error renewing clinic license:', error);
+        res.status(500).json({ error: 'Failed to renew clinic license' });
+      }
+    }
+  );
+  
+  // GET /api/clinic-licenses/compliance-status - Get compliance status summary
+  app.get('/api/clinic-licenses/compliance-status',
+    requireAuth,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const status = await storage.getClinicLicensesComplianceStatus();
+        res.json(status);
+      } catch (error) {
+        console.error('Error fetching compliance status:', error);
+        res.status(500).json({ error: 'Failed to fetch compliance status' });
+      }
+    }
+  );
+  
+  // =====================
+  // COMPLIANCE DOCUMENT APIs
+  // =====================
+  
+  // GET /api/compliance-documents - List documents with filters
+  app.get('/api/compliance-documents',
+    requireAuth,
+    validatePagination(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { page = '1', limit = '10', search, documentType, clinicLicenseId, locationId, status } = req.query;
+        const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
+        
+        const result = await storage.getComplianceDocuments({
+          limit: parseInt(limit as string),
+          offset,
+          search: search as string,
+          documentType: documentType as string,
+          clinicLicenseId: clinicLicenseId ? parseInt(clinicLicenseId as string) : undefined,
+          locationId: locationId ? parseInt(locationId as string) : undefined,
+          status: status as string
+        });
+        
+        res.json({
+          documents: result.documents,
+          total: result.total,
+          page: parseInt(page as string),
+          totalPages: Math.ceil(result.total / parseInt(limit as string))
+        });
+      } catch (error) {
+        console.error('Error fetching compliance documents:', error);
+        res.status(500).json({ error: 'Failed to fetch compliance documents' });
+      }
+    }
+  );
+  
+  // GET /api/compliance-documents/:id - Get document details
+  app.get('/api/compliance-documents/:id',
+    requireAuth,
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const document = await storage.getComplianceDocument(parseInt(req.params.id));
+        if (!document) {
+          return res.status(404).json({ error: 'Compliance document not found' });
+        }
+        res.json(document);
+      } catch (error) {
+        console.error('Error fetching compliance document:', error);
+        res.status(500).json({ error: 'Failed to fetch compliance document' });
+      }
+    }
+  );
+  
+  // POST /api/compliance-documents/upload - Upload new document
+  app.post('/api/compliance-documents/upload',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    upload.single('document'),
+    validateComplianceDocument(),
+    handleValidationErrors,
+    auditMiddleware('CREATE'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const file = req.file;
+        
+        if (!file) {
+          return res.status(400).json({ error: 'No file uploaded' });
+        }
+        
+        // Generate S3 key for compliance document
+        const s3Key = generateDocumentKey(
+          'compliance',
+          req.body.clinicLicenseId,
+          file.originalname
+        );
+        
+        // Upload to S3
+        const uploadResult = await s3Service.uploadComplianceDocument(
+          file.path,
+          s3Key,
+          {
+            locationId: req.body.locationId,
+            licenseId: req.body.clinicLicenseId,
+            documentType: req.body.documentType,
+            version: req.body.version || 1
+          }
+        );
+        
+        // Clean up temp file
+        fs.unlinkSync(file.path);
+        
+        if (!uploadResult.success) {
+          return res.status(500).json({ error: uploadResult.error || 'Failed to upload document' });
+        }
+        
+        // Create database record
+        const document = await storage.createComplianceDocument({
+          ...req.body,
+          storageType: uploadResult.storageType,
+          storageKey: uploadResult.storageKey,
+          fileName: file.originalname,
+          fileSize: file.size,
+          mimeType: file.mimetype,
+          s3Bucket: process.env.AWS_BUCKET_NAME,
+          s3Region: process.env.AWS_REGION,
+          s3Etag: uploadResult.etag
+        });
+        
+        await logAudit(
+          req.user!.id,
+          'CREATE',
+          'Compliance document uploaded',
+          { documentId: document.id, fileName: file.originalname }
+        );
+        
+        res.status(201).json(document);
+      } catch (error) {
+        console.error('Error uploading compliance document:', error);
+        // Clean up temp file if it exists
+        if (req.file?.path && fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+        res.status(500).json({ error: 'Failed to upload compliance document' });
+      }
+    }
+  );
+  
+  // PUT /api/compliance-documents/:id - Update document metadata
+  app.put('/api/compliance-documents/:id',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('UPDATE'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const document = await storage.updateComplianceDocument(parseInt(req.params.id), req.body);
+        
+        await logAudit(
+          req.user!.id,
+          'UPDATE',
+          'Compliance document metadata updated',
+          { documentId: document.id, documentName: document.documentName }
+        );
+        
+        res.json(document);
+      } catch (error) {
+        console.error('Error updating compliance document:', error);
+        res.status(500).json({ error: 'Failed to update compliance document' });
+      }
+    }
+  );
+  
+  // DELETE /api/compliance-documents/:id - Delete document
+  app.delete('/api/compliance-documents/:id',
+    requireAuth,
+    requireRole(['admin']),
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('DELETE'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const documentId = parseInt(req.params.id);
+        const document = await storage.getComplianceDocument(documentId);
+        
+        if (!document) {
+          return res.status(404).json({ error: 'Document not found' });
+        }
+        
+        // Delete from S3 if stored there
+        if (document.storageType === 's3' && document.storageKey) {
+          await s3Service.deleteFile(document.storageKey);
+        }
+        
+        // Delete from database
+        await storage.deleteComplianceDocument(documentId);
+        
+        await logAudit(
+          req.user!.id,
+          'DELETE',
+          'Compliance document deleted',
+          { documentId, fileName: document.fileName }
+        );
+        
+        res.status(204).send();
+      } catch (error) {
+        console.error('Error deleting compliance document:', error);
+        res.status(500).json({ error: 'Failed to delete compliance document' });
+      }
+    }
+  );
+  
+  // GET /api/compliance-documents/:id/download - Get presigned download URL
+  app.get('/api/compliance-documents/:id/download',
+    requireAuth,
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const document = await storage.getComplianceDocument(parseInt(req.params.id));
+        
+        if (!document) {
+          return res.status(404).json({ error: 'Document not found' });
+        }
+        
+        if (document.storageType !== 's3' || !document.storageKey) {
+          return res.status(400).json({ error: 'Document is not available for download' });
+        }
+        
+        const signedUrl = await s3Service.getSignedUrl(document.storageKey, 3600); // 1 hour expiry
+        
+        if (!signedUrl) {
+          return res.status(500).json({ error: 'Failed to generate download URL' });
+        }
+        
+        res.json({
+          url: signedUrl,
+          fileName: document.fileName,
+          expiresIn: 3600
+        });
+      } catch (error) {
+        console.error('Error generating download URL:', error);
+        res.status(500).json({ error: 'Failed to generate download URL' });
+      }
+    }
+  );
+  
+  // GET /api/compliance-documents/by-license/:licenseId - Get documents by license
+  app.get('/api/compliance-documents/by-license/:licenseId',
+    requireAuth,
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const documents = await storage.getComplianceDocumentsByLicense(parseInt(req.params.licenseId));
+        res.json(documents);
+      } catch (error) {
+        console.error('Error fetching documents by license:', error);
+        res.status(500).json({ error: 'Failed to fetch documents by license' });
+      }
+    }
+  );
+  
+  // GET /api/compliance-documents/by-location/:locationId - Get documents by location
+  app.get('/api/compliance-documents/by-location/:locationId',
+    requireAuth,
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const documents = await storage.getComplianceDocumentsByLocation(parseInt(req.params.locationId));
+        res.json(documents);
+      } catch (error) {
+        console.error('Error fetching documents by location:', error);
+        res.status(500).json({ error: 'Failed to fetch documents by location' });
+      }
+    }
+  );
+  
+  // GET /api/compliance-documents/:id/versions - Get document version history
+  app.get('/api/compliance-documents/:id/versions',
+    requireAuth,
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const document = await storage.getComplianceDocument(parseInt(req.params.id));
+        
+        if (!document || !document.documentNumber) {
+          return res.status(404).json({ error: 'Document not found' });
+        }
+        
+        const versions = await storage.getComplianceDocumentVersions(document.documentNumber);
+        res.json(versions);
+      } catch (error) {
+        console.error('Error fetching document versions:', error);
+        res.status(500).json({ error: 'Failed to fetch document versions' });
+      }
+    }
+  );
+  
+  // =====================
+  // COMPLIANCE DASHBOARD & REPORTING APIs
+  // =====================
+  
+  // GET /api/compliance/dashboard - Get dashboard metrics
+  app.get('/api/compliance/dashboard',
+    requireAuth,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const dashboard = await storage.getComplianceDashboard();
+        res.json(dashboard);
+      } catch (error) {
+        console.error('Error fetching compliance dashboard:', error);
+        res.status(500).json({ error: 'Failed to fetch compliance dashboard' });
+      }
+    }
+  );
+  
+  // GET /api/compliance/summary - Get compliance summary by location
+  app.get('/api/compliance/summary',
+    requireAuth,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const summary = await storage.getComplianceSummaryByLocation();
+        res.json(summary);
+      } catch (error) {
+        console.error('Error fetching compliance summary:', error);
+        res.status(500).json({ error: 'Failed to fetch compliance summary' });
+      }
+    }
+  );
+  
+  // GET /api/compliance/alerts - Get compliance alerts
+  app.get('/api/compliance/alerts',
+    requireAuth,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const alerts = await storage.getComplianceAlerts();
+        res.json(alerts);
+      } catch (error) {
+        console.error('Error fetching compliance alerts:', error);
+        res.status(500).json({ error: 'Failed to fetch compliance alerts' });
+      }
+    }
+  );
+  
+  // GET /api/compliance/export - Export compliance report
+  app.get('/api/compliance/export',
+    requireAuth,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { format = 'json' } = req.query;
+        
+        // Fetch all necessary data
+        const [dashboard, summary, alerts, licenses] = await Promise.all([
+          storage.getComplianceDashboard(),
+          storage.getComplianceSummaryByLocation(),
+          storage.getComplianceAlerts(),
+          storage.getClinicLicenses({ limit: 10000, offset: 0 })
+        ]);
+        
+        const reportData = {
+          generatedAt: new Date().toISOString(),
+          dashboard,
+          summary,
+          alerts,
+          licenses: licenses.licenses
+        };
+        
+        if (format === 'csv') {
+          // Convert to CSV format
+          const csvHeaders = 'Location,License Number,Type,Status,Expiration Date,Compliance Status\n';
+          const csvData = licenses.licenses.map(lic => 
+            `"${lic.locationId}","${lic.licenseNumber}","${lic.licenseTypeId}","${lic.status}","${lic.expirationDate}","${lic.complianceStatus}"`
+          ).join('\n');
+          
+          res.setHeader('Content-Type', 'text/csv');
+          res.setHeader('Content-Disposition', 'attachment; filename="compliance-report.csv"');
+          res.send(csvHeaders + csvData);
+        } else {
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Content-Disposition', 'attachment; filename="compliance-report.json"');
+          res.json(reportData);
+        }
+      } catch (error) {
+        console.error('Error exporting compliance report:', error);
+        res.status(500).json({ error: 'Failed to export compliance report' });
       }
     }
   );
