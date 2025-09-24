@@ -923,6 +923,25 @@ export default function UsersManagement() {
   // Fetch users with React Query
   const { data: usersData, isLoading, error } = useQuery<UsersResponse>({
     queryKey: cacheKey,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.append("page", String(page));
+      params.append("limit", String(limit));
+      if (debouncedSearchQuery) params.append("search", debouncedSearchQuery);
+      if (roleFilter && roleFilter !== "all") params.append("role", roleFilter);
+      if (statusFilter && statusFilter !== "all") params.append("status", statusFilter);
+      
+      const res = await fetch(`/api/admin/users?${params}`, {
+        credentials: "include"
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(errorData.error || `Failed to fetch users: ${res.status}`);
+      }
+      
+      return res.json();
+    },
     enabled: isAdmin,
     placeholderData: keepPreviousData
   });
