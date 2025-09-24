@@ -160,7 +160,7 @@ function EditUserDialog({ user, open, onOpenChange }: { user: User; open: boolea
         title: "Success",
         description: "User updated successfully"
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"], exact: false });
       onOpenChange(false);
       form.reset();
     },
@@ -285,7 +285,7 @@ function StatusManagementDialog({ user, open, onOpenChange }: { user: User; open
         title: "Success",
         description: "User status updated successfully"
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"], exact: false });
       onOpenChange(false);
     },
     onError: (error) => {
@@ -388,7 +388,7 @@ function UnlockUserDialog({ user, open, onOpenChange }: { user: User; open: bool
         title: "Success",
         description: "User account unlocked successfully"
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"], exact: false });
       onOpenChange(false);
     },
     onError: (error) => {
@@ -439,7 +439,7 @@ function PasswordResetDialog({ user, open, onOpenChange }: { user: User; open: b
         title: "Success",
         description: "Password reset token generated. The user will be notified."
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"], exact: false });
       onOpenChange(false);
     },
     onError: (error) => {
@@ -500,7 +500,7 @@ function CreateUserDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
         title: "Success",
         description: "User created successfully"
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"], exact: false });
       onOpenChange(false);
       form.reset();
     },
@@ -626,7 +626,7 @@ function DeleteConfirmationDialog({ user, open, onOpenChange }: { user: User; op
         title: "Success",
         description: "User deleted successfully"
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"], exact: false });
       onOpenChange(false);
     },
     onError: (error) => {
@@ -941,12 +941,12 @@ export default function UsersManagement() {
   }, [debouncedSearchQuery, searchQuery]);
 
   const handleRoleFilterChange = (value: string) => {
-    setRoleFilter(value);
+    setRoleFilter(value === "all" ? "" : value);
     setPage(1);
   };
 
   const handleStatusFilterChange = (value: string) => {
-    setStatusFilter(value);
+    setStatusFilter(value === "all" ? "" : value);
     setPage(1);
   };
 
@@ -1026,7 +1026,7 @@ export default function UsersManagement() {
                   <SelectValue placeholder="All Roles" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Roles</SelectItem>
+                  <SelectItem value="all">All Roles</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
                   <SelectItem value="hr">HR</SelectItem>
                   <SelectItem value="viewer">Viewer</SelectItem>
@@ -1037,7 +1037,7 @@ export default function UsersManagement() {
                   <SelectValue placeholder="All Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Status</SelectItem>
+                  <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="suspended">Suspended</SelectItem>
                   <SelectItem value="locked">Locked</SelectItem>
