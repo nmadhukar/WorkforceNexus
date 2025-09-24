@@ -304,6 +304,13 @@ export interface IStorage {
   }): Promise<{ employees: Employee[]; total: number }>;
   
   /**
+   * Get all employees without pagination (for internal lookups)
+   * @returns {Promise<Employee[]>} Array of all employees
+   * @throws {Error} Database query errors
+   */
+  getAllEmployees(): Promise<Employee[]>;
+  
+  /**
    * Retrieve employee by work email address
    * @param {string} workEmail - Employee's work email address
    * @returns {Promise<Employee | undefined>} Employee object or undefined if not found
@@ -1386,6 +1393,11 @@ export class DatabaseStorage implements IStorage {
       employees: employeesList,
       total: totalResult[0].count
     };
+  }
+  
+  async getAllEmployees(): Promise<Employee[]> {
+    const employeesList = await db.select().from(employees);
+    return employeesList;
   }
 
   async createEmployee(employee: InsertEmployee): Promise<Employee> {

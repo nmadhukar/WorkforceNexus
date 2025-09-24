@@ -111,10 +111,40 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
     queryKey: [`/api/employees/${employeeId}`],
   });
 
-  // Determine viewing context
-  const isOwnProfile = employee?.userId === currentUser?.id;
-  const isManagementView = currentUser?.role === 'admin' || currentUser?.role === 'hr';
-  const showEmployeeView = isOwnProfile && !isManagementView;
+  // CRITICAL FIX: Fetch current user's employee record if they have one
+  // This helps us match the current user to their employee profile
+  const { data: currentUserEmployee } = useQuery<Employee | null>({
+    queryKey: [`/api/employees/current-user`],
+    enabled: !!currentUser,
+    // Return null if 404 (user has no employee record)
+    retry: false,
+  });
+
+
+  // Determine viewing context - FIXED with multiple matching strategies
+  // Check if the current user is viewing their own profile using multiple methods:
+  // 1. Direct user_id match (for properly linked accounts)
+  // 2. Employee ID match (if we found the current user's employee record)
+  // 3. Email match as fallback (username often matches work email)
+  const isOwnProfile = !!(
+    // Method 1: Direct user_id match
+    (employee?.userId && currentUser?.id && employee.userId === currentUser.id) ||
+    // Method 2: Employee ID match through current user's employee record
+    (currentUserEmployee && currentUserEmployee.id === employeeId) ||
+    // Method 3: Email/username match (fallback for unlinked accounts)
+    (employee?.workEmail && currentUser?.username && 
+     employee.workEmail.toLowerCase() === currentUser.username.toLowerCase())
+  );
+  
+  // Check if current user has management privileges
+  const hasManagementRole = currentUser?.role === 'admin' || currentUser?.role === 'hr';
+  
+  // CRITICAL FIX: Show employee self-service view if:
+  // 1. User is viewing their own profile (regardless of their role)
+  // 2. User doesn't have management role (regular employees/viewers)
+  // Show management view ONLY if user is HR/Admin viewing SOMEONE ELSE's profile
+  const showEmployeeView = isOwnProfile || (!hasManagementRole);
+  const isManagementView = hasManagementRole && !isOwnProfile;
 
   // Fetch form submissions for the employee
   const { data: submissions = [], isLoading: submissionsLoading } = useQuery<FormSubmission[]>({

@@ -832,6 +832,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
+  // Get current user's employee record
+  app.get('/api/employees/current-user',
+    requireAuth,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        // Find employee record by user_id or by matching username to work_email
+        const allEmployees = await storage.getAllEmployees();
+        
+        // First try to find by user_id
+        let employee = allEmployees.find(e => e.userId === req.user!.id);
+        
+        // If not found, try matching by email/username
+        if (!employee && req.user?.username) {
+          employee = allEmployees.find(e => 
+            e.workEmail?.toLowerCase() === req.user!.username.toLowerCase()
+          );
+        }
+        
+        if (!employee) {
+          // Return 404 but don't treat it as an error - some users might not have employee records
+          return res.status(404).json({ error: 'No employee record found for current user' });
+        }
+        
+        // Mask sensitive data
+        const maskedEmployee = {
+          ...employee,
+          ssn: maskSSN(employee.ssn || ''),
+          caqhPassword: employee.caqhPassword ? '***' : '',
+          nppesPassword: employee.nppesPassword ? '***' : ''
+        };
+        
+        res.json(maskedEmployee);
+      } catch (error) {
+        console.error('Error fetching current user employee:', error);
+        res.status(500).json({ error: 'Failed to fetch employee record' });
+      }
+    }
+  );
+
   app.get('/api/employees/:id', 
     apiKeyAuth,
     requireAnyAuth,
