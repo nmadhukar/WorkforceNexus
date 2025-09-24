@@ -96,8 +96,14 @@ export default function Audits() {
   const formatJsonData = (data: any) => {
     if (!data) return "No data";
     try {
+      // Check if data is already an object (from JSONB)
+      if (typeof data === 'object') {
+        return JSON.stringify(data, null, 2);
+      }
+      // If it's a string, try to parse it first
       return JSON.stringify(JSON.parse(data), null, 2);
     } catch {
+      // Fallback to string representation
       return String(data);
     }
   };
