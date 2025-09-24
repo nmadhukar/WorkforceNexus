@@ -22,6 +22,7 @@ import {
   deaLicenses,
   boardCertifications,
   documents,
+  complianceDocuments,
   emergencyContacts,
   taxForms,
   trainings,
@@ -84,7 +85,9 @@ import {
   type DocusealTemplate,
   type InsertDocusealTemplate,
   type FormSubmission,
-  type InsertFormSubmission
+  type InsertFormSubmission,
+  type ComplianceDocument,
+  type InsertComplianceDocument
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, like, and, or, lte, sql, count } from "drizzle-orm";
@@ -716,6 +719,82 @@ export interface IStorage {
     s3Count: number;
     localCount: number;
   }>;
+  
+  /**
+   * Compliance Document Management
+   */
+  
+  /**
+   * Create new compliance document record
+   * @param {InsertComplianceDocument} document - Compliance document data
+   * @returns {Promise<ComplianceDocument>} Created compliance document
+   */
+  createComplianceDocument(document: InsertComplianceDocument): Promise<ComplianceDocument>;
+  
+  /**
+   * Get compliance document by ID
+   * @param {number} id - Document ID
+   * @returns {Promise<ComplianceDocument | undefined>} Compliance document or undefined
+   */
+  getComplianceDocument(id: number): Promise<ComplianceDocument | undefined>;
+  
+  /**
+   * Get compliance documents for a clinic license
+   * @param {number} clinicLicenseId - Clinic license ID
+   * @returns {Promise<ComplianceDocument[]>} Array of compliance documents
+   */
+  getClinicLicenseDocuments(clinicLicenseId: number): Promise<ComplianceDocument[]>;
+  
+  /**
+   * Get compliance documents for a location
+   * @param {number} locationId - Location ID
+   * @returns {Promise<ComplianceDocument[]>} Array of compliance documents
+   */
+  getLocationComplianceDocuments(locationId: number): Promise<ComplianceDocument[]>;
+  
+  /**
+   * Get compliance documents by type
+   * @param {string} documentType - Document type
+   * @param {object} options - Query options
+   * @returns {Promise<ComplianceDocument[]>} Array of compliance documents
+   */
+  getComplianceDocumentsByType(
+    documentType: string,
+    options?: {
+      locationId?: number;
+      clinicLicenseId?: number;
+      isCurrentVersion?: boolean;
+    }
+  ): Promise<ComplianceDocument[]>;
+  
+  /**
+   * Update compliance document
+   * @param {number} id - Document ID
+   * @param {Partial<InsertComplianceDocument>} updates - Updates to apply
+   * @returns {Promise<ComplianceDocument>} Updated compliance document
+   */
+  updateComplianceDocument(id: number, updates: Partial<InsertComplianceDocument>): Promise<ComplianceDocument>;
+  
+  /**
+   * Delete compliance document
+   * @param {number} id - Document ID
+   * @returns {Promise<void>} Resolves when deletion is complete
+   */
+  deleteComplianceDocument(id: number): Promise<void>;
+  
+  /**
+   * Get document versions
+   * @param {number} documentId - Current document ID
+   * @returns {Promise<ComplianceDocument[]>} Array of document versions
+   */
+  getComplianceDocumentVersions(documentId: number): Promise<ComplianceDocument[]>;
+  
+  /**
+   * Get expiring compliance documents
+   * @param {number} days - Number of days ahead to check
+   * @returns {Promise<ComplianceDocument[]>} Array of expiring documents
+   */
+  getExpiringComplianceDocuments(days: number): Promise<ComplianceDocument[]>;
   
   /**
    * API Key Security Management
@@ -1433,6 +1512,118 @@ export class DatabaseStorage implements IStorage {
       s3Count: s3Docs[0]?.count || 0,
       localCount: localDocs[0]?.count || 0
     };
+  }
+  
+  // Compliance Document operations
+  async createComplianceDocument(document: InsertComplianceDocument): Promise<ComplianceDocument> {
+    const [newDocument] = await db.insert(complianceDocuments).values(document).returning();
+    return newDocument;
+  }
+  
+  async getComplianceDocument(id: number): Promise<ComplianceDocument | undefined> {
+    const [document] = await db.select()
+      .from(complianceDocuments)
+      .where(eq(complianceDocuments.id, id))
+      .limit(1);
+    return document;
+  }
+  
+  async getClinicLicenseDocuments(clinicLicenseId: number): Promise<ComplianceDocument[]> {
+    return await db.select()
+      .from(complianceDocuments)
+      .where(eq(complianceDocuments.clinicLicenseId, clinicLicenseId))
+      .orderBy(desc(complianceDocuments.uploadedAt));
+  }
+  
+  async getLocationComplianceDocuments(locationId: number): Promise<ComplianceDocument[]> {
+    return await db.select()
+      .from(complianceDocuments)
+      .where(eq(complianceDocuments.locationId, locationId))
+      .orderBy(desc(complianceDocuments.uploadedAt));
+  }
+  
+  async getComplianceDocumentsByType(
+    documentType: string,
+    options?: {
+      locationId?: number;
+      clinicLicenseId?: number;
+      isCurrentVersion?: boolean;
+    }
+  ): Promise<ComplianceDocument[]> {
+    let conditions = [eq(complianceDocuments.documentType, documentType)];
+    
+    if (options?.locationId) {
+      conditions.push(eq(complianceDocuments.locationId, options.locationId));
+    }
+    
+    if (options?.clinicLicenseId) {
+      conditions.push(eq(complianceDocuments.clinicLicenseId, options.clinicLicenseId));
+    }
+    
+    if (options?.isCurrentVersion !== undefined) {
+      conditions.push(eq(complianceDocuments.isCurrentVersion, options.isCurrentVersion));
+    }
+    
+    return await db.select()
+      .from(complianceDocuments)
+      .where(and(...conditions))
+      .orderBy(desc(complianceDocuments.versionNumber));
+  }
+  
+  async updateComplianceDocument(id: number, updates: Partial<InsertComplianceDocument>): Promise<ComplianceDocument> {
+    const [updatedDocument] = await db
+      .update(complianceDocuments)
+      .set(updates)
+      .where(eq(complianceDocuments.id, id))
+      .returning();
+    return updatedDocument;
+  }
+  
+  async deleteComplianceDocument(id: number): Promise<void> {
+    await db.delete(complianceDocuments).where(eq(complianceDocuments.id, id));
+  }
+  
+  async getComplianceDocumentVersions(documentId: number): Promise<ComplianceDocument[]> {
+    // First get the current document to find previous versions
+    const currentDoc = await this.getComplianceDocument(documentId);
+    if (!currentDoc) {
+      return [];
+    }
+    
+    const versions: ComplianceDocument[] = [currentDoc];
+    let previousId = currentDoc.previousVersionId;
+    
+    // Traverse the version chain
+    while (previousId) {
+      const [previousDoc] = await db.select()
+        .from(complianceDocuments)
+        .where(eq(complianceDocuments.id, previousId))
+        .limit(1);
+      
+      if (previousDoc) {
+        versions.push(previousDoc);
+        previousId = previousDoc.previousVersionId;
+      } else {
+        break;
+      }
+    }
+    
+    return versions;
+  }
+  
+  async getExpiringComplianceDocuments(days: number): Promise<ComplianceDocument[]> {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + days);
+    
+    return await db.select()
+      .from(complianceDocuments)
+      .where(
+        and(
+          lte(complianceDocuments.expirationDate, futureDate.toISOString().split('T')[0]),
+          eq(complianceDocuments.isCurrentVersion, true)
+        )
+      )
+      .orderBy(asc(complianceDocuments.expirationDate));
   }
 
   // Emergency contact operations

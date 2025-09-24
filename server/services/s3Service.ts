@@ -37,6 +37,7 @@ import path from 'path';
 import { storage } from '../storage';
 import { encrypt, decrypt } from '../utils/encryption';
 import type { S3Configuration } from '@shared/schema';
+import { CopyObjectCommand, PutObjectTaggingCommand, GetObjectTaggingCommand } from '@aws-sdk/client-s3';
 
 /**
  * S3 configuration interface
@@ -83,6 +84,41 @@ export interface FileInfo {
 }
 
 /**
+ * Compliance upload options interface
+ */
+export interface ComplianceUploadOptions {
+  locationId?: number;
+  licenseId?: number;
+  licenseTypeId?: number;
+  documentType: string;
+  version?: number;
+  tags?: Record<string, string>;
+  previousVersionId?: string;
+  expirationDate?: Date;
+  isRequired?: boolean;
+  complianceCategory?: string;
+  regulatoryReference?: string;
+}
+
+/**
+ * Compliance download options interface
+ */
+export interface ComplianceDownloadOptions {
+  presignedUrlExpiry?: number; // in seconds, default 3600 (1 hour)
+  includeMetadata?: boolean;
+  includeVersionInfo?: boolean;
+}
+
+/**
+ * Versioned upload result interface
+ */
+export interface VersionedUploadResult extends UploadResult {
+  versionId?: string;
+  previousVersionKey?: string;
+  metadata?: Record<string, string>;
+}
+
+/**
  * S3 Service Class
  * 
  * Manages all interactions with Amazon S3 for document storage.
@@ -122,7 +158,7 @@ class S3Service {
         await this.initializeFromConfig(envConfig);
         
         // Optionally save env config to database for future use
-        if (envConfig.accessKeyId && envConfig.secretAccessKey && envConfig.bucketName) {
+        if (envConfig.credentials?.accessKeyId && envConfig.credentials?.secretAccessKey && envConfig.bucketName) {
           console.log('S3 Service: Consider saving configuration to database for better security');
         }
       } else {
@@ -457,6 +493,38 @@ class S3Service {
     const sanitizedType = documentType.replace(/[^a-zA-Z0-9-_]/g, '_');
     const sanitizedFilename = filename.replace(/[^a-zA-Z0-9-_.]/g, '_');
     return `documents/${employeeId}/${sanitizedType}/${timestamp}-${sanitizedFilename}`;
+  }
+
+  /**
+   * Generate structured S3 key for compliance documents
+   * @param {string} filename - Original filename
+   * @param {ComplianceUploadOptions} options - Compliance document options
+   * @returns {string} Structured S3 key for compliance documents
+   */
+  public generateComplianceS3Key(filename: string, options: ComplianceUploadOptions): string {
+    const timestamp = Date.now();
+    const sanitizedFilename = filename.replace(/[^a-zA-Z0-9-_.]/g, '_');
+    const sanitizedType = options.documentType.replace(/[^a-zA-Z0-9-_]/g, '_');
+    
+    // Create hierarchical folder structure based on document association
+    let keyPrefix = 'compliance';
+    
+    if (options.locationId) {
+      keyPrefix += `/locations/${options.locationId}`;
+    }
+    
+    if (options.licenseId) {
+      keyPrefix += `/licenses/${options.licenseId}`;
+    }
+    
+    if (options.licenseTypeId && options.documentType.toLowerCase().includes('sop')) {
+      keyPrefix = `compliance/sop/${options.licenseTypeId}`;
+    }
+    
+    // Add version to the key if provided
+    const versionSuffix = options.version ? `_v${options.version}` : '';
+    
+    return `${keyPrefix}/${sanitizedType}/${timestamp}-${sanitizedFilename}${versionSuffix}`;
   }
 
   /**
@@ -811,6 +879,534 @@ class S3Service {
       };
     }
   }
+
+  /**
+   * Upload compliance document to S3 with versioning and metadata
+   * 
+   * @param {Buffer} buffer - File data buffer
+   * @param {string} filename - Original filename
+   * @param {string} contentType - MIME type of the file
+   * @param {ComplianceUploadOptions} options - Compliance-specific options
+   * @returns {Promise<VersionedUploadResult>} Upload result with version info
+   */
+  public async uploadComplianceDocument(
+    buffer: Buffer,
+    filename: string,
+    contentType: string,
+    options: ComplianceUploadOptions
+  ): Promise<VersionedUploadResult> {
+    // Generate structured key for compliance document
+    const s3Key = this.generateComplianceS3Key(filename, options);
+    
+    // Prepare metadata
+    const metadata: Record<string, string> = {
+      documentType: options.documentType,
+      complianceCategory: options.complianceCategory || 'general',
+      isRequired: String(options.isRequired || false),
+      uploadDate: new Date().toISOString()
+    };
+    
+    if (options.locationId) metadata.locationId = String(options.locationId);
+    if (options.licenseId) metadata.licenseId = String(options.licenseId);
+    if (options.licenseTypeId) metadata.licenseTypeId = String(options.licenseTypeId);
+    if (options.version) metadata.version = String(options.version);
+    if (options.expirationDate) metadata.expirationDate = options.expirationDate.toISOString();
+    if (options.regulatoryReference) metadata.regulatoryReference = options.regulatoryReference;
+    if (options.previousVersionId) metadata.previousVersionId = options.previousVersionId;
+    
+    // Handle version archiving if previous version exists
+    let archivedPreviousKey: string | undefined;
+    if (options.previousVersionId && this.isConfigured() && this.client && this.bucketName) {
+      try {
+        const archiveKey = `${s3Key}_archive_${Date.now()}`;
+        const copyCommand = new CopyObjectCommand({
+          Bucket: this.bucketName,
+          CopySource: `${this.bucketName}/${options.previousVersionId}`,
+          Key: archiveKey,
+          MetadataDirective: 'COPY'
+        });
+        await this.client.send(copyCommand);
+        archivedPreviousKey = archiveKey;
+        console.log(`S3 Service: Archived previous version to ${archiveKey}`);
+      } catch (error) {
+        console.error('S3 Service: Failed to archive previous version:', error);
+        // Continue with upload even if archiving fails
+      }
+    }
+    
+    // Upload with S3 if configured, with versioning support
+    if (this.isConfigured() && this.client && this.bucketName) {
+      try {
+        const params: PutObjectCommandInput = {
+          Bucket: this.bucketName,
+          Key: s3Key,
+          Body: buffer,
+          ContentType: contentType,
+          Metadata: metadata,
+          ServerSideEncryption: 'AES256', // Enable server-side encryption for compliance
+          StorageClass: 'STANDARD_IA', // Use infrequent access for cost optimization
+          ContentDisposition: `inline; filename="${filename}"` // Preserve original filename
+        };
+
+        const command = new PutObjectCommand(params);
+        const response = await this.client.send(command);
+        
+        // Add tags for enhanced categorization
+        if (options.tags && Object.keys(options.tags).length > 0) {
+          try {
+            const tagCommand = new PutObjectTaggingCommand({
+              Bucket: this.bucketName,
+              Key: s3Key,
+              Tagging: {
+                TagSet: Object.entries(options.tags).map(([key, value]) => ({
+                  Key: key,
+                  Value: value
+                }))
+              }
+            });
+            await this.client.send(tagCommand);
+          } catch (tagError) {
+            console.error('S3 Service: Failed to add tags:', tagError);
+            // Continue even if tagging fails
+          }
+        }
+        
+        console.log(`S3 Service: Successfully uploaded compliance document to S3: ${s3Key}`);
+        
+        return {
+          success: true,
+          storageType: 's3',
+          storageKey: s3Key,
+          etag: response.ETag,
+          versionId: response.VersionId, // If versioning is enabled on the bucket
+          previousVersionKey: archivedPreviousKey,
+          metadata
+        };
+      } catch (error) {
+        console.error('S3 Service: Compliance document upload failed, falling back to local:', error);
+        // Fall through to local storage fallback
+      }
+    }
+
+    // Fallback to local storage with metadata preserved
+    try {
+      const localPath = path.join(
+        this.localFallbackPath,
+        'compliance',
+        s3Key.replace(/\//g, '-')
+      );
+      
+      // Ensure directory exists
+      await fs.promises.mkdir(path.dirname(localPath), { recursive: true });
+      await fs.promises.writeFile(localPath, buffer);
+      
+      // Save metadata as a companion JSON file
+      const metadataPath = `${localPath}.metadata.json`;
+      await fs.promises.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+      
+      console.log(`S3 Service: Saved compliance document to local storage: ${localPath}`);
+      
+      return {
+        success: true,
+        storageType: 'local',
+        storageKey: localPath,
+        metadata
+      };
+    } catch (error) {
+      console.error('S3 Service: Local storage fallback failed:', error);
+      return {
+        success: false,
+        storageType: 'local',
+        storageKey: '',
+        error: error instanceof Error ? error.message : 'Unknown error occurred'
+      };
+    }
+  }
+
+  /**
+   * Download compliance document with metadata and versioning support
+   * 
+   * @param {string} key - S3 key or local path
+   * @param {ComplianceDownloadOptions} options - Download options
+   * @returns {Promise<DownloadResult & { metadata?: Record<string, string> }>} Download result with metadata
+   */
+  public async downloadComplianceDocument(
+    key: string,
+    storageType: 'local' | 's3' = 's3',
+    options: ComplianceDownloadOptions = {}
+  ): Promise<DownloadResult & { metadata?: Record<string, string>; tags?: Record<string, string> }> {
+    // Download from local storage
+    if (storageType === 'local' || !this.isConfigured) {
+      try {
+        const localPath = key;
+        const data = await fs.promises.readFile(localPath);
+        
+        // Try to read metadata file
+        let metadata: Record<string, string> | undefined;
+        try {
+          const metadataPath = `${localPath}.metadata.json`;
+          const metadataContent = await fs.promises.readFile(metadataPath, 'utf-8');
+          metadata = JSON.parse(metadataContent);
+        } catch (metaError) {
+          // Metadata file might not exist for older documents
+          console.log('S3 Service: No metadata file found for local document');
+        }
+        
+        return {
+          success: true,
+          data,
+          contentType: 'application/octet-stream',
+          metadata
+        };
+      } catch (error) {
+        console.error('S3 Service: Failed to read local compliance document:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to read file'
+        };
+      }
+    }
+
+    // Download from S3
+    if (this.client && this.bucketName) {
+      try {
+        const command = new GetObjectCommand({
+          Bucket: this.bucketName,
+          Key: key
+        });
+
+        const response: GetObjectCommandOutput = await this.client.send(command);
+        
+        if (response.Body) {
+          const stream = response.Body as Readable;
+          const chunks: Buffer[] = [];
+          
+          for await (const chunk of stream) {
+            chunks.push(Buffer.from(chunk));
+          }
+          
+          const data = Buffer.concat(chunks);
+          
+          // Extract metadata if requested
+          let metadata: Record<string, string> | undefined;
+          if (options.includeMetadata && response.Metadata) {
+            metadata = response.Metadata;
+          }
+          
+          // Get tags if requested
+          let tags: Record<string, string> | undefined;
+          if (options.includeMetadata) {
+            try {
+              const tagCommand = new GetObjectTaggingCommand({
+                Bucket: this.bucketName,
+                Key: key
+              });
+              const tagResponse = await this.client.send(tagCommand);
+              if (tagResponse.TagSet) {
+                tags = {};
+                tagResponse.TagSet.forEach(tag => {
+                  if (tag.Key && tag.Value) {
+                    tags![tag.Key] = tag.Value;
+                  }
+                });
+              }
+            } catch (tagError) {
+              console.log('S3 Service: Could not retrieve tags:', tagError);
+            }
+          }
+          
+          return {
+            success: true,
+            data,
+            contentType: response.ContentType || 'application/octet-stream',
+            metadata,
+            tags
+          };
+        }
+        
+        return {
+          success: false,
+          error: 'No data received from S3'
+        };
+      } catch (error) {
+        console.error('S3 Service: Compliance document download failed:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Download failed'
+        };
+      }
+    }
+
+    return {
+      success: false,
+      error: 'S3 client not configured'
+    };
+  }
+
+  /**
+   * Generate a pre-signed URL for compliance document with custom expiration
+   * 
+   * @param {string} key - S3 key
+   * @param {ComplianceDownloadOptions} options - Download options
+   * @returns {Promise<string | null>} Pre-signed URL or null if not available
+   */
+  public async getComplianceDocumentSignedUrl(
+    key: string,
+    options: ComplianceDownloadOptions = {}
+  ): Promise<string | null> {
+    if (!this.isConfigured || !this.client || !this.bucketName) {
+      console.log('S3 Service: Cannot generate signed URL - S3 not configured');
+      return null;
+    }
+
+    try {
+      // Default to 1 hour expiration for compliance documents
+      const expirationSeconds = options.presignedUrlExpiry || 3600;
+      
+      const command = new GetObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+        ResponseContentDisposition: 'inline' // Allow viewing in browser
+      });
+
+      const url = await getSignedUrl(this.client, command, { expiresIn: expirationSeconds });
+      console.log(`S3 Service: Generated compliance document signed URL for ${key}, expires in ${expirationSeconds}s`);
+      return url;
+    } catch (error) {
+      console.error('S3 Service: Failed to generate compliance document signed URL:', error);
+      return null;
+    }
+  }
+
+  /**
+   * List compliance documents with specific filters
+   * 
+   * @param {object} filters - Filter options
+   * @param {number} filters.locationId - Location ID
+   * @param {number} filters.licenseId - License ID
+   * @param {number} filters.licenseTypeId - License Type ID
+   * @param {string} filters.documentType - Document type
+   * @param {number} maxResults - Maximum number of results
+   * @returns {Promise<FileInfo[]>} Array of file information
+   */
+  public async listComplianceDocuments(
+    filters: {
+      locationId?: number;
+      licenseId?: number;
+      licenseTypeId?: number;
+      documentType?: string;
+    },
+    maxResults: number = 1000
+  ): Promise<FileInfo[]> {
+    if (!this.isConfigured || !this.client || !this.bucketName) {
+      console.log('S3 Service: Cannot list compliance documents - S3 not configured');
+      return [];
+    }
+
+    // Build prefix based on filters
+    let prefix = 'compliance/';
+    
+    if (filters.locationId) {
+      prefix += `locations/${filters.locationId}/`;
+    } else if (filters.licenseId) {
+      prefix += `licenses/${filters.licenseId}/`;
+    } else if (filters.licenseTypeId) {
+      prefix += `sop/${filters.licenseTypeId}/`;
+    }
+    
+    if (filters.documentType) {
+      const sanitizedType = filters.documentType.replace(/[^a-zA-Z0-9-_]/g, '_');
+      prefix += `${sanitizedType}/`;
+    }
+
+    try {
+      const command = new ListObjectsV2Command({
+        Bucket: this.bucketName,
+        Prefix: prefix,
+        MaxKeys: maxResults
+      });
+
+      const response = await this.client.send(command);
+      
+      if (!response.Contents) {
+        return [];
+      }
+
+      return response.Contents.map(item => ({
+        key: item.Key || '',
+        size: item.Size,
+        lastModified: item.LastModified,
+        etag: item.ETag
+      }));
+    } catch (error) {
+      console.error('S3 Service: Failed to list compliance documents:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Delete compliance document with version archiving
+   * 
+   * @param {string} key - S3 key or local path
+   * @param {string} storageType - Storage type ('s3' or 'local')
+   * @param {boolean} archiveBeforeDelete - Whether to archive before deletion
+   * @returns {Promise<{ success: boolean; archivedKey?: string; error?: string }>} Deletion result
+   */
+  public async deleteComplianceDocument(
+    key: string,
+    storageType: 'local' | 's3' = 's3',
+    archiveBeforeDelete: boolean = true
+  ): Promise<{ success: boolean; archivedKey?: string; error?: string }> {
+    // Delete from local storage
+    if (storageType === 'local' || !this.isConfigured) {
+      try {
+        const localPath = key;
+        
+        // Archive local file if requested
+        if (archiveBeforeDelete) {
+          const archivePath = `${localPath}.deleted_${Date.now()}`;
+          await fs.promises.rename(localPath, archivePath);
+          
+          // Also move metadata file if it exists
+          try {
+            const metadataPath = `${localPath}.metadata.json`;
+            const archiveMetadataPath = `${archivePath}.metadata.json`;
+            await fs.promises.rename(metadataPath, archiveMetadataPath);
+          } catch (metaError) {
+            // Metadata file might not exist
+          }
+          
+          console.log(`S3 Service: Archived local compliance document to: ${archivePath}`);
+          return { success: true, archivedKey: archivePath };
+        } else {
+          await fs.promises.unlink(localPath);
+          
+          // Also delete metadata file if it exists
+          try {
+            const metadataPath = `${localPath}.metadata.json`;
+            await fs.promises.unlink(metadataPath);
+          } catch (metaError) {
+            // Metadata file might not exist
+          }
+          
+          console.log(`S3 Service: Deleted local compliance document: ${localPath}`);
+          return { success: true };
+        }
+      } catch (error) {
+        console.error('S3 Service: Failed to delete local compliance document:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to delete file'
+        };
+      }
+    }
+
+    // Delete from S3
+    if (this.client && this.bucketName) {
+      try {
+        let archivedKey: string | undefined;
+        
+        // Archive in S3 if requested
+        if (archiveBeforeDelete) {
+          try {
+            archivedKey = `${key}_deleted_${Date.now()}`;
+            const copyCommand = new CopyObjectCommand({
+              Bucket: this.bucketName,
+              CopySource: `${this.bucketName}/${key}`,
+              Key: archivedKey,
+              MetadataDirective: 'COPY'
+            });
+            await this.client.send(copyCommand);
+            console.log(`S3 Service: Archived compliance document to ${archivedKey}`);
+          } catch (archiveError) {
+            console.error('S3 Service: Failed to archive before deletion:', archiveError);
+            // Continue with deletion even if archiving fails
+          }
+        }
+        
+        // Delete the original
+        const command = new DeleteObjectCommand({
+          Bucket: this.bucketName,
+          Key: key
+        });
+
+        await this.client.send(command);
+        console.log(`S3 Service: Deleted S3 compliance document: ${key}`);
+        
+        return { success: true, archivedKey };
+      } catch (error) {
+        console.error('S3 Service: Failed to delete S3 compliance document:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to delete from S3'
+        };
+      }
+    }
+
+    return {
+      success: false,
+      error: 'S3 client not configured'
+    };
+  }
+
+  /**
+   * Validate compliance document before upload
+   * 
+   * @param {Buffer} buffer - File data buffer
+   * @param {string} contentType - MIME type
+   * @param {ComplianceUploadOptions} options - Upload options
+   * @returns {object} Validation result
+   */
+  public validateComplianceDocument(
+    buffer: Buffer,
+    contentType: string,
+    options: ComplianceUploadOptions
+  ): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+    
+    // Check file size (max 50MB for compliance documents)
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    if (buffer.length > maxSize) {
+      errors.push(`File size exceeds maximum allowed size of 50MB (current: ${(buffer.length / 1024 / 1024).toFixed(2)}MB)`);
+    }
+    
+    // Validate MIME type
+    const allowedMimeTypes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain',
+      'application/zip'
+    ];
+    
+    if (!allowedMimeTypes.includes(contentType)) {
+      errors.push(`File type '${contentType}' is not allowed for compliance documents`);
+    }
+    
+    // Validate required fields
+    if (!options.documentType) {
+      errors.push('Document type is required');
+    }
+    
+    if (!options.locationId && !options.licenseId && !options.licenseTypeId) {
+      errors.push('At least one of locationId, licenseId, or licenseTypeId must be provided');
+    }
+    
+    // Check expiration date if provided
+    if (options.expirationDate && options.expirationDate < new Date()) {
+      errors.push('Expiration date cannot be in the past');
+    }
+    
+    return {
+      valid: errors.length === 0,
+      errors
+    };
+  }
 }
 
 // Export singleton instance
@@ -826,4 +1422,17 @@ export function generateDocumentKey(
   const sanitizedType = documentType.replace(/[^a-zA-Z0-9-_]/g, '_');
   const sanitizedFilename = filename.replace(/[^a-zA-Z0-9-_.]/g, '_');
   return `documents/${employeeId}/${sanitizedType}/${timestamp}-${sanitizedFilename}`;
+}
+
+/**
+ * Generate compliance document S3 key helper
+ * @param {string} filename - Original filename
+ * @param {ComplianceUploadOptions} options - Compliance document options
+ * @returns {string} Structured S3 key for compliance documents
+ */
+export function generateComplianceDocumentKey(
+  filename: string,
+  options: ComplianceUploadOptions
+): string {
+  return s3Service.generateComplianceS3Key(filename, options);
 }
