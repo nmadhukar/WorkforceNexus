@@ -17,6 +17,11 @@ import Audits from "@/pages/audits";
 import Settings from "@/pages/settings";
 import ApiKeysPage from "@/pages/settings/api-keys";
 import UsersManagement from "@/pages/settings/users";
+import LocationsPage from "@/pages/compliance/locations";
+import LicensesPage from "@/pages/compliance/licenses";
+import LicenseTypesPage from "@/pages/compliance/license-types";
+import ResponsiblePersonsPage from "@/pages/compliance/responsible-persons";
+import ComplianceDocumentsPage from "@/pages/compliance/compliance-documents";
 
 function Router() {
   return (
@@ -29,6 +34,11 @@ function Router() {
       <ProtectedRoute path="/documents" component={Documents} />
       <ProtectedRoute path="/reports" component={Reports} />
       <ProtectedRoute path="/audits" component={Audits} />
+      <ProtectedRoute path="/locations" component={LocationsPage} />
+      <ProtectedRoute path="/licenses" component={LicensesPage} />
+      <ProtectedRoute path="/license-types" component={LicenseTypesPage} />
+      <ProtectedRoute path="/responsible-persons" component={ResponsiblePersonsPage} />
+      <ProtectedRoute path="/compliance-documents" component={ComplianceDocumentsPage} />
       <ProtectedRoute path="/settings" component={Settings} />
       <ProtectedRoute path="/settings/api-keys" component={ApiKeysPage} />
       <ProtectedRoute path="/settings/users" component={UsersManagement} />
