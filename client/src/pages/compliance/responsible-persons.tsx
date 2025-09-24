@@ -23,7 +23,7 @@ import { Users, User, Phone, Mail, Plus, Edit, Trash2, Search, Award, CheckCircl
 import { cn } from "@/lib/utils";
 
 interface ResponsiblePersonsResponse {
-  responsiblePersons: ResponsiblePerson[];
+  persons: ResponsiblePerson[];
   total: number;
   page: number;
   totalPages: number;
@@ -654,7 +654,7 @@ export default function ResponsiblePersonsPage() {
                 <div>
                   <p className="text-sm text-muted-foreground">Primary Contacts</p>
                   <p className="text-2xl font-bold text-green-600">
-                    {data?.responsiblePersons?.filter(p => p.isPrimary).length || 0}
+                    {data?.persons?.filter(p => p.isPrimary).length || 0}
                   </p>
                 </div>
                 <UserCheck className="h-8 w-8 text-green-600" />
@@ -667,7 +667,7 @@ export default function ResponsiblePersonsPage() {
                 <div>
                   <p className="text-sm text-muted-foreground">Backup Contacts</p>
                   <p className="text-2xl font-bold text-blue-600">
-                    {data?.responsiblePersons?.filter(p => p.isBackup).length || 0}
+                    {data?.persons?.filter(p => p.isBackup).length || 0}
                   </p>
                 </div>
                 <Users className="h-8 w-8 text-blue-600" />
@@ -680,7 +680,7 @@ export default function ResponsiblePersonsPage() {
                 <div>
                   <p className="text-sm text-muted-foreground">Can Approve</p>
                   <p className="text-2xl font-bold text-purple-600">
-                    {data?.responsiblePersons?.filter(p => p.canApprove).length || 0}
+                    {data?.persons?.filter(p => p.canApprove).length || 0}
                   </p>
                 </div>
                 <CheckCircle className="h-8 w-8 text-purple-600" />
@@ -752,7 +752,7 @@ export default function ResponsiblePersonsPage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ) : data?.responsiblePersons.length === 0 ? (
+                  ) : data?.persons?.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-12">
                         <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
@@ -771,7 +771,7 @@ export default function ResponsiblePersonsPage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    data?.responsiblePersons.map((person) => {
+                    data?.persons?.map((person) => {
                       const assignedLicenses = getAssignedLicenses(person.id);
                       const employee = employeesData?.employees.find(e => e.id === person.employeeId);
                       
