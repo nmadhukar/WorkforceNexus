@@ -14,6 +14,7 @@ import { EmployeeReferencesContacts } from "@/components/forms/employee-referenc
 import { EmployeeTaxDocumentation } from "@/components/forms/employee-tax-documentation";
 import { EmployeeTrainingPayer } from "@/components/forms/employee-training-payer";
 import { EmployeeIncidents } from "@/components/forms/employee-incidents";
+import { EmployeeForms } from "@/components/forms/employee-forms";
 import { EmployeeReview } from "@/components/forms/employee-review";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -88,7 +89,7 @@ interface EmployeeFormData {
 }
 
 /**
- * Comprehensive 12-step employee form for creating and editing medical staff records
+ * Comprehensive 13-step employee form for creating and editing medical staff records
  * @component
  * @returns {JSX.Element} Multi-step form interface for employee data entry
  * @example
@@ -98,7 +99,7 @@ interface EmployeeFormData {
  * <EmployeeForm />
  * 
  * @description
- * - 12-step wizard-style form covering all aspects of employee data
+ * - 13-step wizard-style form covering all aspects of employee data
  * - Dual-mode operation: Create new employees or edit existing ones
  * - Comprehensive data collection: personal info, credentials, licenses, certifications
  * - Related entity management: education, employment, references, contacts, etc.
@@ -110,7 +111,7 @@ interface EmployeeFormData {
  * - Progress tracking with visual step indicators
  * - Responsive design with mobile-optimized layouts
  * - Auto-save draft functionality for data preservation
- * - Integration with 11+ specialized form components
+ * - Integration with 12+ specialized form components
  * - Uses data-testid attributes for comprehensive testing
  * 
  * @steps
@@ -124,8 +125,9 @@ interface EmployeeFormData {
  * 8. References & Contacts - Professional references and emergency contacts
  * 9. Tax & Documentation - Tax forms and documentation
  * 10. Training & Payer - Training records and payer enrollments
- * 11. Incidents - Incident logs and safety records
- * 12. Review - Final review and submission
+ * 11. Forms - DocuSeal forms and document management
+ * 12. Incidents - Incident logs and safety records
+ * 13. Review - Final review and submission
  */
 export default function EmployeeForm() {
   const params = useParams();
@@ -351,7 +353,7 @@ export default function EmployeeForm() {
    * @description Validates current step before advancing (if validation implemented)
    */
   const handleNext = () => {
-    if (currentStep < 12) {
+    if (currentStep < 13) {
       setCurrentStep(currentStep + 1);
     }
   };
@@ -477,6 +479,17 @@ export default function EmployeeForm() {
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
           data-testid="step-training-payer"
+        />
+      )
+    },
+    {
+      title: "Forms",
+      component: (
+        <EmployeeForms
+          data={formData}
+          onChange={updateFormData}
+          employeeId={isEdit ? parseInt(params.id!) : undefined}
+          data-testid="step-forms"
         />
       )
     },
