@@ -876,8 +876,8 @@ export default function UsersManagement() {
   // State for filters and pagination
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState<string>("");
-  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
   const limit = 10;
 
@@ -956,8 +956,8 @@ export default function UsersManagement() {
 
   const clearFilters = () => {
     setSearchQuery("");
-    setRoleFilter("");
-    setStatusFilter("");
+    setRoleFilter("all");
+    setStatusFilter("all");
     setPage(1);
   };
 
@@ -1044,7 +1044,7 @@ export default function UsersManagement() {
                   <SelectItem value="disabled">Disabled</SelectItem>
                 </SelectContent>
               </Select>
-              {(searchQuery || roleFilter || statusFilter) && (
+              {(searchQuery || (roleFilter && roleFilter !== "all") || (statusFilter && statusFilter !== "all")) && (
                 <Button variant="outline" onClick={clearFilters} data-testid="button-clear-filters">
                   Clear Filters
                 </Button>
