@@ -651,6 +651,321 @@ export const audits = pgTable("audits", {
   changedAtIdx: index("idx_audits_changed_at").on(table.changedAt) // Chronological audit queries
 }));
 
+/**
+ * LOCATIONS TABLE
+ * 
+ * Hierarchical clinic locations supporting main organizations and sub-locations.
+ * Enables multi-location compliance tracking and organizational structure management.
+ * Supports parent-child relationships for complex organizational hierarchies.
+ */
+export const locations = pgTable("locations", {
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  
+  // Location identification
+  name: varchar("name", { length: 255 }).notNull(), // Location name (e.g., "Main Clinic", "North Branch")
+  code: varchar("code", { length: 50 }).unique(), // Unique location code/identifier
+  type: varchar("type", { length: 50 }).notNull(), // main_org | sub_location | department | facility
+  
+  // Hierarchical structure
+  parentId: integer("parent_id").references((): any => locations.id, { onDelete: "cascade" }), // Self-referencing for hierarchy
+  level: integer("level").default(0).notNull(), // Hierarchy level (0 = root, 1 = first level, etc.)
+  path: varchar("path", { length: 500 }), // Materialized path for efficient hierarchy queries
+  
+  // Location details
+  address1: varchar("address1", { length: 200 }),
+  address2: varchar("address2", { length: 200 }),
+  city: varchar("city", { length: 100 }),
+  state: varchar("state", { length: 50 }),
+  zipCode: varchar("zip_code", { length: 20 }),
+  country: varchar("country", { length: 100 }).default("USA"),
+  phone: varchar("phone", { length: 30 }),
+  fax: varchar("fax", { length: 30 }),
+  email: varchar("email", { length: 100 }),
+  website: varchar("website", { length: 255 }),
+  
+  // Operational information
+  taxId: varchar("tax_id", { length: 50 }), // Federal Tax ID / EIN
+  npiNumber: varchar("npi_number", { length: 20 }), // Organization NPI if applicable
+  status: varchar("status", { length: 50 }).default("active").notNull(), // active | inactive | suspended | closed
+  openedDate: date("opened_date"), // When location opened
+  closedDate: date("closed_date"), // When location closed (if applicable)
+  
+  // Compliance tracking
+  isComplianceRequired: boolean("is_compliance_required").default(true).notNull(), // Whether location needs compliance tracking
+  complianceNotes: text("compliance_notes"), // Special compliance requirements or notes
+  
+  // Extensibility
+  customFields: jsonb("custom_fields"), // Flexible field for location-specific data
+  metadata: jsonb("metadata"), // Additional metadata (operating hours, specialties, etc.)
+  
+  // Audit fields
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  updatedBy: integer("updated_by").references(() => users.id, { onDelete: "set null" })
+}, (table) => ({
+  parentIdx: index("idx_locations_parent").on(table.parentId),
+  statusIdx: index("idx_locations_status").on(table.status),
+  pathIdx: index("idx_locations_path").on(table.path),
+  codeIdx: index("idx_locations_code").on(table.code)
+}));
+
+/**
+ * LICENSE TYPES TABLE
+ * 
+ * Defines types of licenses that clinics must maintain for compliance.
+ * Serves as a master list of all possible license types across the organization.
+ * Supports custom requirements and renewal cycles per license type.
+ */
+export const licenseTypes = pgTable("license_types", {
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  
+  // License type identification
+  name: varchar("name", { length: 200 }).notNull().unique(), // License type name (e.g., "Medical License", "DEA Registration")
+  code: varchar("code", { length: 50 }).unique().notNull(), // Unique code (e.g., "MED_LIC", "DEA_REG")
+  category: varchar("category", { length: 100 }).notNull(), // Category: medical | pharmacy | facility | business | other
+  
+  // License requirements
+  description: text("description"), // Detailed description of license type
+  issuingAuthority: varchar("issuing_authority", { length: 200 }), // Who issues this license (e.g., "State Medical Board")
+  renewalPeriodMonths: integer("renewal_period_months"), // Standard renewal period in months
+  leadTimeDays: integer("lead_time_days").default(90), // Days before expiration to start renewal
+  
+  // Applicability
+  appliesToLocation: boolean("applies_to_location").default(false).notNull(), // License for locations
+  appliesToProvider: boolean("applies_to_provider").default(false).notNull(), // License for individual providers
+  appliesToEquipment: boolean("applies_to_equipment").default(false).notNull(), // License for equipment
+  
+  // Requirements and documentation
+  requiredDocuments: text("required_documents").array(), // List of required supporting documents
+  requiresInspection: boolean("requires_inspection").default(false), // Whether inspection is required
+  requiresTraining: boolean("requires_training").default(false), // Whether training/certification is required
+  
+  // Compliance tracking
+  isCritical: boolean("is_critical").default(false).notNull(), // Critical for operations (requires immediate action)
+  alertDaysBefore: integer("alert_days_before").default(60), // Days before expiration to alert
+  escalationDaysBefore: integer("escalation_days_before").default(30), // Days before expiration to escalate
+  
+  // Status and configuration
+  isActive: boolean("is_active").default(true).notNull(), // Whether this license type is currently active
+  sortOrder: integer("sort_order").default(0), // Display order in UI
+  
+  // Extensibility
+  validationRules: jsonb("validation_rules"), // Custom validation rules for this license type
+  additionalData: jsonb("additional_data"), // Flexible field for type-specific requirements
+  
+  // Audit fields
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+}, (table) => ({
+  categoryIdx: index("idx_license_types_category").on(table.category),
+  activeIdx: index("idx_license_types_active").on(table.isActive),
+  codeIdx: index("idx_license_types_code").on(table.code)
+}));
+
+/**
+ * RESPONSIBLE PERSONS TABLE
+ * 
+ * Manages individuals responsible for license compliance and renewals.
+ * Can link to existing employees or track external responsible parties.
+ * Supports delegation and backup responsibilities for continuity.
+ */
+export const responsiblePersons = pgTable("responsible_persons", {
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  
+  // Person identification
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Link to employee if internal
+  
+  // External person details (if not an employee)
+  firstName: varchar("first_name", { length: 100 }),
+  lastName: varchar("last_name", { length: 100 }),
+  title: varchar("title", { length: 100 }),
+  email: varchar("email", { length: 150 }).notNull(),
+  phone: varchar("phone", { length: 30 }),
+  
+  // Responsibility details
+  isPrimary: boolean("is_primary").default(true).notNull(), // Primary responsible person
+  isBackup: boolean("is_backup").default(false).notNull(), // Backup/secondary responsible
+  department: varchar("department", { length: 100 }),
+  
+  // Contact preferences
+  preferredContactMethod: varchar("preferred_contact_method", { length: 50 }).default("email"), // email | phone | sms
+  notificationEnabled: boolean("notification_enabled").default(true).notNull(),
+  reminderFrequency: varchar("reminder_frequency", { length: 50 }).default("weekly"), // daily | weekly | monthly
+  
+  // Access and permissions
+  canApprove: boolean("can_approve").default(false), // Can approve license renewals
+  canSubmit: boolean("can_submit").default(true), // Can submit renewal applications
+  
+  // Status
+  status: varchar("status", { length: 50 }).default("active").notNull(), // active | inactive | on_leave
+  startDate: date("start_date"), // When responsibility started
+  endDate: date("end_date"), // When responsibility ended
+  
+  // Notes and metadata
+  notes: text("notes"),
+  additionalData: jsonb("additional_data"), // Flexible field for additional information
+  
+  // Audit fields
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+}, (table) => ({
+  employeeIdx: index("idx_responsible_persons_employee").on(table.employeeId),
+  emailIdx: index("idx_responsible_persons_email").on(table.email),
+  statusIdx: index("idx_responsible_persons_status").on(table.status)
+}));
+
+/**
+ * CLINIC LICENSES TABLE
+ * 
+ * Tracks actual licenses held by clinic locations.
+ * Central table for compliance monitoring and renewal management.
+ * Integrates with document storage for license certificates and supporting documents.
+ */
+export const clinicLicenses = pgTable("clinic_licenses", {
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  
+  // License identification
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }).notNull(), // Which location holds this license
+  licenseTypeId: integer("license_type_id").references(() => licenseTypes.id, { onDelete: "restrict" }).notNull(), // Type of license
+  licenseNumber: varchar("license_number", { length: 100 }).notNull(), // Official license number
+  
+  // Responsible parties
+  primaryResponsibleId: integer("primary_responsible_id").references(() => responsiblePersons.id, { onDelete: "set null" }), // Primary responsible person
+  backupResponsibleId: integer("backup_responsible_id").references(() => responsiblePersons.id, { onDelete: "set null" }), // Backup responsible person
+  
+  // License validity
+  issueDate: date("issue_date").notNull(), // When license was issued
+  expirationDate: date("expiration_date").notNull(), // When license expires
+  renewalDate: date("renewal_date"), // When renewal application was submitted
+  
+  // Status tracking
+  status: varchar("status", { length: 50 }).default("active").notNull(), // active | expiring_soon | expired | suspended | revoked | pending_renewal
+  renewalStatus: varchar("renewal_status", { length: 50 }), // not_started | in_progress | submitted | approved | rejected
+  complianceStatus: varchar("compliance_status", { length: 50 }).default("compliant").notNull(), // compliant | warning | non_compliant
+  
+  // Issuing authority
+  issuingAuthority: varchar("issuing_authority", { length: 200 }),
+  issuingState: varchar("issuing_state", { length: 50 }),
+  
+  // Cost tracking
+  initialCost: decimal("initial_cost", { precision: 10, scale: 2 }),
+  renewalCost: decimal("renewal_cost", { precision: 10, scale: 2 }),
+  lastPaymentDate: date("last_payment_date"),
+  nextPaymentDue: date("next_payment_due"),
+  
+  // Inspection and compliance
+  lastInspectionDate: date("last_inspection_date"),
+  nextInspectionDue: date("next_inspection_due"),
+  inspectionResult: varchar("inspection_result", { length: 50 }), // passed | failed | conditional | pending
+  
+  // Notes and documentation
+  notes: text("notes"),
+  complianceNotes: text("compliance_notes"),
+  renewalNotes: text("renewal_notes"),
+  
+  // Alert tracking
+  lastAlertSent: timestamp("last_alert_sent"),
+  alertsSuppressed: boolean("alerts_suppressed").default(false),
+  suppressionReason: text("suppression_reason"),
+  
+  // Extensibility
+  customFields: jsonb("custom_fields"), // License-specific custom data
+  metadata: jsonb("metadata"), // Additional metadata
+  
+  // Audit fields
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  updatedBy: integer("updated_by").references(() => users.id, { onDelete: "set null" })
+}, (table) => ({
+  locationIdx: index("idx_clinic_licenses_location").on(table.locationId),
+  licenseTypeIdx: index("idx_clinic_licenses_type").on(table.licenseTypeId),
+  expirationIdx: index("idx_clinic_licenses_expiration").on(table.expirationDate),
+  statusIdx: index("idx_clinic_licenses_status").on(table.status),
+  complianceIdx: index("idx_clinic_licenses_compliance").on(table.complianceStatus),
+  licenseNumberIdx: index("idx_clinic_licenses_number").on(table.licenseNumber)
+}));
+
+/**
+ * COMPLIANCE DOCUMENTS TABLE
+ * 
+ * Stores documents related to clinic licenses and compliance.
+ * Integrates with S3 for secure document storage.
+ * Maintains version history and audit trail for regulatory requirements.
+ */
+export const complianceDocuments = pgTable("compliance_documents", {
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  
+  // Document association
+  clinicLicenseId: integer("clinic_license_id").references(() => clinicLicenses.id, { onDelete: "cascade" }).notNull(), // Which license this document relates to
+  locationId: integer("location_id").references(() => locations.id, { onDelete: "cascade" }), // Optional direct location link
+  
+  // Document identification
+  documentType: varchar("document_type", { length: 100 }).notNull(), // license_certificate | renewal_application | inspection_report | sop | policy | other
+  documentName: varchar("document_name", { length: 255 }).notNull(), // Display name
+  documentNumber: varchar("document_number", { length: 100 }), // Official document number if applicable
+  
+  // File storage (S3)
+  storageType: varchar("storage_type", { length: 10 }).default("s3").notNull(), // Storage type (primarily s3)
+  storageKey: varchar("storage_key", { length: 500 }).notNull(), // S3 key for document
+  fileName: varchar("file_name", { length: 255 }), // Original file name
+  fileSize: integer("file_size"), // File size in bytes
+  mimeType: varchar("mime_type", { length: 100 }), // MIME type
+  
+  // S3 specific fields
+  s3Bucket: varchar("s3_bucket", { length: 255 }), // S3 bucket name
+  s3Region: varchar("s3_region", { length: 50 }), // S3 region
+  s3Etag: varchar("s3_etag", { length: 255 }), // S3 ETag for integrity
+  s3VersionId: varchar("s3_version_id", { length: 255 }), // S3 version ID if versioning enabled
+  
+  // Document validity
+  effectiveDate: date("effective_date"), // When document becomes effective
+  expirationDate: date("expiration_date"), // When document expires
+  isCurrentVersion: boolean("is_current_version").default(true).notNull(), // Whether this is the current version
+  versionNumber: integer("version_number").default(1), // Version number
+  previousVersionId: integer("previous_version_id").references((): any => complianceDocuments.id), // Link to previous version
+  
+  // Verification and approval
+  isVerified: boolean("is_verified").default(false),
+  verifiedBy: integer("verified_by").references(() => users.id, { onDelete: "set null" }),
+  verifiedAt: timestamp("verified_at"),
+  verificationNotes: text("verification_notes"),
+  
+  // Compliance tracking
+  isRequired: boolean("is_required").default(false), // Whether this document is required for compliance
+  complianceCategory: varchar("compliance_category", { length: 100 }), // Compliance category
+  regulatoryReference: varchar("regulatory_reference", { length: 200 }), // Regulatory requirement reference
+  
+  // Document status
+  status: varchar("status", { length: 50 }).default("active").notNull(), // active | archived | superseded | draft | pending_approval
+  
+  // Access control
+  confidentialityLevel: varchar("confidentiality_level", { length: 50 }).default("internal"), // public | internal | confidential | restricted
+  accessNotes: text("access_notes"),
+  
+  // Notes and metadata
+  description: text("description"),
+  notes: text("notes"),
+  tags: text("tags").array(), // Tags for categorization
+  metadata: jsonb("metadata"), // Additional metadata
+  
+  // Audit fields
+  uploadedBy: integer("uploaded_by").references(() => users.id, { onDelete: "set null" }),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  lastAccessedAt: timestamp("last_accessed_at"),
+  lastModifiedBy: integer("last_modified_by").references(() => users.id, { onDelete: "set null" }),
+  lastModifiedAt: timestamp("last_modified_at")
+}, (table) => ({
+  licenseIdx: index("idx_compliance_docs_license").on(table.clinicLicenseId),
+  locationIdx: index("idx_compliance_docs_location").on(table.locationId),
+  typeIdx: index("idx_compliance_docs_type").on(table.documentType),
+  expirationIdx: index("idx_compliance_docs_expiration").on(table.expirationDate),
+  statusIdx: index("idx_compliance_docs_status").on(table.status),
+  versionIdx: index("idx_compliance_docs_version").on(table.isCurrentVersion),
+  storageKeyIdx: index("idx_compliance_docs_storage_key").on(table.storageKey)
+}));
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   audits: many(audits)
@@ -998,3 +1313,94 @@ export type DocusealTemplate = typeof docusealTemplates.$inferSelect;
 export type InsertDocusealTemplate = z.infer<typeof insertDocusealTemplateSchema>;
 export type FormSubmission = typeof formSubmissions.$inferSelect;
 export type InsertFormSubmission = z.infer<typeof insertFormSubmissionSchema>;
+
+// =====================
+// COMPLIANCE TRACKING SCHEMAS
+// =====================
+
+// Insert schemas for locations
+export const insertLocationSchema = createInsertSchema(locations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+}).extend({
+  type: z.enum(["main_org", "sub_location", "department", "facility"]),
+  status: z.enum(["active", "inactive", "suspended", "closed"]).default("active"),
+  customFields: z.record(z.any()).optional(),
+  metadata: z.record(z.any()).optional()
+});
+
+// Insert schemas for license types
+export const insertLicenseTypeSchema = createInsertSchema(licenseTypes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+}).extend({
+  category: z.enum(["medical", "pharmacy", "facility", "business", "other"]),
+  requiredDocuments: z.array(z.string()).optional(),
+  validationRules: z.record(z.any()).optional(),
+  additionalData: z.record(z.any()).optional()
+});
+
+// Insert schemas for responsible persons
+export const insertResponsiblePersonSchema = createInsertSchema(responsiblePersons).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+}).extend({
+  preferredContactMethod: z.enum(["email", "phone", "sms"]).default("email"),
+  reminderFrequency: z.enum(["daily", "weekly", "monthly"]).default("weekly"),
+  status: z.enum(["active", "inactive", "on_leave"]).default("active"),
+  additionalData: z.record(z.any()).optional()
+});
+
+// Insert schemas for clinic licenses  
+export const insertClinicLicenseSchema = createInsertSchema(clinicLicenses).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastAlertSent: true
+}).extend({
+  status: z.enum(["active", "expiring_soon", "expired", "suspended", "revoked", "pending_renewal"]).default("active"),
+  renewalStatus: z.enum(["not_started", "in_progress", "submitted", "approved", "rejected"]).optional(),
+  complianceStatus: z.enum(["compliant", "warning", "non_compliant"]).default("compliant"),
+  inspectionResult: z.enum(["passed", "failed", "conditional", "pending"]).optional(),
+  customFields: z.record(z.any()).optional(),
+  metadata: z.record(z.any()).optional()
+});
+
+// Insert schemas for compliance documents
+export const insertComplianceDocumentSchema = createInsertSchema(complianceDocuments).omit({
+  id: true,
+  uploadedAt: true,
+  lastAccessedAt: true,
+  lastModifiedAt: true,
+  verifiedAt: true
+}).extend({
+  documentType: z.enum(["license_certificate", "renewal_application", "inspection_report", "sop", "policy", "other"]),
+  storageType: z.enum(["s3", "local"]).default("s3"),
+  status: z.enum(["active", "archived", "superseded", "draft", "pending_approval"]).default("active"),
+  confidentialityLevel: z.enum(["public", "internal", "confidential", "restricted"]).default("internal"),
+  tags: z.array(z.string()).optional(),
+  metadata: z.record(z.any()).optional()
+});
+
+// Types for locations
+export type Location = typeof locations.$inferSelect;
+export type InsertLocation = z.infer<typeof insertLocationSchema>;
+
+// Types for license types
+export type LicenseType = typeof licenseTypes.$inferSelect;
+export type InsertLicenseType = z.infer<typeof insertLicenseTypeSchema>;
+
+// Types for responsible persons
+export type ResponsiblePerson = typeof responsiblePersons.$inferSelect;
+export type InsertResponsiblePerson = z.infer<typeof insertResponsiblePersonSchema>;
+
+// Types for clinic licenses
+export type ClinicLicense = typeof clinicLicenses.$inferSelect;
+export type InsertClinicLicense = z.infer<typeof insertClinicLicenseSchema>;
+
+// Types for compliance documents
+export type ComplianceDocument = typeof complianceDocuments.$inferSelect;
+export type InsertComplianceDocument = z.infer<typeof insertComplianceDocumentSchema>;
