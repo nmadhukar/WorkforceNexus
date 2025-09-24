@@ -610,6 +610,8 @@ export const payerEnrollments = pgTable("payer_enrollments", {
   payerName: varchar("payer_name", { length: 100 }), // Insurance company or payer name (e.g., "Blue Cross", "Aetna")
   enrollmentId: varchar("enrollment_id", { length: 50 }), // Provider enrollment ID with the payer
   enrollmentDate: date("enrollment_date"), // Date enrolled with the payer network
+  effectiveDate: date("effective_date"), // Date when enrollment becomes effective
+  terminationDate: date("termination_date"), // Date when enrollment terminates (if applicable)
   status: varchar("status", { length: 50 }) // active | pending | terminated | credentialing_required
 });
 
@@ -1064,19 +1066,59 @@ export const insertEmployeeSchema = createInsertSchema(employees).omit({
   id: true,
   createdAt: true,
   updatedAt: true
-});
+}).refine((data) => {
+  if (data.dlExpirationDate && data.dlIssueDate) {
+    return new Date(data.dlExpirationDate) >= new Date(data.dlIssueDate);
+  }
+  return true; // Allow if either date is missing
+}, { message: "Driver's license expiration date cannot be before issue date", path: ["dlExpirationDate"] });
 
-export const insertEducationSchema = createInsertSchema(educations).omit({ id: true });
-export const insertEmploymentSchema = createInsertSchema(employments).omit({ id: true });
+export const insertEducationSchema = createInsertSchema(educations).omit({ id: true }).refine((data) => {
+  if (data.endDate && data.startDate) {
+    return new Date(data.endDate) >= new Date(data.startDate);
+  }
+  return true; // Allow if either date is missing
+}, { message: "End date cannot be before start date", path: ["endDate"] });
+export const insertEmploymentSchema = createInsertSchema(employments).omit({ id: true }).refine((data) => {
+  if (data.endDate && data.startDate) {
+    return new Date(data.endDate) >= new Date(data.startDate);
+  }
+  return true; // Allow if either date is missing
+}, { message: "End date cannot be before start date", path: ["endDate"] });
 export const insertPeerReferenceSchema = createInsertSchema(peerReferences).omit({ id: true });
-export const insertStateLicenseSchema = createInsertSchema(stateLicenses).omit({ id: true });
-export const insertDeaLicenseSchema = createInsertSchema(deaLicenses).omit({ id: true });
-export const insertBoardCertificationSchema = createInsertSchema(boardCertifications).omit({ id: true });
+export const insertStateLicenseSchema = createInsertSchema(stateLicenses).omit({ id: true }).refine((data) => {
+  if (data.expirationDate && data.issueDate) {
+    return new Date(data.expirationDate) >= new Date(data.issueDate);
+  }
+  return true; // Allow if either date is missing
+}, { message: "Expiration date cannot be before issue date", path: ["expirationDate"] });
+export const insertDeaLicenseSchema = createInsertSchema(deaLicenses).omit({ id: true }).refine((data) => {
+  if (data.expirationDate && data.issueDate) {
+    return new Date(data.expirationDate) >= new Date(data.issueDate);
+  }
+  return true; // Allow if either date is missing
+}, { message: "Expiration date cannot be before issue date", path: ["expirationDate"] });
+export const insertBoardCertificationSchema = createInsertSchema(boardCertifications).omit({ id: true }).refine((data) => {
+  if (data.expirationDate && data.issueDate) {
+    return new Date(data.expirationDate) >= new Date(data.issueDate);
+  }
+  return true; // Allow if either date is missing
+}, { message: "Expiration date cannot be before issue date", path: ["expirationDate"] });
 export const insertDocumentSchema = createInsertSchema(documents).omit({ id: true, createdAt: true });
 export const insertEmergencyContactSchema = createInsertSchema(emergencyContacts).omit({ id: true });
 export const insertTaxFormSchema = createInsertSchema(taxForms).omit({ id: true });
-export const insertTrainingSchema = createInsertSchema(trainings).omit({ id: true });
-export const insertPayerEnrollmentSchema = createInsertSchema(payerEnrollments).omit({ id: true });
+export const insertTrainingSchema = createInsertSchema(trainings).omit({ id: true }).refine((data) => {
+  if (data.expirationDate && data.completionDate) {
+    return new Date(data.expirationDate) >= new Date(data.completionDate);
+  }
+  return true; // Allow if either date is missing
+}, { message: "Expiration date cannot be before completion date", path: ["expirationDate"] });
+export const insertPayerEnrollmentSchema = createInsertSchema(payerEnrollments).omit({ id: true }).refine((data) => {
+  if (data.terminationDate && data.effectiveDate) {
+    return new Date(data.terminationDate) >= new Date(data.effectiveDate);
+  }
+  return true; // Allow if either date is missing
+}, { message: "Termination date cannot be before effective date", path: ["terminationDate"] });
 export const insertIncidentLogSchema = createInsertSchema(incidentLogs).omit({ id: true });
 export const insertAuditSchema = createInsertSchema(audits).omit({ id: true, changedAt: true });
 
@@ -1352,7 +1394,12 @@ export const insertResponsiblePersonSchema = createInsertSchema(responsiblePerso
   reminderFrequency: z.enum(["daily", "weekly", "monthly"]).default("weekly"),
   status: z.enum(["active", "inactive", "on_leave"]).default("active"),
   additionalData: z.record(z.any()).optional()
-});
+}).refine((data) => {
+  if (data.endDate && data.startDate) {
+    return new Date(data.endDate) >= new Date(data.startDate);
+  }
+  return true; // Allow if either date is missing
+}, { message: "End date cannot be before start date", path: ["endDate"] });
 
 // Insert schemas for clinic licenses  
 export const insertClinicLicenseSchema = createInsertSchema(clinicLicenses).omit({
@@ -1367,7 +1414,12 @@ export const insertClinicLicenseSchema = createInsertSchema(clinicLicenses).omit
   inspectionResult: z.enum(["passed", "failed", "conditional", "pending"]).optional(),
   customFields: z.record(z.any()).optional(),
   metadata: z.record(z.any()).optional()
-});
+}).refine((data) => {
+  if (data.expirationDate && data.issueDate) {
+    return new Date(data.expirationDate) >= new Date(data.issueDate);
+  }
+  return true; // Allow if either date is missing
+}, { message: "Expiration date cannot be before issue date", path: ["expirationDate"] });
 
 // Insert schemas for compliance documents
 export const insertComplianceDocumentSchema = createInsertSchema(complianceDocuments).omit({
@@ -1383,7 +1435,12 @@ export const insertComplianceDocumentSchema = createInsertSchema(complianceDocum
   confidentialityLevel: z.enum(["public", "internal", "confidential", "restricted"]).default("internal"),
   tags: z.array(z.string()).optional(),
   metadata: z.record(z.any()).optional()
-});
+}).refine((data) => {
+  if (data.expirationDate && data.effectiveDate) {
+    return new Date(data.expirationDate) >= new Date(data.effectiveDate);
+  }
+  return true; // Allow if either date is missing
+}, { message: "Expiration date cannot be before effective date", path: ["expirationDate"] });
 
 // Types for locations
 export type Location = typeof locations.$inferSelect;
