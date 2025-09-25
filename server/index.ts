@@ -53,14 +53,39 @@ async function ensureDefaultAdmin(retries = 5, delay = 2000): Promise<void> {
       const adminUser = await storage.getUserByUsername('admin');
       
       if (adminUser) {
-        console.log(`Default admin account already exists (ID: ${adminUser.id})`);
-        return;
+        // Verify the admin password is correct
+        const { comparePasswords } = await import('./auth');
+        try {
+          const isValidPassword = await comparePasswords('admin', adminUser.passwordHash);
+          if (isValidPassword) {
+            console.log(`Default admin account already exists (ID: ${adminUser.id}) and password is valid`);
+            return;
+          } else {
+            // Password doesn't match, need to reset it
+            console.log(`Admin user exists but password is invalid. Resetting password...`);
+            const newHashedPassword = await hashPassword('admin');
+            await storage.updateUser(adminUser.id, { passwordHash: newHashedPassword });
+            console.log('✅ Admin password has been reset to: admin');
+            console.log('⚠️  IMPORTANT: Change the default password after first login!');
+            return;
+          }
+        } catch (error) {
+          // Error comparing passwords, likely corrupted hash - reset it
+          console.log(`Admin user exists but password hash appears corrupted. Resetting password...`);
+          const newHashedPassword = await hashPassword('admin');
+          await storage.updateUser(adminUser.id, { passwordHash: newHashedPassword });
+          console.log('✅ Admin password has been reset to: admin');
+          console.log('⚠️  IMPORTANT: Change the default password after first login!');
+          return;
+        }
       }
       
       // Check if there are any users at all
-      const users = await storage.getAllUsers();
+      const result = await storage.getAllUsers();
+      const usersList = result.users;
+      const totalUsers = result.total;
       
-      if (!users || users.length === 0) {
+      if (!usersList || totalUsers === 0) {
         console.log(`[Attempt ${attempt}/${retries}] No users found. Creating default admin account...`);
         
         const hashedPassword = await hashPassword('admin');
@@ -78,7 +103,7 @@ async function ensureDefaultAdmin(retries = 5, delay = 2000): Promise<void> {
         console.log('⚠️  IMPORTANT: Change the default password after first login!');
         return;
       } else {
-        console.log(`Found ${users.length} existing users. No default admin needed.`);
+        console.log(`Found ${totalUsers} existing users. No default admin needed.`);
         return;
       }
     } catch (error) {
