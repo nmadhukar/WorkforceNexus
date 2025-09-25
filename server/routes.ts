@@ -243,6 +243,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupAuth(app);
   
   /**
+   * GET /api/test-admin
+   * 
+   * @route GET /api/test-admin
+   * @group Recovery - System recovery endpoints
+   * @description Test endpoint to verify admin account exists and can login
+   * This is a public endpoint for production debugging
+   * 
+   * @returns {object} 200 - Admin account test results
+   */
+  app.get("/api/test-admin", async (req, res) => {
+    try {
+      const adminUser = await storage.getUserByUsername('admin');
+      
+      if (!adminUser) {
+        return res.status(200).json({ 
+          exists: false,
+          message: "Admin account does not exist. Call POST /api/ensure-admin to create it."
+        });
+      }
+
+      // Test password verification
+      const isValidPassword = await comparePasswords('admin', adminUser.passwordHash);
+      
+      return res.status(200).json({ 
+        exists: true,
+        id: adminUser.id,
+        username: adminUser.username,
+        role: adminUser.role,
+        status: adminUser.status,
+        requirePasswordChange: adminUser.requirePasswordChange,
+        passwordValid: isValidPassword,
+        canLogin: isValidPassword && adminUser.status === 'active' && adminUser.role === 'admin',
+        message: isValidPassword 
+          ? "Admin account exists and password is valid"
+          : "Admin account exists but password verification failed"
+      });
+      
+    } catch (error) {
+      return res.status(500).json({ 
+        error: "Failed to test admin account",
+        details: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  /**
    * POST /api/ensure-admin
    * 
    * @route POST /api/ensure-admin
