@@ -426,6 +426,57 @@ export function setupAuth(app: Express) {
   });
 
   /**
+   * PATCH /api/users/me
+   * 
+   * @route PATCH /api/users/me
+   * @group Authentication
+   * @security Bearer
+   * @param {string} body.email - New email address
+   * 
+   * @returns {object} 200 - Updated user object
+   * @returns {Error} 400 - Invalid email format or email already exists
+   * @returns {Error} 401 - Not authenticated
+   * 
+   * @description Updates the current user's profile information
+   * Currently only supports updating email address
+   */
+  app.patch("/api/users/me", async (req, res) => {
+    if (!req.isAuthenticated() || !req.user) {
+      return res.sendStatus(401);
+    }
+
+    const { email } = req.body;
+
+    // Validate email format
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: "Invalid email format" });
+      }
+
+      // Check if email is already taken by another user
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser && existingUser.id !== req.user.id) {
+        return res.status(400).json({ error: "Email already in use" });
+      }
+    }
+
+    try {
+      // Update user in database
+      const updatedUser = await storage.updateUser(req.user.id, { email });
+      
+      // Update the user object in the session
+      req.user = updatedUser;
+      
+      // Return updated user data
+      res.json(updatedUser);
+    } catch (error) {
+      console.error("Error updating user profile:", error);
+      res.status(500).json({ error: "Failed to update profile" });
+    }
+  });
+
+  /**
    * POST /api/change-password
    * 
    * @route POST /api/change-password
