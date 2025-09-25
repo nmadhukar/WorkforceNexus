@@ -192,7 +192,12 @@ export function setupAuth(app: Express) {
    * }
    */
   app.post("/api/register", async (req, res, next) => {
-    const { username, password, role, invitationToken } = req.body;
+    const { username, password, invitationToken } = req.body;
+    
+    // Invitation token is now required
+    if (!invitationToken) {
+      return res.status(400).json({ error: "Registration requires an invitation. Please contact your administrator." });
+    }
     
     // Check if username already exists
     const existingUser = await storage.getUserByUsername(username);
@@ -205,32 +210,30 @@ export function setupAuth(app: Express) {
     let formsSent = 0;
     let isOnboarding = false;
     
-    // If invitation token is provided, validate it
-    if (invitationToken) {
-      invitation = await storage.getInvitationByToken(invitationToken);
-      
-      if (!invitation) {
-        return res.status(400).json({ error: "Invalid invitation token" });
-      }
-      
-      if (invitation.status !== 'pending') {
-        return res.status(400).json({ error: "This invitation has already been used or has expired" });
-      }
-      
-      // Check if invitation has expired
-      if (new Date(invitation.expiresAt) < new Date()) {
-        await storage.updateInvitation(invitation.id, { status: 'expired' });
-        return res.status(400).json({ error: "This invitation has expired" });
-      }
-      
-      isOnboarding = true;
+    // Validate invitation token
+    invitation = await storage.getInvitationByToken(invitationToken);
+    
+    if (!invitation) {
+      return res.status(400).json({ error: "Invalid invitation token" });
     }
+    
+    if (invitation.status !== 'pending') {
+      return res.status(400).json({ error: "This invitation has already been used or has expired" });
+    }
+    
+    // Check if invitation has expired
+    if (new Date(invitation.expiresAt) < new Date()) {
+      await storage.updateInvitation(invitation.id, { status: 'expired' });
+      return res.status(400).json({ error: "This invitation has expired" });
+    }
+    
+    isOnboarding = true;
 
-    // Create user account
+    // Create user account with the role specified in the invitation
     const user = await storage.createUser({
       username: username,
       passwordHash: await hashPassword(password),
-      role: invitationToken ? "viewer" : (role || "hr"), // Onboarding employees start as viewers
+      role: invitation.intendedRole || "viewer", // Use intendedRole from invitation
     });
     
     // If this is an onboarding registration, handle employee record and send forms
@@ -372,7 +375,12 @@ export function setupAuth(app: Express) {
    * }
    */
   app.post("/api/login", passport.authenticate("local"), (req, res) => {
-    res.status(200).json(req.user);
+    // Include requirePasswordChange flag in the response
+    const userResponse = {
+      ...req.user,
+      requirePasswordChange: req.user?.requirePasswordChange || false
+    };
+    res.status(200).json(userResponse);
   });
 
   /**
@@ -409,6 +417,70 @@ export function setupAuth(app: Express) {
    */
   app.get("/api/user", (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
-    res.json(req.user);
+    // Include requirePasswordChange flag in the response
+    const userResponse = {
+      ...req.user,
+      requirePasswordChange: req.user?.requirePasswordChange || false
+    };
+    res.json(userResponse);
+  });
+
+  /**
+   * POST /api/change-password
+   * 
+   * @route POST /api/change-password
+   * @group Authentication
+   * @security Bearer
+   * @param {string} body.currentPassword.required - Current password
+   * @param {string} body.newPassword.required - New password
+   * 
+   * @returns {object} 200 - Password changed successfully
+   * @returns {Error} 400 - Invalid current password or validation error
+   * @returns {Error} 401 - Not authenticated
+   * 
+   * @description Changes the user's password and sets requirePasswordChange to false
+   */
+  app.post("/api/change-password", async (req, res) => {
+    if (!req.isAuthenticated() || !req.user) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    
+    const { currentPassword, newPassword } = req.body;
+    
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: "Current password and new password are required" });
+    }
+    
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: "New password must be at least 8 characters long" });
+    }
+    
+    try {
+      // Verify current password
+      const user = await storage.getUser(req.user.id);
+      if (!user) {
+        return res.status(401).json({ error: "User not found" });
+      }
+      
+      const isValidPassword = await comparePasswords(currentPassword, user.passwordHash);
+      if (!isValidPassword) {
+        return res.status(400).json({ error: "Current password is incorrect" });
+      }
+      
+      // Update password and set requirePasswordChange to false
+      const hashedPassword = await hashPassword(newPassword);
+      await storage.updateUser(user.id, {
+        passwordHash: hashedPassword,
+        requirePasswordChange: false
+      });
+      
+      // Update the session user object
+      req.user.requirePasswordChange = false;
+      
+      res.json({ message: "Password changed successfully" });
+    } catch (error) {
+      console.error("Error changing password:", error);
+      res.status(500).json({ error: "Failed to change password" });
+    }
   });
 }

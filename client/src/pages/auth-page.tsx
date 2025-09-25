@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Users, Shield, Eye, Mail, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { PasswordChangeDialog } from "@/components/password-change-dialog";
 
 /**
  * Authentication page providing login and registration functionality for the HR management system
@@ -36,8 +37,7 @@ export default function AuthPage() {
   const [registerData, setRegisterData] = useState({ 
     username: "", 
     password: "", 
-    confirmPassword: "",
-    role: "hr"
+    confirmPassword: ""
   });
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [invitationToken, setInvitationToken] = useState<string | null>(null);
@@ -45,6 +45,7 @@ export default function AuthPage() {
     message?: string;
     formsSent?: number;
   } | null>(null);
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
 
   useEffect(() => {
     // Check for invitation token in URL
@@ -53,8 +54,6 @@ export default function AuthPage() {
     if (token) {
       setInvitationToken(token);
       setIsOnboarding(true);
-      // Hide role selection for onboarding employees
-      setRegisterData(prev => ({ ...prev, role: 'viewer' }));
     }
   }, []);
   
@@ -70,7 +69,15 @@ export default function AuthPage() {
    */
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    loginMutation.mutate(loginData);
+    loginMutation.mutate(loginData, {
+      onSuccess: (data: any) => {
+        if (data?.requirePasswordChange) {
+          setShowPasswordChange(true);
+        } else {
+          navigate("/");
+        }
+      }
+    });
   };
 
   /**
@@ -92,12 +99,8 @@ export default function AuthPage() {
     const registrationData: any = {
       username: registerData.username,
       password: registerData.password,
-      role: isOnboarding ? "viewer" : (registerData.role as "admin" | "hr" | "viewer")
+      invitationToken: invitationToken // Required now
     };
-    
-    if (invitationToken) {
-      registrationData.invitationToken = invitationToken;
-    }
     
     registerMutation.mutate(registrationData, {
       onSuccess: (data: any) => {
@@ -127,7 +130,7 @@ export default function AuthPage() {
     });
   };
 
-  if (user) {
+  if (user && !showPasswordChange) {
     return null;
   }
 
@@ -150,9 +153,11 @@ export default function AuthPage() {
           
           <CardContent>
             <Tabs defaultValue="login" className="space-y-4">
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className={`grid w-full ${invitationToken ? 'grid-cols-2' : 'grid-cols-1'}`}>
                 <TabsTrigger value="login">Sign In</TabsTrigger>
-                <TabsTrigger value="register">Register</TabsTrigger>
+                {invitationToken && (
+                  <TabsTrigger value="register">Register</TabsTrigger>
+                )}
               </TabsList>
               
               <TabsContent value="login">
@@ -261,22 +266,6 @@ export default function AuthPage() {
                       data-testid="input-register-confirm-password"
                     />
                   </div>
-                  {!isOnboarding && (
-                    <div>
-                      <Label htmlFor="role">Role</Label>
-                      <select
-                        id="role"
-                        value={registerData.role}
-                        onChange={(e) => setRegisterData({ ...registerData, role: e.target.value })}
-                        className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                        data-testid="select-register-role"
-                      >
-                        <option value="hr">HR Staff</option>
-                        <option value="admin">Administrator</option>
-                        <option value="viewer">Viewer</option>
-                      </select>
-                    </div>
-                  )}
                   <Button 
                     type="submit" 
                     className="w-full"
@@ -338,6 +327,16 @@ export default function AuthPage() {
           </div>
         </div>
       </div>
+      
+      {showPasswordChange && (
+        <PasswordChangeDialog 
+          open={showPasswordChange}
+          onSuccess={() => {
+            setShowPasswordChange(false);
+            navigate("/");
+          }}
+        />
+      )}
     </div>
   );
 }

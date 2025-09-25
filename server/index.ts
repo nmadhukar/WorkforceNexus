@@ -1,6 +1,8 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { storage } from "./storage";
+import { hashPassword } from "./auth";
 
 const app = express();
 app.use(express.json());
@@ -44,6 +46,26 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Initialize default admin account if no users exist
+  try {
+    const users = await storage.getAllUsers();
+    if (!users || users.length === 0) {
+      console.log('No users found in database. Creating default admin account...');
+      const hashedPassword = await hashPassword('admin');
+      const adminUser = await storage.createUser({
+        username: 'admin',
+        passwordHash: hashedPassword,
+        role: 'admin',
+        status: 'active',
+        requirePasswordChange: true
+      });
+      console.log('Default admin account created with username: admin');
+      console.log('⚠️ IMPORTANT: Change the password on first login!');
+    }
+  } catch (error) {
+    console.error('Error checking/creating default admin account:', error);
+  }
+
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

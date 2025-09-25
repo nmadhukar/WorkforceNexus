@@ -55,7 +55,8 @@ export const users = pgTable("users", {
   passwordResetToken: varchar("password_reset_token", { length: 255 }), // Password reset token for security
   passwordResetExpiresAt: timestamp("password_reset_expires_at"), // Reset token expiration timestamp
   failedLoginAttempts: integer("failed_login_attempts").default(0).notNull(), // Failed login counter for security
-  lockedUntil: timestamp("locked_until") // Temporary account lock expiration
+  lockedUntil: timestamp("locked_until"), // Temporary account lock expiration
+  requirePasswordChange: boolean("require_password_change").default(false).notNull() // Force password change on next login
 });
 
 /**
@@ -325,6 +326,9 @@ export const employeeInvitations = pgTable("employee_invitations", {
   registeredAt: timestamp("registered_at"), // When invitee created their account
   completedAt: timestamp("completed_at"), // When onboarding forms were completed
   expiresAt: timestamp("expires_at").notNull(), // Invitation expiration (default 7 days)
+  
+  // Role assignment
+  intendedRole: varchar("intended_role", { length: 20 }).notNull().default("viewer"), // Role to assign on registration: admin | hr | viewer
   
   // Reminder tracking
   remindersSent: integer("reminders_sent").default(0), // Number of reminders sent

@@ -3520,12 +3520,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       body('firstName').notEmpty().withMessage('First name is required'),
       body('lastName').notEmpty().withMessage('Last name is required'),
       body('email').isEmail().withMessage('Valid email is required'),
-      body('cellPhone').optional().isMobilePhone('any')
+      body('cellPhone').optional().isMobilePhone('any'),
+      body('intendedRole').optional().isIn(['admin', 'hr', 'viewer']).withMessage('Invalid role')
     ],
     handleValidationErrors,
     async (req: AuditRequest, res: Response) => {
       try {
-        const { firstName, lastName, email, cellPhone } = req.body;
+        const { firstName, lastName, email, cellPhone, intendedRole } = req.body;
+        
+        // Role-based invitation permissions
+        const requestingUserRole = req.user?.role;
+        let roleToAssign = 'viewer'; // Default role
+        
+        if (intendedRole) {
+          if (requestingUserRole === 'admin') {
+            // Admin can invite users with any role
+            roleToAssign = intendedRole;
+          } else if (requestingUserRole === 'hr') {
+            // HR can only invite viewers
+            if (intendedRole !== 'viewer') {
+              return res.status(403).json({ 
+                error: 'HR users can only invite users with viewer role' 
+              });
+            }
+            roleToAssign = 'viewer';
+          } else {
+            // Viewers cannot invite anyone (already blocked by requireRole)
+            return res.status(403).json({ 
+              error: 'You do not have permission to invite users' 
+            });
+          }
+        }
         
         // Check if invitation already exists for this email
         const existingInvitation = await storage.getInvitationByEmail(email);
@@ -3546,7 +3571,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const nextReminderAt = new Date();
         nextReminderAt.setHours(nextReminderAt.getHours() + 24);
         
-        // Create invitation record
+        // Create invitation record with intendedRole
         const invitation = await storage.createInvitation({
           firstName,
           lastName,
@@ -3555,7 +3580,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           invitationToken,
           invitedBy: req.user!.id,
           expiresAt,
-          nextReminderAt
+          nextReminderAt,
+          intendedRole: roleToAssign
         });
         
         // Generate invitation link using proper domain detection
