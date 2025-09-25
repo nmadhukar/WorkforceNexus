@@ -91,7 +91,8 @@ export default function EmployeesList() {
     firstName: "",
     lastName: "",
     position: "",
-    department: ""
+    department: "",
+    intendedRole: user?.role === "hr" ? "viewer" : "viewer"  // Default to viewer for all roles
   });
 
   // Employees Query
@@ -144,7 +145,8 @@ export default function EmployeesList() {
         firstName: "",
         lastName: "",
         position: "",
-        department: ""
+        department: "",
+        intendedRole: user?.role === "hr" ? "viewer" : "viewer"
       });
     },
     onError: (error) => {
@@ -390,6 +392,32 @@ export default function EmployeesList() {
                         placeholder="Emergency Medicine"
                         data-testid="input-invitation-department"
                       />
+                    </div>
+                    <div>
+                      <Label htmlFor="invitation-role">Role</Label>
+                      <Select
+                        value={newInvitation.intendedRole}
+                        onValueChange={(value) => setNewInvitation(prev => ({ ...prev, intendedRole: value }))}
+                        disabled={user?.role === "hr"}  // HR can only invite viewers
+                      >
+                        <SelectTrigger id="invitation-role" data-testid="select-invitation-role">
+                          <SelectValue placeholder="Select a role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {user?.role === "admin" && (
+                            <>
+                              <SelectItem value="admin">Admin</SelectItem>
+                              <SelectItem value="hr">HR</SelectItem>
+                            </>
+                          )}
+                          <SelectItem value="viewer">Viewer</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {user?.role === "hr" && (
+                        <p className="text-sm text-muted-foreground mt-1">
+                          HR users can only invite viewers
+                        </p>
+                      )}
                     </div>
                     <Button 
                       onClick={handleSendInvitation}
