@@ -1226,14 +1226,1151 @@
           ]
         }
       ]
+    },
+    {
+      "title": "documents/document-upload.spec.ts",
+      "file": "documents/document-upload.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Document Upload E2E Tests",
+          "file": "documents/document-upload.spec.ts",
+          "line": 26,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Admin uploads employee document",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-b283c76e87edf85428c9",
+              "file": "documents/document-upload.spec.ts",
+              "line": 52,
+              "column": 3
+            },
+            {
+              "title": "Multiple file upload",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-d4809cefbbb471b72179",
+              "file": "documents/document-upload.spec.ts",
+              "line": 94,
+              "column": 3
+            },
+            {
+              "title": "Document categorization",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-efb766a57541609de1ab",
+              "file": "documents/document-upload.spec.ts",
+              "line": 129,
+              "column": 3
+            },
+            {
+              "title": "Document search and filtering",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-5857d54561e5c3217e47",
+              "file": "documents/document-upload.spec.ts",
+              "line": 170,
+              "column": 3
+            },
+            {
+              "title": "S3 storage integration",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-0d9140541f441ca346e3",
+              "file": "documents/document-upload.spec.ts",
+              "line": 242,
+              "column": 3
+            },
+            {
+              "title": "Document upload with employee association",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-c67f5354c92df7336677",
+              "file": "documents/document-upload.spec.ts",
+              "line": 323,
+              "column": 3
+            },
+            {
+              "title": "Document versioning and replacement",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-4e14b5077356ec740cf0",
+              "file": "documents/document-upload.spec.ts",
+              "line": 367,
+              "column": 3
+            },
+            {
+              "title": "Bulk document operations",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-19fc6943569671d929e2",
+              "file": "documents/document-upload.spec.ts",
+              "line": 402,
+              "column": 3
+            },
+            {
+              "title": "Admin uploads employee document",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-7c6d665ff7cafa7c803e",
+              "file": "documents/document-upload.spec.ts",
+              "line": 52,
+              "column": 3
+            },
+            {
+              "title": "Multiple file upload",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-6dca194672aea9a966bc",
+              "file": "documents/document-upload.spec.ts",
+              "line": 94,
+              "column": 3
+            },
+            {
+              "title": "Document categorization",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-837c17be110fe74c0b0f",
+              "file": "documents/document-upload.spec.ts",
+              "line": 129,
+              "column": 3
+            },
+            {
+              "title": "Document search and filtering",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-b41277171842b5320759",
+              "file": "documents/document-upload.spec.ts",
+              "line": 170,
+              "column": 3
+            },
+            {
+              "title": "S3 storage integration",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-b862a0740820e659bfd6",
+              "file": "documents/document-upload.spec.ts",
+              "line": 242,
+              "column": 3
+            },
+            {
+              "title": "Document upload with employee association",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-a533298bae937b3251fa",
+              "file": "documents/document-upload.spec.ts",
+              "line": 323,
+              "column": 3
+            },
+            {
+              "title": "Document versioning and replacement",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-b0d7af2f394add2f0f0b",
+              "file": "documents/document-upload.spec.ts",
+              "line": 367,
+              "column": 3
+            },
+            {
+              "title": "Bulk document operations",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "firefox",
+                  "projectName": "firefox",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-d92cae1b5b0038d9b38b",
+              "file": "documents/document-upload.spec.ts",
+              "line": 402,
+              "column": 3
+            },
+            {
+              "title": "Admin uploads employee document",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-315360dd7e0225f93fea",
+              "file": "documents/document-upload.spec.ts",
+              "line": 52,
+              "column": 3
+            },
+            {
+              "title": "Multiple file upload",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-2e6f33e226e4d6d79096",
+              "file": "documents/document-upload.spec.ts",
+              "line": 94,
+              "column": 3
+            },
+            {
+              "title": "Document categorization",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-c22d40932d75eef0ad00",
+              "file": "documents/document-upload.spec.ts",
+              "line": 129,
+              "column": 3
+            },
+            {
+              "title": "Document search and filtering",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-1371b265126c806bfa21",
+              "file": "documents/document-upload.spec.ts",
+              "line": 170,
+              "column": 3
+            },
+            {
+              "title": "S3 storage integration",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-5f50116eba6f1007802d",
+              "file": "documents/document-upload.spec.ts",
+              "line": 242,
+              "column": 3
+            },
+            {
+              "title": "Document upload with employee association",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-25d8b25c2f24bd73fbec",
+              "file": "documents/document-upload.spec.ts",
+              "line": 323,
+              "column": 3
+            },
+            {
+              "title": "Document versioning and replacement",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-35c0fd9dd4b71b8d1736",
+              "file": "documents/document-upload.spec.ts",
+              "line": 367,
+              "column": 3
+            },
+            {
+              "title": "Bulk document operations",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "webkit",
+                  "projectName": "webkit",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-5e67eeccbf7b0007b1b2",
+              "file": "documents/document-upload.spec.ts",
+              "line": 402,
+              "column": 3
+            },
+            {
+              "title": "Admin uploads employee document",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-604f6bf744ef0024b55d",
+              "file": "documents/document-upload.spec.ts",
+              "line": 52,
+              "column": 3
+            },
+            {
+              "title": "Multiple file upload",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-5f55de7368a1ca0b85f7",
+              "file": "documents/document-upload.spec.ts",
+              "line": 94,
+              "column": 3
+            },
+            {
+              "title": "Document categorization",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-449cdb10b47fd9ef3f91",
+              "file": "documents/document-upload.spec.ts",
+              "line": 129,
+              "column": 3
+            },
+            {
+              "title": "Document search and filtering",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-940873755670716b4b1c",
+              "file": "documents/document-upload.spec.ts",
+              "line": 170,
+              "column": 3
+            },
+            {
+              "title": "S3 storage integration",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-1f847914fa28a8625b50",
+              "file": "documents/document-upload.spec.ts",
+              "line": 242,
+              "column": 3
+            },
+            {
+              "title": "Document upload with employee association",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-4a4721cf2a01e40b9c14",
+              "file": "documents/document-upload.spec.ts",
+              "line": 323,
+              "column": 3
+            },
+            {
+              "title": "Document versioning and replacement",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-2b32c8e6cf4aa831b191",
+              "file": "documents/document-upload.spec.ts",
+              "line": 367,
+              "column": 3
+            },
+            {
+              "title": "Bulk document operations",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Chrome",
+                  "projectName": "Mobile Chrome",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-55760942e7eca7f5e3c7",
+              "file": "documents/document-upload.spec.ts",
+              "line": 402,
+              "column": 3
+            },
+            {
+              "title": "Admin uploads employee document",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Safari",
+                  "projectName": "Mobile Safari",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-bb90be92bfe60406ff94",
+              "file": "documents/document-upload.spec.ts",
+              "line": 52,
+              "column": 3
+            },
+            {
+              "title": "Multiple file upload",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Safari",
+                  "projectName": "Mobile Safari",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-ae0a39c144bf844c8a11",
+              "file": "documents/document-upload.spec.ts",
+              "line": 94,
+              "column": 3
+            },
+            {
+              "title": "Document categorization",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Safari",
+                  "projectName": "Mobile Safari",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-e96548d2708bb74f8ff8",
+              "file": "documents/document-upload.spec.ts",
+              "line": 129,
+              "column": 3
+            },
+            {
+              "title": "Document search and filtering",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Safari",
+                  "projectName": "Mobile Safari",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-780811e5b198210fca75",
+              "file": "documents/document-upload.spec.ts",
+              "line": 170,
+              "column": 3
+            },
+            {
+              "title": "S3 storage integration",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Safari",
+                  "projectName": "Mobile Safari",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-a612ec04294c84df6d55",
+              "file": "documents/document-upload.spec.ts",
+              "line": 242,
+              "column": 3
+            },
+            {
+              "title": "Document upload with employee association",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Safari",
+                  "projectName": "Mobile Safari",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-d79c1063db47b2962b87",
+              "file": "documents/document-upload.spec.ts",
+              "line": 323,
+              "column": 3
+            },
+            {
+              "title": "Document versioning and replacement",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Safari",
+                  "projectName": "Mobile Safari",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-393846e3c4d68db47248",
+              "file": "documents/document-upload.spec.ts",
+              "line": 367,
+              "column": 3
+            },
+            {
+              "title": "Bulk document operations",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "Mobile Safari",
+                  "projectName": "Mobile Safari",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-d8dbfb7ab93a51d796c6",
+              "file": "documents/document-upload.spec.ts",
+              "line": 402,
+              "column": 3
+            },
+            {
+              "title": "Admin uploads employee document",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "hr-role",
+                  "projectName": "hr-role",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-09f4753382d8a2380098",
+              "file": "documents/document-upload.spec.ts",
+              "line": 52,
+              "column": 3
+            },
+            {
+              "title": "Multiple file upload",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "hr-role",
+                  "projectName": "hr-role",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-71984c3ee3018ecc7eb7",
+              "file": "documents/document-upload.spec.ts",
+              "line": 94,
+              "column": 3
+            },
+            {
+              "title": "Document categorization",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "hr-role",
+                  "projectName": "hr-role",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-65bc99cd3b3c3476e1a8",
+              "file": "documents/document-upload.spec.ts",
+              "line": 129,
+              "column": 3
+            },
+            {
+              "title": "Document search and filtering",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "hr-role",
+                  "projectName": "hr-role",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-cef4de6fa02090de8516",
+              "file": "documents/document-upload.spec.ts",
+              "line": 170,
+              "column": 3
+            },
+            {
+              "title": "S3 storage integration",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "hr-role",
+                  "projectName": "hr-role",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-76b8986dcf8c3bdd089e",
+              "file": "documents/document-upload.spec.ts",
+              "line": 242,
+              "column": 3
+            },
+            {
+              "title": "Document upload with employee association",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "hr-role",
+                  "projectName": "hr-role",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-e8bd067a57be3587a3b2",
+              "file": "documents/document-upload.spec.ts",
+              "line": 323,
+              "column": 3
+            },
+            {
+              "title": "Document versioning and replacement",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "hr-role",
+                  "projectName": "hr-role",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-bf6e1c3f0e7f12898c38",
+              "file": "documents/document-upload.spec.ts",
+              "line": 367,
+              "column": 3
+            },
+            {
+              "title": "Bulk document operations",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "hr-role",
+                  "projectName": "hr-role",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-a6b5af54fc1815beef07",
+              "file": "documents/document-upload.spec.ts",
+              "line": 402,
+              "column": 3
+            },
+            {
+              "title": "Admin uploads employee document",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "viewer-role",
+                  "projectName": "viewer-role",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-d596f07b3d290c44cecf",
+              "file": "documents/document-upload.spec.ts",
+              "line": 52,
+              "column": 3
+            },
+            {
+              "title": "Multiple file upload",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "viewer-role",
+                  "projectName": "viewer-role",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-6526958a59e908a16b08",
+              "file": "documents/document-upload.spec.ts",
+              "line": 94,
+              "column": 3
+            },
+            {
+              "title": "Document categorization",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "viewer-role",
+                  "projectName": "viewer-role",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-32698ef4c60ad7e66f5e",
+              "file": "documents/document-upload.spec.ts",
+              "line": 129,
+              "column": 3
+            },
+            {
+              "title": "Document search and filtering",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "viewer-role",
+                  "projectName": "viewer-role",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-9c665ab5691cfe365f55",
+              "file": "documents/document-upload.spec.ts",
+              "line": 170,
+              "column": 3
+            },
+            {
+              "title": "S3 storage integration",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "viewer-role",
+                  "projectName": "viewer-role",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-69f5ccbebe473102b920",
+              "file": "documents/document-upload.spec.ts",
+              "line": 242,
+              "column": 3
+            },
+            {
+              "title": "Document upload with employee association",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "viewer-role",
+                  "projectName": "viewer-role",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-7ca58ecf12fa39fe59c8",
+              "file": "documents/document-upload.spec.ts",
+              "line": 323,
+              "column": 3
+            },
+            {
+              "title": "Document versioning and replacement",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "viewer-role",
+                  "projectName": "viewer-role",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-9ea41ecbf9b862901e6a",
+              "file": "documents/document-upload.spec.ts",
+              "line": 367,
+              "column": 3
+            },
+            {
+              "title": "Bulk document operations",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "viewer-role",
+                  "projectName": "viewer-role",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "2d1919d0413d2900c722-291c049dc46259b6ff04",
+              "file": "documents/document-upload.spec.ts",
+              "line": 402,
+              "column": 3
+            }
+          ]
+        }
+      ]
     }
   ],
   "errors": [],
   "stats": {
-    "startTime": "2025-09-25T15:48:22.674Z",
-    "duration": 2046.008,
+    "startTime": "2025-09-25T15:50:10.270Z",
+    "duration": 2129.647,
     "expected": 0,
-    "skipped": 52,
+    "skipped": 108,
     "unexpected": 0,
     "flaky": 0
   }
