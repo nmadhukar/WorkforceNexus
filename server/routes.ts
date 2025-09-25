@@ -814,8 +814,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.updatePasswordResetToken(user.id, resetToken, expiresAt);
         await logAudit(req, user.id, null, { passwordResetRequested: true });
         
-        // In production, send email with reset link
-        // await sendPasswordResetEmail(email, resetToken);
+        // Send password reset email
+        try {
+          // Import SES service dynamically
+          const { sesService } = await import('./services/sesService');
+          
+          // Generate full name for personalization
+          const userName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username;
+          
+          // Get the base URL for the reset link
+          const baseUrl = getBaseUrl(req);
+          
+          // Send the password reset email
+          const emailResult = await sesService.sendPasswordResetEmail(
+            email,
+            resetToken,
+            userName,
+            baseUrl
+          );
+          
+          if (!emailResult.success) {
+            // Log error but don't expose to user (prevents enumeration)
+            console.error('Failed to send password reset email:', emailResult.error);
+            console.error('User email:', email);
+            console.error('User ID:', user.id);
+          } else {
+            console.log('Password reset email sent successfully');
+            console.log('Email:', email);
+            console.log('Message ID:', emailResult.messageId);
+          }
+        } catch (emailError) {
+          // Log error but continue - don't expose email failures to prevent enumeration
+          console.error('Error sending password reset email:', emailError);
+          console.error('User email:', email);
+          console.error('User ID:', user.id);
+        }
         
         res.json({ 
           message: 'If the email exists, a password reset link has been sent',
