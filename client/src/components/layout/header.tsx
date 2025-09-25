@@ -1,10 +1,23 @@
+import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Calendar, Users } from "lucide-react";
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ProfileSettingsDialog } from "@/components/profile-settings-dialog";
+import { PasswordChangeDialog } from "@/components/password-change-dialog";
+import { Calendar, Users, User, Lock, LogOut } from "lucide-react";
 
 export function Header() {
   const { user, logoutMutation } = useAuth();
+  const [showProfileDialog, setShowProfileDialog] = useState(false);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
 
   const getCurrentDate = () => {
     return new Date().toLocaleDateString("en-US", {
@@ -44,21 +57,67 @@ export function Header() {
               <span className="text-sm font-medium text-foreground" data-testid="text-username">
                 {user?.username || "User"}
               </span>
-              <Avatar className="h-8 w-8">
-                <AvatarFallback className="bg-accent text-accent-foreground text-xs font-medium">
-                  {getUserInitials(user)}
-                </AvatarFallback>
-              </Avatar>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => logoutMutation.mutate()}
-                disabled={logoutMutation.isPending}
-                data-testid="button-logout"
-              >
-                Logout
-              </Button>
+              
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="relative h-8 w-8 rounded-full"
+                    data-testid="button-user-dropdown"
+                  >
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback className="bg-accent text-accent-foreground text-xs font-medium">
+                        {getUserInitials(user)}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56" align="end">
+                  <DropdownMenuLabel>
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">{user?.username}</p>
+                      <p className="text-xs leading-none text-muted-foreground">
+                        {user?.email || "No email set"}
+                      </p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => setShowProfileDialog(true)}
+                    data-testid="dropdown-item-profile-settings"
+                  >
+                    <User className="mr-2 h-4 w-4" />
+                    <span>Profile Settings</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setShowPasswordDialog(true)}
+                    data-testid="dropdown-item-change-password"
+                  >
+                    <Lock className="mr-2 h-4 w-4" />
+                    <span>Change Password</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => logoutMutation.mutate()}
+                    disabled={logoutMutation.isPending}
+                    data-testid="dropdown-item-logout"
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Logout</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
+            
+            <ProfileSettingsDialog
+              open={showProfileDialog}
+              onOpenChange={setShowProfileDialog}
+            />
+            <PasswordChangeDialog
+              open={showPasswordDialog}
+              onSuccess={() => setShowPasswordDialog(false)}
+              onOpenChange={setShowPasswordDialog}
+            />
           </div>
         </div>
       </div>

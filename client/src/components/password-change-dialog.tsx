@@ -12,9 +12,18 @@ import { useToast } from "@/hooks/use-toast";
 interface PasswordChangeDialogProps {
   open: boolean;
   onSuccess?: () => void;
+  onOpenChange?: (open: boolean) => void;
+  title?: string;
+  description?: string;
 }
 
-export function PasswordChangeDialog({ open, onSuccess }: PasswordChangeDialogProps) {
+export function PasswordChangeDialog({ 
+  open, 
+  onSuccess, 
+  onOpenChange,
+  title = "Change Password",
+  description = "Update your account password"
+}: PasswordChangeDialogProps) {
   const { toast } = useToast();
   const [passwords, setPasswords] = useState({
     currentPassword: "",
@@ -25,10 +34,7 @@ export function PasswordChangeDialog({ open, onSuccess }: PasswordChangeDialogPr
 
   const changePasswordMutation = useMutation({
     mutationFn: async (data: { currentPassword: string; newPassword: string }) => {
-      return apiRequest("/api/change-password", {
-        method: "POST",
-        body: JSON.stringify(data)
-      });
+      return apiRequest("POST", "/api/change-password", data);
     },
     onSuccess: () => {
       toast({
@@ -72,13 +78,30 @@ export function PasswordChangeDialog({ open, onSuccess }: PasswordChangeDialogPr
     });
   };
 
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen && onOpenChange) {
+      // Reset form when closing
+      setPasswords({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setError(null);
+      onOpenChange(false);
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={() => {}}>
-      <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()}>
+    <Dialog open={open} onOpenChange={onOpenChange || (() => {})}>
+      <DialogContent 
+        className="sm:max-w-md" 
+        onPointerDownOutside={(e) => {
+          // Only prevent closing if there's no onOpenChange handler (forced password change)
+          if (!onOpenChange) {
+            e.preventDefault();
+          }
+        }}
+      >
         <DialogHeader>
-          <DialogTitle>Password Change Required</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            For security reasons, you must change your password before continuing.
+            {description}
           </DialogDescription>
         </DialogHeader>
 
