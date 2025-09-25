@@ -289,7 +289,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         passwordHash: hashedPassword,
         role: 'admin',
         status: 'active',
-        requirePasswordChange: true
+        requirePasswordChange: false  // Don't require password change for recovery
       });
       
       console.log('Recovery: Default admin account created');
@@ -298,7 +298,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         username: "admin",
         password: "admin",
         created: true,
-        note: "Password change required on first login"
+        note: "IMPORTANT: Change the default password after first login"
       });
       
     } catch (error) {

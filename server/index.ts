@@ -69,12 +69,13 @@ async function ensureDefaultAdmin(retries = 5, delay = 2000): Promise<void> {
           passwordHash: hashedPassword,
           role: 'admin',
           status: 'active',
-          requirePasswordChange: true
+          requirePasswordChange: false  // Don't require password change for initial deployment
         });
         
         console.log('✅ Default admin account created successfully');
         console.log('Username: admin');
-        console.log('Password: admin (requires change on first login)');
+        console.log('Password: admin');
+        console.log('⚠️  IMPORTANT: Change the default password after first login!');
         return;
       } else {
         console.log(`Found ${users.length} existing users. No default admin needed.`);
