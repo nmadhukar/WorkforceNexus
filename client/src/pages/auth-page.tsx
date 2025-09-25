@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Users, Shield, Eye, Mail, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { PasswordChangeDialog } from "@/components/password-change-dialog";
+import { apiRequest } from "@/lib/queryClient";
 
 /**
  * Authentication page providing login and registration functionality for the HR management system
@@ -46,6 +47,9 @@ export default function AuthPage() {
     formsSent?: number;
   } | null>(null);
   const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetEmailSent, setResetEmailSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
 
   useEffect(() => {
     // Check for invitation token in URL
@@ -62,6 +66,43 @@ export default function AuthPage() {
       navigate("/");
     }
   }, [user, navigate, registrationSuccess]);
+
+  /**
+   * Handles password reset request form submission
+   * @param {React.FormEvent} e - Form submission event
+   */
+  const handlePasswordResetRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetLoading(true);
+    
+    try {
+      const response = await apiRequest('POST', '/api/auth/reset-password', {
+        email: resetEmail
+      });
+      const data = await response.json();
+      
+      setResetEmailSent(true);
+      toast({
+        title: "Reset Email Sent",
+        description: data.message || "If the email exists, a password reset link has been sent.",
+        duration: 5000
+      });
+      
+      // Return to login tab after delay
+      setTimeout(() => {
+        setResetEmailSent(false);
+        setResetEmail("");
+      }, 5000);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: "Failed to send reset email. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   /**
    * Handles user login form submission
@@ -153,8 +194,9 @@ export default function AuthPage() {
           
           <CardContent>
             <Tabs defaultValue="login" className="space-y-4">
-              <TabsList className={`grid w-full ${invitationToken ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              <TabsList className={`grid w-full ${invitationToken ? 'grid-cols-3' : 'grid-cols-2'}`}>
                 <TabsTrigger value="login">Sign In</TabsTrigger>
+                <TabsTrigger value="forgot-password">Reset Password</TabsTrigger>
                 {invitationToken && (
                   <TabsTrigger value="register">Register</TabsTrigger>
                 )}
@@ -194,6 +236,21 @@ export default function AuthPage() {
                   >
                     {loginMutation.isPending ? "Signing In..." : "Sign In"}
                   </Button>
+                  <div className="mt-4 text-center">
+                    <a 
+                      href="#" 
+                      onClick={(e) => {
+                        e.preventDefault();
+                        const tabsList = document.querySelector('[role="tablist"]');
+                        const forgotPasswordTab = tabsList?.querySelector('[value="forgot-password"]') as HTMLButtonElement;
+                        forgotPasswordTab?.click();
+                      }}
+                      className="text-sm text-primary hover:underline"
+                      data-testid="link-forgot-password"
+                    >
+                      Forgot Password?
+                    </a>
+                  </div>
                 </form>
               </TabsContent>
               
@@ -275,6 +332,79 @@ export default function AuthPage() {
                     {registerMutation.isPending ? "Creating Account..." : "Create Account"}
                   </Button>
                 </form>
+                )}
+              </TabsContent>
+              
+              <TabsContent value="forgot-password">
+                {resetEmailSent ? (
+                  <div className="space-y-4">
+                    <Alert className="border-green-200 bg-green-50">
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <AlertDescription className="text-green-800">
+                        A password reset link has been sent to your email address.
+                      </AlertDescription>
+                    </Alert>
+                    <Alert>
+                      <Mail className="h-4 w-4" />
+                      <AlertDescription>
+                        Please check your inbox and follow the instructions to reset your password.
+                        The link will expire in 1 hour.
+                      </AlertDescription>
+                    </Alert>
+                    <Button 
+                      onClick={() => {
+                        setResetEmailSent(false);
+                        setResetEmail("");
+                        const tabsList = document.querySelector('[role="tablist"]');
+                        const loginTab = tabsList?.querySelector('[value="login"]') as HTMLButtonElement;
+                        loginTab?.click();
+                      }}
+                      className="w-full"
+                      variant="outline"
+                    >
+                      Back to Sign In
+                    </Button>
+                  </div>
+                ) : (
+                  <form onSubmit={handlePasswordResetRequest} className="space-y-4" data-testid="reset-request-form">
+                    <div className="space-y-2">
+                      <p className="text-sm text-muted-foreground">
+                        Enter your email address and we'll send you a link to reset your password.
+                      </p>
+                    </div>
+                    <div>
+                      <Label htmlFor="reset-email">Email Address</Label>
+                      <Input
+                        id="reset-email"
+                        type="email"
+                        placeholder="Enter your email"
+                        value={resetEmail}
+                        onChange={(e) => setResetEmail(e.target.value)}
+                        required
+                        data-testid="input-email"
+                      />
+                    </div>
+                    <Button 
+                      type="submit" 
+                      className="w-full"
+                      disabled={resetLoading}
+                      data-testid="button-reset-password"
+                    >
+                      {resetLoading ? "Sending Reset Link..." : "Send Reset Link"}
+                    </Button>
+                    <Button 
+                      type="button"
+                      onClick={() => {
+                        const tabsList = document.querySelector('[role="tablist"]');
+                        const loginTab = tabsList?.querySelector('[value="login"]') as HTMLButtonElement;
+                        loginTab?.click();
+                      }}
+                      className="w-full"
+                      variant="outline"
+                    >
+                      Back to Sign In
+                    </Button>
+                  </form>
                 )}
               </TabsContent>
             </Tabs>

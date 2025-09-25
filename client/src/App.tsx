@@ -7,6 +7,7 @@ import { AuthProvider } from "@/hooks/use-auth";
 import { ProtectedRoute } from "./lib/protected-route";
 import NotFound from "@/pages/not-found";
 import AuthPage from "@/pages/auth-page";
+import ResetPasswordPage from "@/pages/reset-password";
 import Dashboard from "@/pages/dashboard";
 import EmployeesList from "@/pages/employees/employees-list";
 import EmployeeForm from "@/pages/employees/employee-form";
@@ -47,6 +48,7 @@ function Router() {
       <ProtectedRoute path="/settings/users" component={UsersManagement} />
       <ProtectedRoute path="/test-date-validation" component={DateValidationTest} />
       <Route path="/auth" component={AuthPage} />
+      <Route path="/reset-password" component={ResetPasswordPage} />
       <Route component={NotFound} />
     </Switch>
   );
