@@ -79,16 +79,17 @@ export function PasswordChangeDialog({
   };
 
   const handleOpenChange = (newOpen: boolean) => {
-    if (!newOpen && onOpenChange) {
+    if (!newOpen) {
       // Reset form when closing
       setPasswords({ currentPassword: "", newPassword: "", confirmPassword: "" });
       setError(null);
-      onOpenChange(false);
     }
+    // Always call the parent's onOpenChange if it exists
+    onOpenChange?.(newOpen);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange || (() => {})}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent 
         className="sm:max-w-md" 
         onPointerDownOutside={(e) => {
