@@ -40,17 +40,33 @@ export default function AuthPage() {
     password: "", 
     confirmPassword: ""
   });
+  /**
+   * State for invitation-based onboarding flow
+   * Tracks whether user arrived via invitation email link
+   */
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [invitationToken, setInvitationToken] = useState<string | null>(null);
   const [registrationSuccess, setRegistrationSuccess] = useState<{
     message?: string;
     formsSent?: number;
   } | null>(null);
+  /**
+   * Password reset state management
+   * Handles forgot password flow and email sending
+   */
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
 
+  /**
+   * Extract invitation token from URL on component mount
+   * 
+   * @description
+   * - Checks URL query parameters for invitation token
+   * - Sets onboarding mode if token is present
+   * - Enables special registration flow for invited employees
+   */
   useEffect(() => {
     // Check for invitation token in URL
     const urlParams = new URLSearchParams(window.location.search);
@@ -68,8 +84,21 @@ export default function AuthPage() {
   }, [user, navigate, registrationSuccess]);
 
   /**
-   * Handles password reset request form submission
+   * Handle password reset request submission
+   * 
    * @param {React.FormEvent} e - Form submission event
+   * @returns {Promise<void>}
+   * 
+   * @description
+   * - Validates email format before submission
+   * - Sends reset request to backend API
+   * - Shows success message regardless of email existence (prevents enumeration)
+   * - Handles loading states and error cases
+   * 
+   * @security
+   * - No user enumeration - always shows success
+   * - Rate limited on backend to prevent abuse
+   * - Logs attempts for security monitoring
    */
   const handlePasswordResetRequest = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,8 +134,17 @@ export default function AuthPage() {
   };
 
   /**
-   * Handles user login form submission
+   * Handle login form submission
+   * 
    * @param {React.FormEvent} e - Form submission event
+   * 
+   * @description
+   * - Prevents default form submission
+   * - Validates credentials are not empty
+   * - Triggers login mutation with credentials
+   * - Redirects to dashboard on success
+   * - Shows error toast on failure
+   * - Handles forced password change requirement
    */
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,9 +160,21 @@ export default function AuthPage() {
   };
 
   /**
-   * Handles user registration form submission with validation
+   * Handle registration form submission
+   * 
    * @param {React.FormEvent} e - Form submission event
-   * @description Validates password confirmation and processes onboarding tokens
+   * 
+   * @description
+   * - Validates password confirmation matches
+   * - Includes invitation token if present (onboarding flow)
+   * - Creates new user account
+   * - Shows success message with onboarding instructions if applicable
+   * - Auto-redirects authenticated users to dashboard
+   * 
+   * @validation
+   * - Password confirmation must match
+   * - Invitation token required for onboarding
+   * - Username must be unique
    */
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();

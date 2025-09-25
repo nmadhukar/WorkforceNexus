@@ -45,15 +45,25 @@ const scryptAsync = promisify(scrypt);
  * @function hashPassword
  * @param {string} password - Plain text password to hash
  * @returns {Promise<string>} Hashed password in format: hash.salt
+ * @throws {Error} If scrypt hashing fails
  * 
  * @description Uses scrypt with:
- * - 16 byte random salt
- * - 64 byte derived key
- * - Cost factor N=16384 (default)
+ * - 16 byte random salt for uniqueness
+ * - 64 byte derived key for security
+ * - Cost factor N=16384 (default) for computational difficulty
+ * - Salt stored with hash for verification
+ * 
+ * @security
+ * - Cryptographically secure random salt generation
+ * - Memory-hard algorithm resistant to GPU attacks
+ * - Unique salt per password prevents rainbow tables
+ * - High cost factor prevents brute force
+ * - Used for all password storage (login, reset, initial setup)
  * 
  * @example
  * const hashedPassword = await hashPassword('mySecurePassword123');
  * // Returns: "a3f5b2...e8d9.1a2b3c...f9e8"
+ * // Format: <64-char-hex-hash>.<32-char-hex-salt>
  */
 export async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
@@ -67,16 +77,34 @@ export async function hashPassword(password: string) {
  * @async
  * @function comparePasswords
  * @param {string} supplied - Plain text password from user input
- * @param {string} stored - Stored password hash from database
+ * @param {string} stored - Stored password hash from database (format: hash.salt)
  * @returns {Promise<boolean>} True if passwords match, false otherwise
+ * @throws {Error} If stored hash format is invalid
  * 
- * @description Uses timing-safe comparison to prevent timing attacks
- * that could leak information about the password hash
+ * @description 
+ * Securely compares passwords using:
+ * - Scrypt hashing with original salt
+ * - Timing-safe comparison to prevent attacks
+ * - No early returns that could leak information
+ * 
+ * @security
+ * - Uses timingSafeEqual to prevent timing attacks
+ * - Constant-time comparison regardless of match
+ * - No information leakage about hash structure
+ * - Resistant to side-channel attacks
+ * 
+ * @validation
+ * - Used for login authentication
+ * - Password change verification  
+ * - Admin password reset validation
+ * - Password reset token validation
  * 
  * @example
  * const isValid = await comparePasswords('userInput', storedHash);
  * if (isValid) {
- *   // Password is correct
+ *   // Password is correct - proceed with authentication
+ * } else {
+ *   // Invalid password - deny access
  * }
  */
 export async function comparePasswords(supplied: string, stored: string) {

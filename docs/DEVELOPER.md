@@ -451,17 +451,18 @@ app.use(helmet({
 | `RATE_LIMIT_WINDOW` | Rate limit window in ms | `900000` (15 minutes) |
 | `RATE_LIMIT_MAX` | Max requests per window | `100` |
 
-### Email Configuration (Optional)
+### Email Configuration (AWS SES)
 
-For automated notifications:
+For email notifications (password reset, invitations):
 
 | Variable | Description |
 |----------|-------------|
-| `SMTP_HOST` | SMTP server hostname |
-| `SMTP_PORT` | SMTP server port |
-| `SMTP_USER` | SMTP username |
-| `SMTP_PASSWORD` | SMTP password |
-| `EMAIL_FROM` | From email address |
+| `AWS_SES_ACCESS_KEY_ID` | AWS SES access key (or use general AWS keys) |
+| `AWS_SES_SECRET_ACCESS_KEY` | AWS SES secret key |
+| `AWS_SES_REGION` | AWS region for SES (e.g., us-east-1) |
+| `AWS_SES_FROM_EMAIL` | Verified sender email address |
+| `ENCRYPTION_KEY` | 32-character key for encrypting stored credentials |
+| `EMAIL_FROM_NAME` | Display name for sender (default: HR Management System) |
 
 ## Healthcare Compliance
 
@@ -571,6 +572,217 @@ app.use((req, res, next) => {
   next();
 });
 ```
+
+## Email System Development
+
+### Setting Up Email in Development
+
+1. **Without AWS SES** (Development Mode)
+   ```
+   # Emails will be logged to console
+   # No actual sending occurs
+   # Tokens displayed in API responses
+   ```
+
+2. **With AWS SES** (Production-like)
+   ```bash
+   # Set environment variables
+   AWS_SES_ACCESS_KEY_ID=your_key
+   AWS_SES_SECRET_ACCESS_KEY=your_secret
+   AWS_SES_REGION=us-east-1
+   AWS_SES_FROM_EMAIL=noreply@company.com
+   
+   # Or configure via Settings UI
+   ```
+
+### Testing Email Functionality
+
+#### Password Reset Flow Testing
+
+1. **Request Reset**
+   ```bash
+   # Test password reset request
+   curl -X POST http://localhost:5000/api/auth/reset-password \
+     -H "Content-Type: application/json" \
+     -d '{"email": "user@example.com"}'
+   ```
+
+2. **Check Console** (Development)
+   - Token will be displayed in response
+   - Full email HTML/text logged to console
+
+3. **Complete Reset**
+   ```bash
+   # Use token from step 1
+   curl -X POST http://localhost:5000/api/auth/confirm-reset-password \
+     -H "Content-Type: application/json" \
+     -d '{
+       "token": "token_from_email",
+       "newPassword": "NewPass@123"
+     }'
+   ```
+
+#### Invitation Email Testing
+
+1. **Send Invitation**
+   - Create employee in UI
+   - Check "Send invitation email" option
+   - View console for email content
+
+2. **Test Reminders**
+   - Manually trigger reminder cron job
+   - Check console for reminder emails
+
+### Email Templates
+
+#### Customizing Templates
+
+Email templates are generated in `server/services/sesService.ts`:
+
+- **HTML Templates**: `generateInvitationEmailHtml()`, `generatePasswordResetEmailHtml()`
+- **Text Templates**: `generateInvitationEmailText()`, `generatePasswordResetEmailText()`
+
+#### Template Variables
+
+```typescript
+// Password Reset
+{
+  userName: string,      // User's full name
+  resetLink: string,     // Complete reset URL
+  email: string,         // User's email
+  expiresIn: string      // Expiration time (e.g., "24 hours")
+}
+
+// Invitation
+{
+  firstName: string,     // Employee first name
+  lastName: string,      // Employee last name
+  invitationLink: string,// Onboarding URL
+  expiresIn?: string,    // Expiration time
+  reminderNumber?: number // 1, 2, or 3 for reminders
+}
+```
+
+### Common Email Issues
+
+#### SES Not Sending Emails
+
+1. **Check Configuration**
+   ```sql
+   -- Check SES config in database
+   SELECT * FROM ses_configurations WHERE enabled = true;
+   ```
+
+2. **Verify Sender Email**
+   - Email must be verified in AWS SES
+   - Check SES console for verification status
+
+3. **Sandbox Mode**
+   - New SES accounts are in sandbox mode
+   - Recipient emails must be verified
+   - Request production access in AWS console
+
+#### Token Issues
+
+1. **Expired Tokens**
+   ```sql
+   -- Check token expiration
+   SELECT * FROM users 
+   WHERE password_reset_token IS NOT NULL 
+   AND password_reset_expires < NOW();
+   ```
+
+2. **Invalid Tokens**
+   - Tokens are single-use
+   - Check if already used
+   - Verify token format (base64url)
+
+#### Rate Limiting
+
+```javascript
+// Rate limits in server/routes.ts
+const passwordResetLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // 5 requests per hour
+  message: "Too many password reset attempts"
+});
+```
+
+### AWS SES Configuration
+
+#### Initial Setup
+
+1. **Create IAM User**
+   - Create user with `AmazonSESFullAccess` policy
+   - Generate access keys
+   - Store securely
+
+2. **Verify Domain/Email**
+   ```bash
+   # Using AWS CLI
+   aws ses verify-email-identity --email-address noreply@company.com
+   ```
+
+3. **Move to Production**
+   - Request production access in SES console
+   - Provide use case details
+   - Wait for approval (24-48 hours)
+
+#### Best Practices
+
+1. **Security**
+   - Rotate AWS credentials regularly
+   - Use separate IAM user for SES only
+   - Enable MFA on AWS account
+   - Monitor sending quotas
+
+2. **Deliverability**
+   - Set up SPF, DKIM, DMARC records
+   - Monitor bounce/complaint rates
+   - Use suppression list
+   - Implement unsubscribe links
+
+3. **Testing**
+   - Use SES simulator addresses for testing
+   - Test with multiple email providers
+   - Verify HTML rendering across clients
+   - Test rate limiting behavior
+
+### Email Monitoring
+
+#### Tracking Sent Emails
+
+```sql
+-- View recent password reset attempts
+SELECT 
+  u.username,
+  u.email,
+  u.password_reset_expires,
+  a.changed_at as requested_at
+FROM users u
+JOIN audits a ON a.record_id = u.id
+WHERE a.new_data->>'passwordResetRequested' = 'true'
+ORDER BY a.changed_at DESC;
+
+-- Check invitation status
+SELECT 
+  e.first_name,
+  e.last_name,
+  er.email_address,
+  er.reminder_count,
+  er.last_reminder_sent,
+  er.status
+FROM email_reminders er
+JOIN employees e ON er.employee_id = e.id
+ORDER BY er.created_at DESC;
+```
+
+#### SES Metrics
+
+- Check AWS CloudWatch for SES metrics
+- Monitor send rate, bounce rate, complaint rate
+- Set up alarms for high bounce rates
+- Review reputation dashboard regularly
 
 ## Contributing
 

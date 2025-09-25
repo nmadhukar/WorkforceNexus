@@ -166,19 +166,158 @@ End user session
 ---
 
 #### GET /api/user
-Get current authenticated user
+Get current authenticated user with profile information
 
 **Response (200):**
 ```json
 {
   "id": 1,
   "username": "john.doe",
+  "email": "john.doe@company.com",
   "role": "hr",
-  "createdAt": "2024-01-20T10:00:00Z"
+  "createdAt": "2024-01-20T10:00:00Z",
+  "requirePasswordChange": false
 }
 ```
 
 **Errors:**
+- 401: Not authenticated
+
+---
+
+#### PATCH /api/users/me
+Update current user's profile information
+
+**Request Body:**
+```json
+{
+  "email": "newemail@company.com"
+}
+```
+
+**Response (200):**
+```json
+{
+  "id": 1,
+  "username": "john.doe",
+  "email": "newemail@company.com",
+  "role": "hr",
+  "updatedAt": "2024-01-20T14:30:00Z"
+}
+```
+
+**Errors:**
+- 400: Invalid email format
+- 401: Not authenticated
+- 409: Email already in use
+
+---
+
+#### POST /api/auth/reset-password
+Request password reset email
+
+**Access:** Public (no authentication required)
+**Rate Limit:** 5 requests per hour per IP
+
+**Request Body:**
+```json
+{
+  "email": "user@company.com"
+}
+```
+
+**Response (200):**
+```json
+{
+  "message": "If the email exists, a password reset link has been sent"
+}
+```
+
+**Important:** This endpoint always returns the same response regardless of whether the email exists to prevent user enumeration attacks.
+
+**Errors:**
+- 400: Invalid email format
+- 429: Too many requests (rate limit exceeded)
+
+**Security Features:**
+- No user enumeration
+- Rate limiting
+- Token expires in 24 hours
+- Audit logging
+
+**Email Content:**
+If the email exists, user receives:
+- Secure reset link with token
+- 24-hour expiration notice
+- Security warning if not requested
+
+---
+
+#### POST /api/auth/confirm-reset-password
+Complete password reset with token
+
+**Access:** Public (requires valid reset token)
+**Rate Limit:** 5 requests per hour per IP
+
+**Request Body:**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "newPassword": "NewSecurePass@123"
+}
+```
+
+**Password Requirements:**
+- Minimum 8 characters
+- At least one uppercase letter
+- At least one lowercase letter
+- At least one number
+- At least one special character
+
+**Response (200):**
+```json
+{
+  "message": "Password reset successfully"
+}
+```
+
+**Errors:**
+- 400: Invalid or expired reset token
+- 400: Password doesn't meet requirements
+- 429: Too many requests
+
+**Security Features:**
+- Single-use tokens
+- Token validation
+- Password complexity enforcement
+- Automatic token cleanup after use
+
+---
+
+#### POST /api/auth/change-password
+Change own password (voluntary)
+
+**Access:** Private (requires authentication)
+
+**Request Body:**
+```json
+{
+  "currentPassword": "CurrentPass@123",
+  "newPassword": "NewSecurePass@456"
+}
+```
+
+**Response (200):**
+```json
+{
+  "message": "Password changed successfully"
+}
+```
+
+**Errors:**
+- 400: Current password incorrect
+- 400: New password same as current
+- 400: New password doesn't meet requirements
 - 401: Not authenticated
 
 ---

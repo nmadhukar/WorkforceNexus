@@ -792,7 +792,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   /**
    * POST /api/auth/reset-password
-   * Initiate password reset (public, with rate limiting)
+   * Initiate password reset flow by sending email with secure token
+   * 
+   * @route POST /api/auth/reset-password
+   * @access Public (no authentication required)
+   * @rateLimit 5 requests per hour per IP
+   * 
+   * @param {string} req.body.email - Email address to send reset link
+   * @returns {object} Generic success message (prevents user enumeration)
+   * 
+   * @description
+   * Initiates password reset process:
+   * - Validates email format
+   * - Generates cryptographically secure token
+   * - Stores token with 24-hour expiration
+   * - Sends email with reset link via AWS SES
+   * - Returns same response regardless of email existence
+   * 
+   * @security
+   * - Prevents user enumeration by returning same message
+   * - Rate limited to prevent brute force attacks
+   * - Tokens expire after 24 hours
+   * - Uses secure random token generation
+   * - Logs all reset attempts for auditing
+   * 
+   * @example
+   * // Request
+   * POST /api/auth/reset-password
+   * {
+   *   "email": "user@example.com"
+   * }
+   * 
+   * // Response (always the same)
+   * {
+   *   "message": "If the email exists, a password reset link has been sent"
+   * }
    */
   app.post('/api/auth/reset-password', 
     passwordResetLimiter,
@@ -864,7 +898,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   /**
    * POST /api/auth/confirm-reset-password
-   * Complete password reset with token (public)
+   * Complete password reset using secure token from email
+   * 
+   * @route POST /api/auth/confirm-reset-password
+   * @access Public (requires valid reset token)
+   * @rateLimit 5 requests per hour per IP
+   * 
+   * @param {string} req.body.token - Reset token from email link
+   * @param {string} req.body.newPassword - New password (min 8 chars, complexity required)
+   * @returns {object} Success message or error
+   * 
+   * @description
+   * Completes password reset process:
+   * - Validates reset token and expiration
+   * - Verifies password strength requirements
+   * - Hashes new password using scrypt
+   * - Updates user password in database
+   * - Clears reset token to prevent reuse
+   * - Creates audit log entry
+   * 
+   * @security
+   * - Tokens are single-use (cleared after reset)
+   * - Password complexity enforced (uppercase, lowercase, number, special)
+   * - Timing-safe password hashing
+   * - Rate limited to prevent brute force
+   * - Audit trail for compliance
+   * 
+   * @throws {400} Invalid or expired reset token
+   * @throws {400} Password doesn't meet complexity requirements
+   * @throws {500} Database or internal server error
+   * 
+   * @example
+   * // Request
+   * POST /api/auth/confirm-reset-password
+   * {
+   *   "token": "secure-random-token-here",
+   *   "newPassword": "NewSecure@Pass123"
+   * }
+   * 
+   * // Success Response
+   * {
+   *   "message": "Password reset successfully"
+   * }
+   * 
+   * // Error Response (invalid token)
+   * {
+   *   "error": "Invalid or expired reset token"
+   * }
    */
   app.post('/api/auth/confirm-reset-password', 
     passwordResetLimiter,
@@ -897,7 +977,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   /**
    * POST /api/auth/change-password
-   * Change own password (authenticated users)
+   * Allow authenticated users to voluntarily change their password
+   * 
+   * @route POST /api/auth/change-password
+   * @access Private (requires authentication)
+   * 
+   * @param {string} req.body.currentPassword - User's current password for verification
+   * @param {string} req.body.newPassword - New password (min 8 chars, complexity required)
+   * @returns {object} Success message or error
+   * 
+   * @description
+   * Voluntary password change for authenticated users:
+   * - Verifies current password before allowing change
+   * - Validates new password meets security requirements
+   * - Ensures new password differs from current
+   * - Updates password hash in database
+   * - Maintains current session (no logout)
+   * - Creates audit log for security tracking
+   * 
+   * @security
+   * - Requires valid session authentication
+   * - Current password verification prevents unauthorized changes
+   * - Password complexity enforced
+   * - Timing-safe password comparison
+   * - Audit logging for compliance
+   * 
+   * @throws {400} Current password incorrect
+   * @throws {400} New password same as current
+   * @throws {400} Password doesn't meet requirements
+   * @throws {404} User not found
+   * @throws {500} Server error
+   * 
+   * @example
+   * // Request
+   * POST /api/auth/change-password
+   * {
+   *   "currentPassword": "OldPass@123",
+   *   "newPassword": "NewPass@456"
+   * }
+   * 
+   * // Success Response
+   * {
+   *   "message": "Password changed successfully"
+   * }
    */
   app.post('/api/auth/change-password', 
     requireAuth,

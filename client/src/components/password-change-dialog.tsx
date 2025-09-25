@@ -17,6 +17,36 @@ interface PasswordChangeDialogProps {
   description?: string;
 }
 
+/**
+ * Password change dialog for voluntary password updates
+ * 
+ * @component
+ * @param {PasswordChangeDialogProps} props - Dialog configuration
+ * @param {boolean} props.open - Control dialog visibility
+ * @param {function} [props.onSuccess] - Callback after successful change
+ * @param {function} [props.onOpenChange] - Callback for dialog state changes
+ * @param {string} [props.title] - Dialog title (default: "Change Password")
+ * @param {string} [props.description] - Dialog description
+ * @returns {JSX.Element} Password change dialog
+ * 
+ * @description
+ * - Allows authenticated users to change their password
+ * - Requires current password verification
+ * - Validates new password strength
+ * - Ensures new password differs from current
+ * - Shows real-time validation feedback
+ * 
+ * @security
+ * - Current password required for verification
+ * - New password must meet complexity requirements
+ * - Passwords transmitted securely to backend
+ * - Form cleared on close for security
+ * 
+ * @validation
+ * - New password min 8 characters
+ * - Passwords must match
+ * - New must differ from current
+ */
 export function PasswordChangeDialog({ 
   open, 
   onSuccess, 
@@ -32,6 +62,16 @@ export function PasswordChangeDialog({
   });
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Mutation for changing password
+   * 
+   * @description
+   * - Sends current and new password to backend
+   * - Shows success toast on completion
+   * - Clears form and errors on success
+   * - Calls onSuccess callback if provided
+   * - Updates error state on failure
+   */
   const changePasswordMutation = useMutation({
     mutationFn: async (data: { currentPassword: string; newPassword: string }) => {
       return apiRequest("POST", "/api/change-password", data);
@@ -50,6 +90,21 @@ export function PasswordChangeDialog({
     }
   });
 
+  /**
+   * Handle password change form submission
+   * 
+   * @param {React.FormEvent} e - Form submission event
+   * 
+   * @description
+   * - Validates all password requirements
+   * - Shows specific error messages for validation failures
+   * - Triggers password change mutation on valid input
+   * 
+   * @validation
+   * 1. New passwords must match
+   * 2. Min 8 characters length
+   * 3. Must differ from current password
+   */
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -78,6 +133,17 @@ export function PasswordChangeDialog({
     });
   };
 
+  /**
+   * Handle dialog open/close state changes
+   * 
+   * @param {boolean} newOpen - New open state
+   * 
+   * @description
+   * - Resets form and errors when closing
+   * - Maintains clean state between uses
+   * - Calls parent onOpenChange if provided
+   * - Ensures security by clearing passwords
+   */
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
       // Reset form when closing

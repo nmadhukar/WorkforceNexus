@@ -14,8 +14,25 @@ import { ProfileSettingsDialog } from "@/components/profile-settings-dialog";
 import { PasswordChangeDialog } from "@/components/password-change-dialog";
 import { Calendar, Users, User, Lock, LogOut } from "lucide-react";
 
+/**
+ * Application header with user menu and profile management
+ * 
+ * @component
+ * @returns {JSX.Element} Header with navigation and user controls
+ * 
+ * @description
+ * - Displays application branding and current date
+ * - Shows authenticated user information
+ * - Provides dropdown menu for profile actions
+ * - Manages profile settings and password change dialogs
+ * - Handles user logout
+ */
 export function Header() {
   const { user, logoutMutation } = useAuth();
+  /**
+   * Dialog state for profile management
+   * Controls visibility of profile settings and password change modals
+   */
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
 
@@ -28,6 +45,11 @@ export function Header() {
     });
   };
 
+  /**
+   * Generate initials for user avatar
+   * @param {any} user - User object with username
+   * @returns {string} First two letters of username in uppercase
+   */
   const getUserInitials = (user: any) => {
     if (!user?.username) return "U";
     return user.username.substring(0, 2).toUpperCase();
@@ -58,6 +80,10 @@ export function Header() {
                 {user?.username || "User"}
               </span>
               
+              {/**
+               * User dropdown menu
+               * Provides quick access to profile settings, password change, and logout
+               */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -109,6 +135,11 @@ export function Header() {
               </DropdownMenu>
             </div>
             
+            {/**
+             * Profile management dialogs
+             * - ProfileSettingsDialog: Update email and view account info
+             * - PasswordChangeDialog: Voluntary password change
+             */}
             <ProfileSettingsDialog
               open={showProfileDialog}
               onOpenChange={setShowProfileDialog}

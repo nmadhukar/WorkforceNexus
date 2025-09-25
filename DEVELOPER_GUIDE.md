@@ -32,8 +32,10 @@ The HR Management System is a comprehensive web application designed specificall
 - **Privacy-First Design**: Sensitive data encryption at rest and in transit
 - **Healthcare Compliance**: Built with healthcare privacy requirements in mind
 - **Secure Authentication**: Session-based auth with API key support
+- **Password Reset Security**: Token-based recovery with email verification
 - **Comprehensive Auditing**: Full audit trail for all data modifications
 - **File Storage Security**: Local and AWS S3 support with encryption
+- **Email Security**: Encrypted credential storage, rate limiting, enumeration protection
 
 ### 🚀 Modern Technology Stack
 
@@ -82,6 +84,12 @@ AWS_S3_ENDPOINT=  # Optional, for S3-compatible services
 # Optional - AWS SES Email Service
 AWS_SES_FROM_EMAIL=noreply@yourcompany.com
 AWS_SES_REGION=us-east-1
+AWS_SES_ACCESS_KEY_ID=your_ses_access_key_id  # Can also use general AWS keys
+AWS_SES_SECRET_ACCESS_KEY=your_ses_secret_key
+
+# Optional - Email Configuration
+ENCRYPTION_KEY=your-32-char-encryption-key  # For encrypting stored credentials
+EMAIL_FROM_NAME=HR Management System
 
 # Optional - DocuSeal Integration
 DOCUSEAL_API_KEY=your_docuseal_api_key
@@ -152,6 +160,163 @@ Access the application at: `http://localhost:5000`
 2. **Configure Services**: Go to Settings to configure AWS S3, SES, and DocuSeal
 3. **Test Upload**: Upload a test document to verify file storage
 4. **Create Sample Employee**: Add a test employee to verify the workflow
+
+---
+
+## Email System Architecture
+
+### AWS SES Integration
+
+The HR Management System uses Amazon Simple Email Service (SES) for reliable email delivery. The integration provides:
+
+#### Configuration Management
+- **Database Storage**: SES credentials stored encrypted in `sesConfigurations` table
+- **Encryption**: AES-256 encryption for access keys and secrets
+- **Dynamic Configuration**: Admin can update SES settings through UI
+- **Multi-Region Support**: Configure different AWS regions for optimal delivery
+
+#### Email Services
+
+##### Password Reset Flow
+1. User requests password reset via `/api/auth/reset-password`
+2. System generates cryptographically secure token (32 bytes, base64url)
+3. Token stored with 24-hour expiration in database
+4. Email sent via SES with personalized reset link
+5. User clicks link, redirected to reset page with token
+6. New password submitted with token to `/api/auth/confirm-reset-password`
+7. Token validated, password updated, token cleared
+
+##### Invitation Email System
+- **Employee Onboarding**: Automated emails for new employee invitations
+- **Reminder System**: Up to 3 reminders with increasing urgency
+- **Token Management**: Unique invitation tokens with 7-day expiration
+- **Tracking**: Email status tracked in `emailReminders` table
+
+#### Email Templates
+
+##### HTML Templates
+- Responsive design with inline CSS
+- Mobile-optimized layout
+- Company branding support
+- Progressive urgency styling for reminders:
+  - Initial: Blue (#2563EB)
+  - First Reminder: Blue
+  - Second Reminder: Orange (#F59E0B)
+  - Final Reminder: Red (#DC2626)
+
+##### Plain Text Templates
+- Accessibility fallback
+- Clear formatting without HTML
+- All critical information preserved
+- Link URLs fully visible
+
+#### Database Schema
+
+```sql
+-- SES Configuration Table
+sesConfigurations
+├── id (PK)
+├── region (AWS region)
+├── accessKeyId (encrypted)
+├── secretAccessKey (encrypted)
+├── fromEmail (verified sender)
+├── fromName (display name)
+├── enabled (boolean)
+├── verified (boolean)
+└── lastVerifiedAt (timestamp)
+
+-- Email Tracking Table
+emailReminders
+├── id (PK)
+├── employeeId (FK)
+├── emailType (invitation|reminder|password_reset)
+├── emailAddress
+├── token (unique)
+├── expiresAt
+├── reminderCount
+├── lastReminderSent
+└── status (pending|sent|completed|expired)
+```
+
+#### Development Environment
+
+In development without SES configured:
+- Emails logged to console with full content
+- Token displayed in response (dev mode only)
+- No actual email sending
+- All SES API calls mocked
+
+#### Security Considerations
+
+##### Email Enumeration Protection
+- Same response for all password reset requests
+- No indication if email exists in system
+- Rate limiting on reset endpoints
+- Audit logging for all attempts
+
+##### Token Security
+- Cryptographically secure random generation
+- Single-use tokens (cleared after use)
+- Time-limited validity (24 hours for reset, 7 days for invitations)
+- Constant-time token comparison
+
+##### Credential Security
+- AWS credentials encrypted at rest
+- Decryption only when needed
+- Support for environment variable override
+- Regular credential rotation recommended
+
+---
+
+## Authentication & Security
+
+### Password Reset Flow
+
+The system implements a secure password reset mechanism:
+
+1. **Request Reset**
+   - User enters email on login page
+   - System validates email format
+   - Generates secure token if user exists
+   - Sends email with reset link (or logs success regardless)
+
+2. **Email Delivery**
+   - AWS SES sends professionally formatted email
+   - Contains secure link with token parameter
+   - Link expires after 24 hours
+   - Includes security warning if not requested
+
+3. **Reset Password**
+   - User clicks link, directed to reset page
+   - Token validated against database
+   - New password must meet complexity requirements:
+     - Minimum 8 characters
+     - At least one uppercase letter
+     - At least one lowercase letter
+     - At least one number
+     - At least one special character
+   - Password hashed with scrypt before storage
+
+4. **Security Features**
+   - No user enumeration (same response for all emails)
+   - Rate limiting (5 requests per hour per IP)
+   - Single-use tokens
+   - Automatic token expiration
+   - Audit logging of all reset attempts
+
+### Session Management
+
+- PostgreSQL-backed session store
+- Secure session cookies
+- Automatic session cleanup
+- Configurable session timeout
+
+### API Key Authentication
+
+- Alternative to session-based auth
+- Scoped permissions per key
+- Automatic expiration support
+- Rate limiting per key
 
 ---
 

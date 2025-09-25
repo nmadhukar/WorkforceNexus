@@ -37,6 +37,20 @@ export default function ResetPasswordPage() {
   const [resetSuccess, setResetSuccess] = useState(false);
   const [tokenError, setTokenError] = useState(false);
 
+  /**
+   * Validate reset token from URL on mount
+   * 
+   * @description
+   * - Extracts token from query parameters
+   * - Validates token presence
+   * - Shows error if token is missing
+   * - Prepares form for password reset
+   * 
+   * @security
+   * - Token must be present in URL
+   * - Invalid tokens handled gracefully
+   * - No sensitive information exposed
+   */
   useEffect(() => {
     // Extract token from URL query parameters
     const urlParams = new URLSearchParams(window.location.search);
@@ -55,8 +69,28 @@ export default function ResetPasswordPage() {
   }, [toast]);
 
   /**
-   * Handles password reset form submission
+   * Handle password reset form submission
+   * 
    * @param {React.FormEvent} e - Form submission event
+   * @returns {Promise<void>}
+   * 
+   * @description
+   * - Validates password confirmation matches
+   * - Enforces password strength requirements
+   * - Sends reset request with token and new password
+   * - Redirects to login on success
+   * - Handles expired/invalid tokens
+   * 
+   * @security
+   * - Password must meet complexity requirements
+   * - Token validated on backend
+   * - Single-use tokens prevent reuse
+   * - Automatic redirect after success
+   * 
+   * @validation
+   * - Min 8 characters
+   * - Must contain uppercase, lowercase, number, special char
+   * - Passwords must match
    */
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();

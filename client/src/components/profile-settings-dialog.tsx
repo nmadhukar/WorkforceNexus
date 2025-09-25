@@ -24,6 +24,27 @@ interface ProfileSettingsDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+/**
+ * Profile settings dialog for updating user email
+ * 
+ * @component
+ * @param {ProfileSettingsDialogProps} props - Dialog props
+ * @param {boolean} props.open - Control dialog visibility
+ * @param {function} props.onOpenChange - Callback for dialog state changes
+ * @returns {JSX.Element} Profile settings dialog
+ * 
+ * @description
+ * - Allows users to update their email address
+ * - Username is read-only (cannot be changed)
+ * - Validates email format before submission
+ * - Updates cache and invalidates queries on success
+ * - Shows toast notifications for feedback
+ * 
+ * @validation
+ * - Email must be valid format
+ * - Only submits if email has changed
+ * - Shows error messages for invalid input
+ */
 export function ProfileSettingsDialog({ open, onOpenChange }: ProfileSettingsDialogProps) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -35,7 +56,10 @@ export function ProfileSettingsDialog({ open, onOpenChange }: ProfileSettingsDia
     }
   });
 
-  // Reset form when user data changes or dialog opens
+  /**
+   * Reset form when dialog opens
+   * Ensures form shows current user data
+   */
   useEffect(() => {
     if (open && user) {
       form.reset({
@@ -44,7 +68,15 @@ export function ProfileSettingsDialog({ open, onOpenChange }: ProfileSettingsDia
     }
   }, [open, user, form]);
 
-  // Update email mutation
+  /**
+   * Mutation for updating user email
+   * 
+   * @description
+   * - Sends PATCH request to update email
+   * - Updates query cache with new user data
+   * - Shows success/error toast notifications
+   * - Closes dialog on successful update
+   */
   const updateEmailMutation = useMutation({
     mutationFn: async (data: ProfileSettingsFormData) => {
       const response = await apiRequest("PATCH", "/api/users/me", data);
@@ -71,6 +103,17 @@ export function ProfileSettingsDialog({ open, onOpenChange }: ProfileSettingsDia
     }
   });
 
+  /**
+   * Handle form submission
+   * 
+   * @param {ProfileSettingsFormData} data - Form data with email
+   * 
+   * @description
+   * - Checks if email has changed from current value
+   * - Only submits if there are changes
+   * - Shows informative message if no changes detected
+   * - Triggers email update mutation with new value
+   */
   const handleSubmit = (data: ProfileSettingsFormData) => {
     // Only submit if email has changed
     if (data.email !== user?.email) {

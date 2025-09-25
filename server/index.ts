@@ -45,7 +45,42 @@ app.use((req, res, next) => {
   next();
 });
 
-// Helper function to ensure default admin exists with retries
+/**
+ * Ensure default admin account exists for system access
+ * 
+ * @async
+ * @function ensureDefaultAdmin
+ * @param {number} [retries=5] - Number of retry attempts for database connection
+ * @param {number} [delay=2000] - Delay in milliseconds between retries
+ * @returns {Promise<void>} Resolves when admin account is ensured
+ * 
+ * @description
+ * Critical initialization function that ensures system accessibility:
+ * - Checks for existing admin account on startup
+ * - Validates admin password integrity
+ * - Creates default admin if no users exist
+ * - Resets corrupted admin passwords automatically
+ * - Implements retry logic for database availability
+ * 
+ * @security
+ * - Default credentials: username='admin', password='admin'
+ * - Warns to change default password after first login
+ * - Validates password hash integrity
+ * - Handles corrupted password hashes gracefully
+ * 
+ * @reliability
+ * - Retries on database connection failures
+ * - Continues app startup even if admin creation fails
+ * - Logs all critical failures for monitoring
+ * - Ensures system is always accessible
+ * 
+ * @scenarios
+ * 1. Admin exists with valid password → No action
+ * 2. Admin exists with invalid password → Reset password
+ * 3. Admin exists with corrupted hash → Reset password  
+ * 4. No users exist → Create default admin
+ * 5. Database unavailable → Retry with backoff
+ */
 async function ensureDefaultAdmin(retries = 5, delay = 2000): Promise<void> {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
@@ -53,7 +88,13 @@ async function ensureDefaultAdmin(retries = 5, delay = 2000): Promise<void> {
       const adminUser = await storage.getUserByUsername('admin');
       
       if (adminUser) {
-        // Verify the admin password is correct
+        /**
+         * Validate existing admin account password
+         * Three possible states:
+         * 1. Valid password - no action needed
+         * 2. Invalid password - reset to default
+         * 3. Corrupted hash - reset to default
+         */
         const { comparePasswords } = await import('./auth');
         try {
           const isValidPassword = await comparePasswords('admin', adminUser.passwordHash);
@@ -61,7 +102,13 @@ async function ensureDefaultAdmin(retries = 5, delay = 2000): Promise<void> {
             console.log(`Default admin account already exists (ID: ${adminUser.id}) and password is valid`);
             return;
           } else {
-            // Password doesn't match, need to reset it
+            /**
+             * Password validation failed - reset to default
+             * This handles cases where:
+             * - Admin forgot password and needs access
+             * - Password was changed incorrectly
+             * - Security reset is required
+             */
             console.log(`Admin user exists but password is invalid. Resetting password...`);
             const newHashedPassword = await hashPassword('admin');
             await storage.updateUser(adminUser.id, { passwordHash: newHashedPassword });
@@ -70,7 +117,14 @@ async function ensureDefaultAdmin(retries = 5, delay = 2000): Promise<void> {
             return;
           }
         } catch (error) {
-          // Error comparing passwords, likely corrupted hash - reset it
+          /**
+           * Password comparison threw error - hash is corrupted
+           * This can happen when:
+           * - Database migration issues
+           * - Manual database edits
+           * - Encryption key changes
+           * Solution: Reset to known good state
+           */
           console.log(`Admin user exists but password hash appears corrupted. Resetting password...`);
           const newHashedPassword = await hashPassword('admin');
           await storage.updateUser(adminUser.id, { passwordHash: newHashedPassword });
@@ -80,7 +134,11 @@ async function ensureDefaultAdmin(retries = 5, delay = 2000): Promise<void> {
         }
       }
       
-      // Check if there are any users at all
+      /**
+       * No admin user found - check if this is first run
+       * If no users exist at all, create default admin
+       * This ensures system is always accessible
+       */
       const result = await storage.getAllUsers();
       const usersList = result.users;
       const totalUsers = result.total;
