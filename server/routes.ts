@@ -242,6 +242,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Setup authentication
   setupAuth(app);
   
+  /**
+   * POST /api/ensure-admin
+   * 
+   * @route POST /api/ensure-admin
+   * @group Recovery - System recovery endpoints
+   * @description Recovery endpoint to ensure default admin account exists
+   * This provides a fallback way to recover if admin account is lost
+   * 
+   * @returns {object} 200 - Admin account status
+   * @returns {object} 201 - Admin account created
+   * @returns {Error} 500 - Server error
+   */
+  app.post("/api/ensure-admin", async (req, res) => {
+    try {
+      // Check if any admin users exist
+      const result = await storage.getAllUsers();
+      const adminExists = result.users && result.users.length > 0 && result.users.some(u => u.role === 'admin');
+      
+      if (adminExists) {
+        return res.status(200).json({ 
+          message: "Admin account already exists",
+          created: false 
+        });
+      }
+      
+      // Check specifically for 'admin' username
+      const adminUser = await storage.getUserByUsername('admin');
+      
+      if (adminUser) {
+        // Admin username exists but might not have admin role - fix it
+        await storage.updateUser(adminUser.id, { role: 'admin' });
+        return res.status(200).json({ 
+          message: "Admin account role corrected",
+          created: false,
+          corrected: true 
+        });
+      }
+      
+      // No admin exists - create the default one
+      console.log('Recovery: Creating default admin account...');
+      const hashedPassword = await hashPassword('admin');
+      
+      await storage.createUser({
+        username: 'admin',
+        passwordHash: hashedPassword,
+        role: 'admin',
+        status: 'active',
+        requirePasswordChange: true
+      });
+      
+      console.log('Recovery: Default admin account created');
+      return res.status(201).json({ 
+        message: "Default admin account created successfully",
+        username: "admin",
+        password: "admin",
+        created: true,
+        note: "Password change required on first login"
+      });
+      
+    } catch (error) {
+      console.error('Recovery endpoint error:', error);
+      return res.status(500).json({ 
+        error: "Failed to ensure admin account",
+        details: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+  
   // Start cron jobs
   startCronJobs();
 

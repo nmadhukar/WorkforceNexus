@@ -45,26 +45,60 @@ app.use((req, res, next) => {
   next();
 });
 
-(async () => {
-  // Initialize default admin account if no users exist
-  try {
-    const users = await storage.getAllUsers();
-    if (!users || users.length === 0) {
-      console.log('No users found in database. Creating default admin account...');
-      const hashedPassword = await hashPassword('admin');
-      const adminUser = await storage.createUser({
-        username: 'admin',
-        passwordHash: hashedPassword,
-        role: 'admin',
-        status: 'active',
-        requirePasswordChange: true
-      });
-      console.log('Default admin account created with username: admin');
-      console.log('⚠️ IMPORTANT: Change the password on first login!');
+// Helper function to ensure default admin exists with retries
+async function ensureDefaultAdmin(retries = 5, delay = 2000): Promise<void> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      // First check if admin user already exists
+      const adminUser = await storage.getUserByUsername('admin');
+      
+      if (adminUser) {
+        console.log(`Default admin account already exists (ID: ${adminUser.id})`);
+        return;
+      }
+      
+      // Check if there are any users at all
+      const users = await storage.getAllUsers();
+      
+      if (!users || users.length === 0) {
+        console.log(`[Attempt ${attempt}/${retries}] No users found. Creating default admin account...`);
+        
+        const hashedPassword = await hashPassword('admin');
+        const newAdminUser = await storage.createUser({
+          username: 'admin',
+          passwordHash: hashedPassword,
+          role: 'admin',
+          status: 'active',
+          requirePasswordChange: true
+        });
+        
+        console.log('✅ Default admin account created successfully');
+        console.log('Username: admin');
+        console.log('Password: admin (requires change on first login)');
+        return;
+      } else {
+        console.log(`Found ${users.length} existing users. No default admin needed.`);
+        return;
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[Attempt ${attempt}/${retries}] Failed to check/create admin account:`, errorMessage);
+      
+      if (attempt === retries) {
+        console.error('❌ CRITICAL: Failed to ensure default admin account after all retries');
+        console.error('The application may not be accessible without manual database intervention');
+        // Don't throw - let the app continue but log the critical issue
+      } else {
+        console.log(`Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
-  } catch (error) {
-    console.error('Error checking/creating default admin account:', error);
   }
+}
+
+(async () => {
+  // Ensure default admin account exists with retries for production reliability
+  await ensureDefaultAdmin();
 
   const server = await registerRoutes(app);
 
