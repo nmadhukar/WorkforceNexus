@@ -71,6 +71,25 @@ Preferred communication style: Simple, everyday language.
   - Enhanced breadcrumb navigation to include all compliance pages
   - Built drag-and-drop document upload with progress tracking and file type validation
   - Added JSONB fields for extensibility allowing custom license data without schema changes
+- **Deployment-Ready Email System with Proper Domain Handling** (September 25, 2025):
+  - Fixed invitation link generation to use proper domain instead of localhost
+  - Added intelligent base URL detection supporting custom domains, Replit deployments, and development
+  - Configured trust proxy for accurate HTTPS detection behind proxies
+  - Updated AWS SES credentials with proper permissions for real email sending
+  - Successfully tested end-to-end email delivery with production-like functionality
+- **Enhanced Security with Default Admin and Invitation-Only Registration** (September 25, 2025):
+  - Implemented default admin/admin account creation on first deployment
+  - Added forced password change requirement for default credentials
+  - Disabled all public registrations - registration now requires invitation token
+  - Implemented role-based invitation permissions:
+    - Admin users can invite with any role (admin, hr, viewer)
+    - HR users can only invite viewers
+    - Viewers cannot invite anyone
+  - Added intendedRole field to invitations to control registered user roles
+  - Created PasswordChangeDialog component for forced password changes
+  - Added role selector to invitation dialog with appropriate restrictions
+  - Removed public registration tab from auth page except when invitation token present
+  - All security features tested and verified working correctly
 
 ## System Architecture
 
