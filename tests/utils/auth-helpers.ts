@@ -136,3 +136,39 @@ export const testInvitationData = {
     expectedStartDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days from now
   }
 };
+
+// Playwright login helpers for UI tests
+import type { Page } from '@playwright/test';
+
+/**
+ * Login as admin user for Playwright tests
+ */
+export async function loginAsAdmin(page: Page) {
+  await page.goto('/login');
+  await page.getByTestId('input-username').fill('admin');
+  await page.getByTestId('input-password').fill('AdminPass123!');
+  await page.getByTestId('button-login').click();
+  await page.waitForURL('/dashboard', { timeout: 10000 });
+}
+
+/**
+ * Login as HR user for Playwright tests
+ */
+export async function loginAsHR(page: Page) {
+  await page.goto('/login');
+  await page.getByTestId('input-username').fill('hr');
+  await page.getByTestId('input-password').fill('HrPass123!');
+  await page.getByTestId('button-login').click();
+  await page.waitForURL('/dashboard', { timeout: 10000 });
+}
+
+/**
+ * Login as viewer user for Playwright tests
+ */
+export async function loginAsViewer(page: Page) {
+  await page.goto('/login');
+  await page.getByTestId('input-username').fill('viewer');
+  await page.getByTestId('input-password').fill('ViewerPass123!');
+  await page.getByTestId('button-login').click();
+  await page.waitForURL('/dashboard', { timeout: 10000 });
+}

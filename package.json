@@ -15,6 +15,7 @@
     "@aws-sdk/client-ses": "^3.893.0",
     "@aws-sdk/node-http-handler": "^3.370.0",
     "@aws-sdk/s3-request-presigner": "^3.893.0",
+    "@faker-js/faker": "^10.0.0",
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",
     "@neondatabase/serverless": "^0.10.4",
