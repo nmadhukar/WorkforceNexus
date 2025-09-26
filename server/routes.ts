@@ -3999,7 +3999,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       body('lastName').notEmpty().withMessage('Last name is required'),
       body('email').isEmail().withMessage('Valid email is required'),
       body('cellPhone').optional().isMobilePhone('any'),
-      body('intendedRole').optional().isIn(['admin', 'hr', 'viewer']).withMessage('Invalid role')
+      body('intendedRole').optional().isIn(['admin', 'hr', 'viewer', 'prospective_employee']).withMessage('Invalid role')
     ],
     handleValidationErrors,
     async (req: AuditRequest, res: Response) => {
@@ -4008,20 +4008,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Role-based invitation permissions
         const requestingUserRole = req.user?.role;
-        let roleToAssign = 'viewer'; // Default role
+        let roleToAssign = 'prospective_employee'; // Default role for invitations
         
         if (intendedRole) {
           if (requestingUserRole === 'admin') {
             // Admin can invite users with any role
             roleToAssign = intendedRole;
           } else if (requestingUserRole === 'hr') {
-            // HR can only invite viewers
-            if (intendedRole !== 'viewer') {
+            // HR can invite viewers or prospective employees
+            if (intendedRole === 'viewer' || intendedRole === 'prospective_employee') {
+              roleToAssign = intendedRole;
+            } else {
               return res.status(403).json({ 
-                error: 'HR users can only invite users with viewer role' 
+                error: 'HR users can only invite users with viewer or prospective_employee role' 
               });
             }
-            roleToAssign = 'viewer';
           } else {
             // Viewers cannot invite anyone (already blocked by requireRole)
             return res.status(403).json({ 

@@ -409,6 +409,7 @@ export default function EmployeesList() {
                               <SelectItem value="hr">HR</SelectItem>
                             </>
                           )}
+                          <SelectItem value="viewer">Viewer</SelectItem>
                           <SelectItem value="prospective_employee">Prospective Employee</SelectItem>
                         </SelectContent>
                       </Select>
