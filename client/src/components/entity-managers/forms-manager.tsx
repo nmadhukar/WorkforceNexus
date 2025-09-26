@@ -259,13 +259,46 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
       queryClient.invalidateQueries({ queryKey: [`/api/forms/signing-queue`] });
       setSendFormDialogOpen(false);
       setSelectedTemplateId("");
+      setSendingForm(false);
     },
-    onError: (error) => {
+    onError: (error: any) => {
+      // Parse error response and show appropriate message
+      let errorMessage = "There was an error sending the form. Please try again.";
+      let actionMessage = "";
+      
+      if (error.errorType === 'TEMPLATE_NOT_FOUND') {
+        errorMessage = "The selected form template could not be found.";
+        actionMessage = "Please select a different template or contact your administrator to sync templates.";
+      } else if (error.errorType === 'SERVICE_UNAVAILABLE') {
+        errorMessage = "DocuSeal service is not configured.";
+        actionMessage = "Please configure DocuSeal API settings in Settings > API Keys before sending forms.";
+      } else if (error.errorType === 'NOT_FOUND') {
+        errorMessage = error.message || "The requested resource could not be found.";
+      } else if (error.errorType === 'INVALID_REQUEST') {
+        errorMessage = error.message || "Invalid request. Please check the form details.";
+      } else if (error.errorType === 'UNAUTHORIZED') {
+        errorMessage = "DocuSeal API authentication failed.";
+        actionMessage = "Please update your DocuSeal API key in Settings > API Keys.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "Failed to Send Form",
-        description: "There was an error sending the form. Please try again.",
+        description: (
+          <div className="space-y-2">
+            <p>{errorMessage}</p>
+            {actionMessage && (
+              <p className="text-sm text-muted-foreground">{actionMessage}</p>
+            )}
+          </div>
+        ) as any,
         variant: "destructive",
       });
+      
+      // Reset form state to allow closing the dialog
+      setSendingForm(false);
+      setSelectedTemplateId("");
     },
   });
 
@@ -362,8 +395,13 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
     }
     
     setSendingForm(true);
-    await sendFormMutation.mutateAsync(selectedTemplateId);
-    setSendingForm(false);
+    try {
+      await sendFormMutation.mutateAsync(selectedTemplateId);
+    } catch (error) {
+      // Error is already handled in mutation onError callback
+      // Just ensure the form state is reset
+      setSendingForm(false);
+    }
   };
 
   const handleDownloadForm = async (submission: FormSubmission) => {
@@ -721,8 +759,24 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
                       <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
                     </div>
                   ) : templates.length === 0 ? (
-                    <div className="text-center py-4 text-sm text-muted-foreground">
-                      No templates available
+                    <div className="text-center py-4 space-y-2">
+                      <AlertCircle className="h-8 w-8 mx-auto text-amber-500" />
+                      <div className="text-sm text-muted-foreground">
+                        <p className="font-medium">No form templates available</p>
+                        <p className="text-xs mt-1">
+                          Please configure DocuSeal and sync templates in Settings → API Keys
+                        </p>
+                      </div>
+                    </div>
+                  ) : templates.filter(t => t.enabled).length === 0 ? (
+                    <div className="text-center py-4 space-y-2">
+                      <AlertCircle className="h-8 w-8 mx-auto text-amber-500" />
+                      <div className="text-sm text-muted-foreground">
+                        <p className="font-medium">No enabled templates</p>
+                        <p className="text-xs mt-1">
+                          All templates are currently disabled
+                        </p>
+                      </div>
                     </div>
                   ) : (
                     templates.filter(t => t.enabled).map((template) => (

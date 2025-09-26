@@ -3706,9 +3706,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         await logAudit(req, 1, employeeId, { formSent: submission.id });
         res.json(submission);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error sending form:', error);
-        res.status(500).json({ error: 'Failed to send form' });
+        
+        // Return appropriate status code based on error type
+        const statusCode = error.statusCode || 500;
+        const errorType = error.errorType || 'INTERNAL_ERROR';
+        const message = error.message || 'Failed to send form';
+        
+        // Log different error types appropriately
+        if (errorType === 'TEMPLATE_NOT_FOUND') {
+          console.log(`Template not found for form send request: templateId=${req.body.templateId}`);
+        } else if (errorType === 'SERVICE_UNAVAILABLE') {
+          console.warn('DocuSeal service not configured or unavailable');
+        } else if (errorType === 'NOT_FOUND') {
+          console.log(`Resource not found: ${message}`);
+        }
+        
+        // Send appropriate error response
+        res.status(statusCode).json({ 
+          error: message,
+          errorType: errorType,
+          details: statusCode === 503 ? 'DocuSeal service is not configured. Please contact your administrator.' : undefined
+        });
       }
     }
   );

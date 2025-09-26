@@ -502,6 +502,17 @@ export class DocuSealService {
     invitationId?: number
   ): Promise<FormSubmission> {
     try {
+      // Check if DocuSeal is properly configured
+      if (!this.initialized) {
+        const initResult = await this.initialize();
+        if (!initResult) {
+          const error = new Error("DocuSeal is not configured. Please configure DocuSeal API settings in Settings > API Keys.");
+          (error as any).statusCode = 503;
+          (error as any).errorType = 'SERVICE_UNAVAILABLE';
+          throw error;
+        }
+      }
+
       // Get employee details
       const employee = await db.select()
         .from(employees)
@@ -509,7 +520,10 @@ export class DocuSealService {
         .limit(1);
 
       if (employee.length === 0) {
-        throw new Error("Employee not found");
+        const error = new Error(`Employee with ID ${employeeId} not found`);
+        (error as any).statusCode = 404;
+        (error as any).errorType = 'NOT_FOUND';
+        throw error;
       }
 
       // Get template details
@@ -519,7 +533,10 @@ export class DocuSealService {
         .limit(1);
 
       if (template.length === 0) {
-        throw new Error("Template not found");
+        const error = new Error(`Form template not found. The template may have been deleted or is not available. Please contact your administrator to sync templates.`);
+        (error as any).statusCode = 404;
+        (error as any).errorType = 'TEMPLATE_NOT_FOUND';
+        throw error;
       }
 
       const emp = employee[0];
@@ -596,6 +613,14 @@ export class DocuSealService {
                           `https://docuseal.co/submissions/${apiSubmission.id}`;
 
       // Save submission to database with metadata
+      // Validate employee has email before sending
+      if (!emp.workEmail) {
+        const error = new Error(`Employee ${emp.firstName} ${emp.lastName} does not have a work email address configured. Please add an email address before sending forms.`);
+        (error as any).statusCode = 400;
+        (error as any).errorType = 'INVALID_REQUEST';
+        throw error;
+      }
+
       const dbSubmission = await db.insert(formSubmissions).values({
         submissionId: apiSubmission.id,
         employeeId: employeeId,
@@ -617,8 +642,31 @@ export class DocuSealService {
       return dbSubmission[0];
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
+      
+      // Add status code if not already present
+      if (!(err as any).statusCode) {
+        // Check for specific DocuSeal API errors
+        if (err.message.includes('401') || err.message.includes('Unauthorized')) {
+          (err as any).statusCode = 401;
+          (err as any).errorType = 'UNAUTHORIZED';
+          err.message = 'DocuSeal API key is invalid or expired. Please update your API key in Settings > API Keys.';
+        } else if (err.message.includes('404')) {
+          (err as any).statusCode = 404;
+          (err as any).errorType = 'NOT_FOUND';
+        } else if (err.message.includes('Failed to create submission')) {
+          (err as any).statusCode = 503;
+          (err as any).errorType = 'DOCUSEAL_ERROR';
+          err.message = 'Failed to create form submission in DocuSeal. Please check your DocuSeal configuration and try again.';
+        } else {
+          (err as any).statusCode = 500;
+          (err as any).errorType = 'INTERNAL_ERROR';
+        }
+      }
+      
       console.error("Failed to send form to employee:", {
         message: err.message,
+        statusCode: (err as any).statusCode,
+        errorType: (err as any).errorType,
         employeeId,
         templateId,
         isOnboarding,
