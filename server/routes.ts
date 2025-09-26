@@ -3777,6 +3777,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   /**
+   * GET /api/invitations/:token
+   * Public endpoint to validate an invitation token
+   * Used by the onboarding registration page
+   */
+  app.get('/api/invitations/:token',
+    // No authentication required - this is a public endpoint
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { token } = req.params;
+        
+        if (!token) {
+          return res.status(400).json({ error: 'Token is required' });
+        }
+        
+        // Get invitation by token
+        const invitation = await storage.getInvitationByToken(token);
+        
+        if (!invitation) {
+          return res.status(404).json({ error: 'Invalid or expired invitation token' });
+        }
+        
+        // Check if invitation is expired
+        const now = new Date();
+        const expiresAt = new Date(invitation.expiresAt);
+        
+        if (now > expiresAt) {
+          // Update invitation status to expired
+          await storage.updateInvitation(invitation.id, { status: 'expired' });
+          return res.status(410).json({ error: 'This invitation has expired' });
+        }
+        
+        // Check if already registered
+        if (invitation.status === 'registered' || invitation.status === 'completed' || invitation.status === 'approved') {
+          return res.status(409).json({ error: 'This invitation has already been used' });
+        }
+        
+        // Return invitation details (excluding sensitive information)
+        res.json({
+          id: invitation.id,
+          firstName: invitation.firstName,
+          lastName: invitation.lastName,
+          email: invitation.email,
+          expiresAt: invitation.expiresAt,
+          status: invitation.status,
+          isExpiringSoon: (expiresAt.getTime() - now.getTime()) < 24 * 60 * 60 * 1000 // Less than 24 hours
+        });
+      } catch (error) {
+        console.error('Error validating invitation token:', error);
+        res.status(500).json({ error: 'Failed to validate invitation token' });
+      }
+    }
+  );
+
+  /**
    * POST /api/invitations
    * Create a new employee invitation and send email
    */
