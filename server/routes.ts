@@ -77,6 +77,66 @@ const generateResetToken = (): string => {
   return crypto.randomBytes(32).toString('base64url');
 };
 
+/**
+ * Helper function to sanitize date fields in objects
+ * Converts empty strings to null for proper database insertion
+ * Used across all employee-related endpoints to prevent database errors
+ */
+const sanitizeDateFields = (obj: any): any => {
+  if (!obj || typeof obj !== 'object') return obj;
+  
+  // Create a new object to avoid mutating the original
+  const sanitized = Array.isArray(obj) ? [...obj] : { ...obj };
+  
+  // List of common date field names to check
+  const dateFieldNames = [
+    'dateOfBirth', 'date_of_birth',
+    'licenseExpirationDate', 'license_expiration_date', 'expirationDate', 'expiration_date',
+    'issueDate', 'issue_date',
+    'completionDate', 'completion_date',
+    'terminationDate', 'termination_date',
+    'enumerationDate', 'enumeration_date',
+    'caqhIssueDate', 'caqh_issue_date',
+    'caqhLastAttestationDate', 'caqh_last_attestation_date',
+    'caqhReattestationDueDate', 'caqh_reattestation_due_date',
+    'startDate', 'start_date',
+    'endDate', 'end_date',
+    'enrollmentDate', 'enrollment_date',
+    'submittedDate', 'submitted_date',
+    'createdAt', 'created_at',
+    'updatedAt', 'updated_at',
+    'dlExpirationDate', 'dl_expiration_date',
+    'graduationDate', 'graduation_date',
+    'dateAchieved', 'date_achieved',
+    'renewalDate', 'renewal_date'
+  ];
+  
+  // Handle arrays
+  if (Array.isArray(sanitized)) {
+    return sanitized.map(item => sanitizeDateFields(item));
+  }
+  
+  // Handle objects
+  for (const key in sanitized) {
+    const value = sanitized[key];
+    
+    // Check if this is a date field
+    if (dateFieldNames.includes(key)) {
+      // Convert empty strings or invalid dates to null
+      if (value === '' || value === undefined) {
+        sanitized[key] = null;
+      } else if (typeof value === 'string' && value.trim() === '') {
+        sanitized[key] = null;
+      }
+    } else if (typeof value === 'object' && value !== null) {
+      // Recursively sanitize nested objects
+      sanitized[key] = sanitizeDateFields(value);
+    }
+  }
+  
+  return sanitized;
+};
+
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1179,7 +1239,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     handleValidationErrors,
     async (req: AuditRequest, res: Response) => {
       try {
-        const encryptedData = encryptSensitiveFields(req.body);
+        // Sanitize date fields before encryption
+        const sanitizedData = sanitizeDateFields(req.body);
+        const encryptedData = encryptSensitiveFields(sanitizedData);
         const employee = await storage.createEmployee(encryptedData);
         
         await logAudit(req, employee.id, null, employee);
@@ -1218,7 +1280,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(404).json({ error: 'Employee not found' });
         }
         
-        const encryptedData = encryptSensitiveFields(req.body);
+        // Sanitize date fields before encryption
+        const sanitizedData = sanitizeDateFields(req.body);
+        const encryptedData = encryptSensitiveFields(sanitizedData);
         const employee = await storage.updateEmployee(id, encryptedData);
         
         await logAudit(req, id, oldEmployee, employee);
@@ -4324,48 +4388,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req: AuditRequest, res: Response) => {
       try {
         const userId = req.user!.id;
-        const data = req.body;
+        const data = sanitizeDateFields(req.body);
         
         // Find employee record
         const employees = await storage.getAllEmployees();
         let employee = employees.find(emp => emp.userId === userId);
         
         if (!employee) {
-          // Create new employee record
-          const newEmployee = await storage.createEmployee({
+          // Create new employee record with sanitized data
+          const employeeData = sanitizeDateFields({
             ...data,
             userId,
             status: 'pending_approval'
           });
+          const newEmployee = await storage.createEmployee(employeeData);
           employee = newEmployee;
         } else {
-          // Update existing employee record
-          await storage.updateEmployee(employee.id!, {
+          // Update existing employee record with sanitized data
+          const updateData = sanitizeDateFields({
             ...data,
             status: 'pending_approval',
             submittedAt: new Date()
           });
+          await storage.updateEmployee(employee.id!, updateData);
         }
         
         const employeeId = employee.id!;
         
-        // Save all related entities
+        // Save all related entities with sanitized data
         if (data.educations && Array.isArray(data.educations)) {
           for (const education of data.educations) {
+            const sanitizedEducation = sanitizeDateFields(education);
             if (education.id) {
-              await storage.updateEducation(education.id, education);
+              await storage.updateEducation(education.id, sanitizedEducation);
             } else {
-              await storage.createEducation({ ...education, employeeId });
+              await storage.createEducation({ ...sanitizedEducation, employeeId });
             }
           }
         }
         
         if (data.employments && Array.isArray(data.employments)) {
           for (const employment of data.employments) {
+            const sanitizedEmployment = sanitizeDateFields(employment);
             if (employment.id) {
-              await storage.updateEmployment(employment.id, employment);
+              await storage.updateEmployment(employment.id, sanitizedEmployment);
             } else {
-              await storage.createEmployment({ ...employment, employeeId });
+              await storage.createEmployment({ ...sanitizedEmployment, employeeId });
             }
           }
         }

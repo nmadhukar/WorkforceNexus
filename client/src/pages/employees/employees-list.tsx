@@ -16,7 +16,7 @@ import { SearchFilters } from "@/components/search-filters";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { Plus, Search, UserPlus, Mail, Clock, RefreshCw } from "lucide-react";
+import { Plus, Search, UserPlus, Mail, Clock, RefreshCw, CheckCircle, XCircle } from "lucide-react";
 import { Employee } from "@/lib/types";
 
 /**
@@ -86,6 +86,9 @@ export default function EmployeesList() {
   // Invitation-related state
   const [invitationDialogOpen, setInvitationDialogOpen] = useState(false);
   const [resendInvitationId, setResendInvitationId] = useState<number | null>(null);
+  const [approveInvitationId, setApproveInvitationId] = useState<number | null>(null);
+  const [rejectInvitationId, setRejectInvitationId] = useState<number | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
   const [newInvitation, setNewInvitation] = useState({
     email: "",
     firstName: "",
@@ -206,6 +209,53 @@ export default function EmployeesList() {
     }
   });
 
+  // Approve Employee Mutation
+  const approveEmployeeMutation = useMutation({
+    mutationFn: (employeeId: number) => 
+      apiRequest("POST", `/api/employees/${employeeId}/approve`, {}),
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Employee approved successfully"
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/invitations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
+      setApproveInvitationId(null);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to approve employee",
+        variant: "destructive"
+      });
+      setApproveInvitationId(null);
+    }
+  });
+
+  // Reject Employee Mutation
+  const rejectEmployeeMutation = useMutation({
+    mutationFn: ({ employeeId, reason }: { employeeId: number; reason: string }) => 
+      apiRequest("POST", `/api/employees/${employeeId}/reject`, { reason }),
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Employee application rejected"
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/invitations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
+      setRejectInvitationId(null);
+      setRejectionReason("");
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reject employee",
+        variant: "destructive"
+      });
+      setRejectInvitationId(null);
+    }
+  });
+
   // Resend Invitation Mutation
   const resendInvitationMutation = useMutation({
     mutationFn: (invitationId: number) => 
@@ -286,6 +336,30 @@ export default function EmployeesList() {
    */
   const handleResendInvitation = (invitationId: number) => {
     resendInvitationMutation.mutate(invitationId);
+  };
+
+  /**
+   * Handles approving a prospective employee
+   * @param {number} employeeId - ID of employee to approve
+   */
+  const handleApproveEmployee = (employeeId: number) => {
+    approveEmployeeMutation.mutate(employeeId);
+  };
+
+  /**
+   * Handles rejecting a prospective employee
+   * @param {number} employeeId - ID of employee to reject
+   */
+  const handleRejectEmployee = (employeeId: number) => {
+    if (!rejectionReason.trim()) {
+      toast({
+        title: "Error",
+        description: "Please provide a reason for rejection",
+        variant: "destructive"
+      });
+      return;
+    }
+    rejectEmployeeMutation.mutate({ employeeId, reason: rejectionReason });
   };
 
   /**
@@ -582,7 +656,94 @@ export default function EmployeesList() {
                                 </>
                               )}
                               {invitation.status === 'registered' && (
-                                <span className="text-sm text-muted-foreground">Awaiting approval</span>
+                                <div className="flex items-center gap-2">
+                                  {/* Approve Button with Confirmation */}
+                                  <AlertDialog open={approveInvitationId === invitation.id} onOpenChange={(open) => !open && setApproveInvitationId(null)}>
+                                    <AlertDialogTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                        disabled={approveEmployeeMutation.isPending || rejectEmployeeMutation.isPending}
+                                        data-testid={`button-approve-${invitation.id}`}
+                                        onClick={() => setApproveInvitationId(invitation.id)}
+                                      >
+                                        <CheckCircle className="w-4 h-4 mr-1" />
+                                        Approve
+                                      </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Approve Employee?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          This will approve <strong>{invitation.firstName} {invitation.lastName}</strong> and grant them full employee access.
+                                          They will be changed from a prospective employee to an active employee.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction 
+                                          onClick={() => handleApproveEmployee(invitation.id)}
+                                          className="bg-green-600 hover:bg-green-700"
+                                        >
+                                          Approve Employee
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+
+                                  {/* Reject Button with Confirmation */}
+                                  <AlertDialog open={rejectInvitationId === invitation.id} onOpenChange={(open) => {
+                                    if (!open) {
+                                      setRejectInvitationId(null);
+                                      setRejectionReason("");
+                                    }
+                                  }}>
+                                    <AlertDialogTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                        disabled={approveEmployeeMutation.isPending || rejectEmployeeMutation.isPending}
+                                        data-testid={`button-reject-${invitation.id}`}
+                                        onClick={() => setRejectInvitationId(invitation.id)}
+                                      >
+                                        <XCircle className="w-4 h-4 mr-1" />
+                                        Reject
+                                      </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Reject Employee Application?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          This will reject <strong>{invitation.firstName} {invitation.lastName}</strong>'s employee application.
+                                          Please provide a reason for the rejection.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <div className="my-4">
+                                        <Label htmlFor="rejection-reason">Rejection Reason</Label>
+                                        <Input
+                                          id="rejection-reason"
+                                          placeholder="Enter reason for rejection..."
+                                          value={rejectionReason}
+                                          onChange={(e) => setRejectionReason(e.target.value)}
+                                          className="mt-2"
+                                          data-testid="input-rejection-reason"
+                                        />
+                                      </div>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction 
+                                          onClick={() => handleRejectEmployee(invitation.id)}
+                                          className="bg-destructive hover:bg-destructive/90"
+                                          disabled={!rejectionReason.trim()}
+                                        >
+                                          Reject Application
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                </div>
                               )}
                               {invitation.status === 'approved' && (
                                 <span className="text-sm text-green-600">✓ Active</span>
