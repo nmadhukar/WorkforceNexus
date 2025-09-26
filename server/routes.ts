@@ -4621,10 +4621,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         
-        // Update user role to employee after submission
-        await db.update(users)
-          .set({ role: 'employee' })
-          .where(eq(users.id, userId));
+        // Do NOT update user role here - they remain prospective_employee until HR approves
+        // Role will be updated from 'prospective_employee' to 'employee' in the approval endpoint
         
         await logAudit(req, employeeId, employeeId, { action: 'onboarding_submitted' });
         
