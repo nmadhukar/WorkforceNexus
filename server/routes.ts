@@ -6045,7 +6045,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(404).json({ error: 'Document not found' });
         }
         
-        const versions = await storage.getComplianceDocumentVersions(document.documentNumber);
+        const versions = await storage.getComplianceDocumentVersionsByNumber(document.documentNumber);
         res.json(versions);
       } catch (error) {
         console.error('Error fetching document versions:', error);

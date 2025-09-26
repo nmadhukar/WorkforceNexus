@@ -1061,7 +1061,7 @@ export interface IStorage {
   deleteComplianceDocument(id: number): Promise<void>;
   getComplianceDocumentsByLicense(clinicLicenseId: number): Promise<ComplianceDocument[]>;
   getComplianceDocumentsByLocation(locationId: number): Promise<ComplianceDocument[]>;
-  getComplianceDocumentVersions(documentNumber: string): Promise<ComplianceDocument[]>;
+  getComplianceDocumentVersionsByNumber(documentNumber: string): Promise<ComplianceDocument[]>;
   
   // Compliance Dashboard & Reporting operations
   getComplianceDashboard(): Promise<{
@@ -3007,7 +3007,10 @@ export class DatabaseStorage implements IStorage {
     // Check for dependencies
     const [hasLicenses] = await db.select({ count: count() })
       .from(clinicLicenses)
-      .where(eq(clinicLicenses.responsiblePersonId, id));
+      .where(or(
+        eq(clinicLicenses.primaryResponsibleId, id),
+        eq(clinicLicenses.backupResponsibleId, id)
+      ));
     
     if (hasLicenses?.count > 0) {
       throw new Error('Cannot delete responsible person with associated licenses');
@@ -3040,29 +3043,7 @@ export class DatabaseStorage implements IStorage {
     const offset = options?.offset || 0;
     
     // Join with locations to exclude licenses from deleted locations
-    let query = db.select({
-      id: clinicLicenses.id,
-      locationId: clinicLicenses.locationId,
-      licenseTypeId: clinicLicenses.licenseTypeId,
-      responsiblePersonId: clinicLicenses.responsiblePersonId,
-      licenseNumber: clinicLicenses.licenseNumber,
-      issueDate: clinicLicenses.issueDate,
-      expirationDate: clinicLicenses.expirationDate,
-      renewalDate: clinicLicenses.renewalDate,
-      status: clinicLicenses.status,
-      renewalCost: clinicLicenses.renewalCost,
-      renewalFrequency: clinicLicenses.renewalFrequency,
-      notes: clinicLicenses.notes,
-      lastPaymentDate: clinicLicenses.lastPaymentDate,
-      paymentMethod: clinicLicenses.paymentMethod,
-      complianceStatus: clinicLicenses.complianceStatus,
-      renewalStatus: clinicLicenses.renewalStatus,
-      createdAt: clinicLicenses.createdAt,
-      updatedAt: clinicLicenses.updatedAt,
-      createdBy: clinicLicenses.createdBy,
-      lastReviewedBy: clinicLicenses.lastReviewedBy,
-      lastReviewedAt: clinicLicenses.lastReviewedAt
-    })
+    let query = db.select()
     .from(clinicLicenses)
     .innerJoin(locations, eq(clinicLicenses.locationId, locations.id));
     
@@ -3095,18 +3076,23 @@ export class DatabaseStorage implements IStorage {
     }
     
     if (options?.responsiblePersonId) {
-      conditions.push(eq(clinicLicenses.responsiblePersonId, options.responsiblePersonId));
+      conditions.push(or(
+        eq(clinicLicenses.primaryResponsibleId, options.responsiblePersonId),
+        eq(clinicLicenses.backupResponsibleId, options.responsiblePersonId)
+      ));
     }
     
     const whereCondition = and(...conditions);
     
     const [totalResult] = await countQuery.where(whereCondition);
     
-    const licensesList = await query
+    const licensesResult = await query
       .where(whereCondition)
       .limit(limit)
       .offset(offset)
       .orderBy(clinicLicenses.expirationDate);
+    
+    const licensesList = licensesResult.map(r => r.clinic_licenses);
     
     return {
       licenses: licensesList,
@@ -3196,29 +3182,7 @@ export class DatabaseStorage implements IStorage {
     futureDate.setDate(futureDate.getDate() + days);
     
     // Join with locations to exclude licenses from deleted locations
-    return await db.select({
-      id: clinicLicenses.id,
-      locationId: clinicLicenses.locationId,
-      licenseTypeId: clinicLicenses.licenseTypeId,
-      responsiblePersonId: clinicLicenses.responsiblePersonId,
-      licenseNumber: clinicLicenses.licenseNumber,
-      issueDate: clinicLicenses.issueDate,
-      expirationDate: clinicLicenses.expirationDate,
-      renewalDate: clinicLicenses.renewalDate,
-      status: clinicLicenses.status,
-      renewalCost: clinicLicenses.renewalCost,
-      renewalFrequency: clinicLicenses.renewalFrequency,
-      notes: clinicLicenses.notes,
-      lastPaymentDate: clinicLicenses.lastPaymentDate,
-      paymentMethod: clinicLicenses.paymentMethod,
-      complianceStatus: clinicLicenses.complianceStatus,
-      renewalStatus: clinicLicenses.renewalStatus,
-      createdAt: clinicLicenses.createdAt,
-      updatedAt: clinicLicenses.updatedAt,
-      createdBy: clinicLicenses.createdBy,
-      lastReviewedBy: clinicLicenses.lastReviewedBy,
-      lastReviewedAt: clinicLicenses.lastReviewedAt
-    })
+    const results = await db.select()
       .from(clinicLicenses)
       .innerJoin(locations, eq(clinicLicenses.locationId, locations.id))
       .where(and(
@@ -3227,6 +3191,8 @@ export class DatabaseStorage implements IStorage {
         sql`${locations.status} != 'deleted'`
       ))
       .orderBy(clinicLicenses.expirationDate);
+    
+    return results.map(r => r.clinic_licenses);
   }
   
   async renewClinicLicense(id: number, renewalData: {
@@ -3245,11 +3211,11 @@ export class DatabaseStorage implements IStorage {
     
     const [renewedLicense] = await db.update(clinicLicenses)
       .set({
-        issueDate: renewalData.newIssueDate,
-        expirationDate: renewalData.newExpirationDate,
-        renewalDate: today,
-        renewalCost: renewalData.renewalCost,
-        lastPaymentDate: today,
+        issueDate: renewalData.newIssueDate.toISOString().split('T')[0],
+        expirationDate: renewalData.newExpirationDate.toISOString().split('T')[0],
+        renewalDate: today.toISOString().split('T')[0],
+        renewalCost: renewalData.renewalCost ? renewalData.renewalCost.toString() : undefined,
+        lastPaymentDate: today.toISOString().split('T')[0],
         status,
         renewalStatus: 'approved',
         updatedAt: today
@@ -3358,35 +3324,6 @@ export class DatabaseStorage implements IStorage {
     };
   }
   
-  async getComplianceDocument(id: number): Promise<ComplianceDocument | undefined> {
-    const [document] = await db.select()
-      .from(complianceDocuments)
-      .where(eq(complianceDocuments.id, id));
-    return document;
-  }
-  
-  async createComplianceDocument(document: InsertComplianceDocument): Promise<ComplianceDocument> {
-    const [newDocument] = await db.insert(complianceDocuments)
-      .values(document)
-      .returning();
-    return newDocument;
-  }
-  
-  async updateComplianceDocument(id: number, document: Partial<InsertComplianceDocument>): Promise<ComplianceDocument> {
-    const [updatedDocument] = await db.update(complianceDocuments)
-      .set({
-        ...document,
-        lastModifiedAt: new Date()
-      })
-      .where(eq(complianceDocuments.id, id))
-      .returning();
-    return updatedDocument;
-  }
-  
-  async deleteComplianceDocument(id: number): Promise<void> {
-    await db.delete(complianceDocuments).where(eq(complianceDocuments.id, id));
-  }
-  
   async getComplianceDocumentsByLicense(clinicLicenseId: number): Promise<ComplianceDocument[]> {
     return await db.select()
       .from(complianceDocuments)
@@ -3401,11 +3338,11 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(complianceDocuments.uploadedAt));
   }
   
-  async getComplianceDocumentVersions(documentNumber: string): Promise<ComplianceDocument[]> {
+  async getComplianceDocumentVersionsByNumber(documentNumber: string): Promise<ComplianceDocument[]> {
     return await db.select()
       .from(complianceDocuments)
       .where(eq(complianceDocuments.documentNumber, documentNumber))
-      .orderBy(desc(complianceDocuments.version));
+      .orderBy(desc(complianceDocuments.versionNumber));
   }
   
   // =====================
