@@ -82,56 +82,120 @@ const generateResetToken = (): string => {
  * Converts empty strings to null for proper database insertion
  * Used across all employee-related endpoints to prevent database errors
  */
-const sanitizeDateFields = (obj: any): any => {
+const sanitizeDateFields = (obj: any, depth: number = 0, path: string = 'root'): any => {
+  // Prevent infinite recursion
+  if (depth > 10) {
+    console.warn(`[sanitizeDateFields] Maximum depth reached at path: ${path}`);
+    return obj;
+  }
+  
   if (!obj || typeof obj !== 'object') return obj;
   
   // Create a new object to avoid mutating the original
   const sanitized = Array.isArray(obj) ? [...obj] : { ...obj };
   
-  // List of common date field names to check
+  // Comprehensive list of ALL date/timestamp field names (both camelCase and snake_case)
   const dateFieldNames = [
+    // Employee date fields
     'dateOfBirth', 'date_of_birth',
-    'licenseExpirationDate', 'license_expiration_date', 'expirationDate', 'expiration_date',
-    'issueDate', 'issue_date',
-    'completionDate', 'completion_date',
-    'terminationDate', 'termination_date',
+    'dlIssueDate', 'dl_issue_date',
+    'dlExpirationDate', 'dl_expiration_date',
     'enumerationDate', 'enumeration_date',
     'caqhIssueDate', 'caqh_issue_date',
     'caqhLastAttestationDate', 'caqh_last_attestation_date',
     'caqhReattestationDueDate', 'caqh_reattestation_due_date',
+    'onboardingCompletedAt', 'onboarding_completed_at',
+    'approvedAt', 'approved_at',
+    
+    // License and certification fields
+    'licenseExpirationDate', 'license_expiration_date',
+    'expirationDate', 'expiration_date',
+    'licenseExpiryDate', 'license_expiry_date',
+    'certificationExpiryDate', 'certification_expiry_date',
+    'issueDate', 'issue_date',
+    'renewalDate', 'renewal_date',
+    'dateAchieved', 'date_achieved',
+    
+    // Employment and education fields
     'startDate', 'start_date',
     'endDate', 'end_date',
+    'graduationDate', 'graduation_date',
+    'completionDate', 'completion_date',
+    'terminationDate', 'termination_date',
+    
+    // Other fields
     'enrollmentDate', 'enrollment_date',
     'submittedDate', 'submitted_date',
+    'submittedAt', 'submitted_at',
     'createdAt', 'created_at',
     'updatedAt', 'updated_at',
-    'dlExpirationDate', 'dl_expiration_date',
-    'graduationDate', 'graduation_date',
-    'dateAchieved', 'date_achieved',
-    'renewalDate', 'renewal_date'
+    'lastPaymentDate', 'last_payment_date',
+    'nextPaymentDue', 'next_payment_due',
+    'lastInspectionDate', 'last_inspection_date',
+    'nextInspectionDue', 'next_inspection_due',
+    'lastAlertSent', 'last_alert_sent',
+    'verifiedAt', 'verified_at',
+    'uploadedAt', 'uploaded_at',
+    'lastAccessedAt', 'last_accessed_at',
+    'lastModifiedAt', 'last_modified_at',
+    'expiresAt', 'expires_at',
+    'registeredAt', 'registered_at',
+    'completedAt', 'completed_at',
+    'lastLoginAt', 'last_login_at',
+    'passwordResetExpiresAt', 'password_reset_expires_at',
+    'lockedUntil', 'locked_until',
+    'rotatedAt', 'rotated_at',
+    'lastUsedAt', 'last_used_at',
+    'sentAt', 'sent_at',
+    'scheduledFor', 'scheduled_for'
   ];
+  
+  // Log start of sanitization (only at top level)
+  if (depth === 0) {
+    console.log('[sanitizeDateFields] Starting sanitization of:', path);
+  }
   
   // Handle arrays
   if (Array.isArray(sanitized)) {
-    return sanitized.map(item => sanitizeDateFields(item));
+    if (depth === 0) console.log(`[sanitizeDateFields] Processing array with ${sanitized.length} items`);
+    return sanitized.map((item, index) => sanitizeDateFields(item, depth + 1, `${path}[${index}]`));
   }
   
   // Handle objects
+  let changedFields = [];
   for (const key in sanitized) {
     const value = sanitized[key];
+    const currentPath = `${path}.${key}`;
     
-    // Check if this is a date field
-    if (dateFieldNames.includes(key)) {
+    // Check if this key looks like a date field (includes partial matches)
+    const isDateField = dateFieldNames.includes(key) || 
+                       key.toLowerCase().includes('date') || 
+                       key.toLowerCase().includes('_at') ||
+                       key.toLowerCase().includes('expir') ||
+                       key.toLowerCase().includes('time');
+    
+    if (isDateField) {
       // Convert empty strings or invalid dates to null
-      if (value === '' || value === undefined) {
+      if (value === '' || value === undefined || value === null ||
+          (typeof value === 'string' && value.trim() === '')) {
+        if (value !== null) {
+          console.log(`[sanitizeDateFields] Converting empty date field '${currentPath}' from '${value}' to null`);
+          changedFields.push(`${key}: '${value}' -> null`);
+        }
         sanitized[key] = null;
-      } else if (typeof value === 'string' && value.trim() === '') {
-        sanitized[key] = null;
+      } else if (typeof value === 'string') {
+        // Keep valid date strings as-is but log them
+        console.log(`[sanitizeDateFields] Keeping date field '${currentPath}' with value: '${value}'`);
       }
-    } else if (typeof value === 'object' && value !== null) {
-      // Recursively sanitize nested objects
-      sanitized[key] = sanitizeDateFields(value);
+    } else if (typeof value === 'object' && value !== null && !Buffer.isBuffer(value)) {
+      // Recursively sanitize nested objects (but not Buffers)
+      sanitized[key] = sanitizeDateFields(value, depth + 1, currentPath);
     }
+  }
+  
+  // Log summary at top level
+  if (depth === 0 && changedFields.length > 0) {
+    console.log(`[sanitizeDateFields] Sanitized ${changedFields.length} date fields:`, changedFields);
   }
   
   return sanitized;
@@ -4387,53 +4451,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireRole(['prospective_employee']),
     async (req: AuditRequest, res: Response) => {
       try {
+        console.log('[/api/onboarding/submit] Starting onboarding submission for userId:', req.user!.id);
+        console.log('[/api/onboarding/submit] Raw request body keys:', Object.keys(req.body));
+        
         const userId = req.user!.id;
+        
+        // Log the raw data before sanitization
+        console.log('[/api/onboarding/submit] Sample date fields before sanitization:', {
+          dateOfBirth: req.body.dateOfBirth,
+          date_of_birth: req.body.date_of_birth,
+          onboarding_completed_at: req.body.onboarding_completed_at,
+          licenseExpiryDate: req.body.licenseExpiryDate,
+          certificationExpiryDate: req.body.certificationExpiryDate
+        });
+        
         const data = sanitizeDateFields(req.body);
+        
+        // Log the sanitized data
+        console.log('[/api/onboarding/submit] Sample date fields after sanitization:', {
+          dateOfBirth: data.dateOfBirth,
+          date_of_birth: data.date_of_birth,
+          onboarding_completed_at: data.onboarding_completed_at,
+          licenseExpiryDate: data.licenseExpiryDate,
+          certificationExpiryDate: data.certificationExpiryDate
+        });
         
         // Find employee record
         const employees = await storage.getAllEmployees();
         let employee = employees.find(emp => emp.userId === userId);
         
         if (!employee) {
-          // Create new employee record with sanitized data
-          const employeeData = sanitizeDateFields({
+          console.log('[/api/onboarding/submit] Creating new employee record');
+          // Create new employee record - already sanitized
+          const employeeData = {
             ...data,
             userId,
-            status: 'pending_approval'
+            status: 'pending_approval',
+            onboarding_completed_at: new Date() // Set completion timestamp
+          };
+          
+          // Log the data being sent to createEmployee
+          console.log('[/api/onboarding/submit] Employee data for creation (sample fields):', {
+            dateOfBirth: employeeData.dateOfBirth || employeeData.date_of_birth,
+            dlExpirationDate: employeeData.dlExpirationDate || employeeData.dl_expiration_date,
+            onboarding_completed_at: employeeData.onboarding_completed_at,
+            status: employeeData.status
           });
+          
           const newEmployee = await storage.createEmployee(employeeData);
           employee = newEmployee;
+          console.log('[/api/onboarding/submit] Employee created with id:', employee.id);
         } else {
-          // Update existing employee record with sanitized data
-          const updateData = sanitizeDateFields({
+          console.log('[/api/onboarding/submit] Updating existing employee record id:', employee.id);
+          // Update existing employee record - already sanitized
+          const updateData = {
             ...data,
             status: 'pending_approval',
-            submittedAt: new Date()
+            onboarding_completed_at: new Date() // Set completion timestamp
+          };
+          
+          // Log the data being sent to updateEmployee
+          console.log('[/api/onboarding/submit] Employee data for update (all date fields):');
+          const dateFields = Object.keys(updateData).filter(key => 
+            key.toLowerCase().includes('date') || 
+            key.toLowerCase().includes('_at') ||
+            key.toLowerCase().includes('expir'));
+          const dateFieldValues: any = {};
+          dateFields.forEach(field => {
+            dateFieldValues[field] = updateData[field];
           });
+          console.log('[/api/onboarding/submit] Date fields being sent:', dateFieldValues);
+          
           await storage.updateEmployee(employee.id!, updateData);
+          console.log('[/api/onboarding/submit] Employee updated successfully');
         }
         
         const employeeId = employee.id!;
         
-        // Save all related entities with sanitized data
+        // Save all related entities - data already sanitized
         if (data.educations && Array.isArray(data.educations)) {
+          console.log(`[/api/onboarding/submit] Processing ${data.educations.length} education records`);
           for (const education of data.educations) {
-            const sanitizedEducation = sanitizeDateFields(education);
             if (education.id) {
-              await storage.updateEducation(education.id, sanitizedEducation);
+              await storage.updateEducation(education.id, education);
             } else {
-              await storage.createEducation({ ...sanitizedEducation, employeeId });
+              await storage.createEducation({ ...education, employeeId });
             }
           }
         }
         
         if (data.employments && Array.isArray(data.employments)) {
+          console.log(`[/api/onboarding/submit] Processing ${data.employments.length} employment records`);
           for (const employment of data.employments) {
-            const sanitizedEmployment = sanitizeDateFields(employment);
             if (employment.id) {
-              await storage.updateEmployment(employment.id, sanitizedEmployment);
+              await storage.updateEmployment(employment.id, employment);
             } else {
-              await storage.createEmployment({ ...sanitizedEmployment, employeeId });
+              await storage.createEmployment({ ...employment, employeeId });
             }
           }
         }
@@ -4450,8 +4563,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           employeeId
         });
       } catch (error) {
-        console.error('Error submitting onboarding:', error);
-        res.status(500).json({ error: 'Failed to submit onboarding' });
+        console.error('[/api/onboarding/submit] Error submitting onboarding:', error);
+        // Log more details for date-related errors
+        if (error instanceof Error && error.message.includes('date')) {
+          console.error('[/api/onboarding/submit] Date-related error details:', {
+            message: error.message,
+            stack: error.stack
+          });
+        }
+        res.status(500).json({ error: 'Failed to submit onboarding', details: error instanceof Error ? error.message : 'Unknown error' });
       }
     }
   );
