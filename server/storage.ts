@@ -322,6 +322,16 @@ export interface IStorage {
    * }
    */
   getEmployeeByWorkEmail(workEmail: string): Promise<Employee | undefined>;
+  
+  /**
+   * Get employees by application status (for approval workflow)
+   * @param {string} status - Application status ('pending', 'approved', 'rejected')
+   * @returns {Promise<Employee[]>} Array of employees with matching status
+   * @throws {Error} Database query errors
+   * @example
+   * const pendingEmployees = await storage.getEmployeesByApplicationStatus('pending');
+   */
+  getEmployeesByApplicationStatus(status: string): Promise<Employee[]>;
 
   /**
    * Create a new employee record
@@ -1341,6 +1351,14 @@ export class DatabaseStorage implements IStorage {
   async getEmployeeByWorkEmail(workEmail: string): Promise<Employee | undefined> {
     const [employee] = await db.select().from(employees).where(eq(employees.workEmail, workEmail));
     return employee;
+  }
+
+  async getEmployeesByApplicationStatus(status: string): Promise<Employee[]> {
+    const result = await db.select()
+      .from(employees)
+      .where(eq(employees.applicationStatus, status))
+      .orderBy(asc(employees.lastName), asc(employees.firstName));
+    return result;
   }
 
   async getEmployees(options?: {

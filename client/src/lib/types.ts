@@ -25,7 +25,7 @@ export interface User {
   /** Unique username for login */
   username: string;
   /** User role determining access permissions */
-  role: "admin" | "hr" | "viewer";
+  role: "admin" | "hr" | "prospective_employee" | "employee";
   /** Account creation timestamp */
   createdAt: string;
 }
@@ -39,8 +39,8 @@ export interface InsertUser {
   username: string;
   /** User password for authentication */
   password: string;
-  /** User role: admin (full access), hr (employee management), viewer (read-only) */
-  role: "admin" | "hr" | "viewer";
+  /** User role: admin (full access), hr (employee management), prospective_employee (pending approval), employee (self-service access) */
+  role: "admin" | "hr" | "prospective_employee" | "employee";
 }
 
 /**

@@ -54,7 +54,7 @@ const editUserSchema = userInsertSchema.pick({
 }).extend({
   username: z.string().min(3, "Username must be at least 3 characters"),
   email: z.string().email("Invalid email address").optional().or(z.literal("")).transform(val => val === "" ? undefined : val),
-  role: z.enum(["admin", "hr", "viewer"])
+  role: z.enum(["admin", "hr", "prospective_employee", "employee"])
 });
 
 const createUserSchema = editUserSchema.extend({
@@ -117,7 +117,8 @@ function RoleBadge({ role }: { role: string }) {
     switch (role) {
       case "admin": return <Shield className="w-3 h-3 mr-1" />;
       case "hr": return <User className="w-3 h-3 mr-1" />;
-      case "viewer": return <Eye className="w-3 h-3 mr-1" />;
+      case "prospective_employee": return <UserCheck className="w-3 h-3 mr-1" />;
+      case "employee": return <Eye className="w-3 h-3 mr-1" />;
       default: return null;
     }
   };
@@ -125,8 +126,9 @@ function RoleBadge({ role }: { role: string }) {
   const getRoleColor = () => {
     switch (role) {
       case "admin": return "default";
-      case "hr": return "secondary"; 
-      case "viewer": return "outline";
+      case "hr": return "secondary";
+      case "prospective_employee": return "outline";
+      case "employee": return "outline";
       default: return "outline";
     }
   };
@@ -149,7 +151,7 @@ function EditUserDialog({ user, open, onOpenChange }: { user: User; open: boolea
     defaultValues: {
       username: user.username,
       email: user.email || "",
-      role: user.role as "admin" | "hr" | "viewer"
+      role: user.role as "admin" | "hr" | "prospective_employee" | "employee"
     }
   });
 
@@ -231,7 +233,8 @@ function EditUserDialog({ user, open, onOpenChange }: { user: User; open: boolea
                     <SelectContent>
                       <SelectItem value="admin">Admin</SelectItem>
                       <SelectItem value="hr">HR</SelectItem>
-                      <SelectItem value="viewer">Viewer</SelectItem>
+                      <SelectItem value="prospective_employee">Prospective Employee</SelectItem>
+                      <SelectItem value="employee">Employee</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -568,7 +571,8 @@ function CreateUserDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
                     <SelectContent>
                       <SelectItem value="admin">Admin</SelectItem>
                       <SelectItem value="hr">HR</SelectItem>
-                      <SelectItem value="viewer">Viewer</SelectItem>
+                      <SelectItem value="prospective_employee">Prospective Employee</SelectItem>
+                      <SelectItem value="employee">Employee</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />

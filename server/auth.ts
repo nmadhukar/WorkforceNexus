@@ -261,7 +261,7 @@ export function setupAuth(app: Express) {
     const user = await storage.createUser({
       username: username,
       passwordHash: await hashPassword(password),
-      role: invitation.intendedRole || "viewer", // Use intendedRole from invitation
+      role: invitation.intendedRole || "prospective_employee", // Use intendedRole from invitation
     });
     
     // If this is an onboarding registration, handle employee record and send forms

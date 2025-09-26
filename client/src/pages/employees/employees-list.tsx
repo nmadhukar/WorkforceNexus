@@ -92,7 +92,7 @@ export default function EmployeesList() {
     lastName: "",
     position: "",
     department: "",
-    intendedRole: user?.role === "hr" ? "viewer" : "viewer"  // Default to viewer for all roles
+    intendedRole: "prospective_employee"  // Default to prospective_employee for invitations
   });
 
   // Employees Query
@@ -146,7 +146,7 @@ export default function EmployeesList() {
         lastName: "",
         position: "",
         department: "",
-        intendedRole: user?.role === "hr" ? "viewer" : "viewer"
+        intendedRole: "prospective_employee"
       });
     },
     onError: (error) => {
@@ -398,7 +398,6 @@ export default function EmployeesList() {
                       <Select
                         value={newInvitation.intendedRole}
                         onValueChange={(value) => setNewInvitation(prev => ({ ...prev, intendedRole: value }))}
-                        disabled={user?.role === "hr"}  // HR can only invite viewers
                       >
                         <SelectTrigger id="invitation-role" data-testid="select-invitation-role">
                           <SelectValue placeholder="Select a role" />
@@ -410,12 +409,12 @@ export default function EmployeesList() {
                               <SelectItem value="hr">HR</SelectItem>
                             </>
                           )}
-                          <SelectItem value="viewer">Viewer</SelectItem>
+                          <SelectItem value="prospective_employee">Prospective Employee</SelectItem>
                         </SelectContent>
                       </Select>
-                      {user?.role === "hr" && (
+                      {(user?.role === "hr" || user?.role === "admin") && (
                         <p className="text-sm text-muted-foreground mt-1">
-                          HR users can only invite viewers
+                          Prospective employees will need approval after registration
                         </p>
                       )}
                     </div>

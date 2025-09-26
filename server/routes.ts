@@ -1268,6 +1268,161 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
+  /**
+   * POST /api/employees/:id/approve
+   * Approve a prospective employee and change their role to employee
+   * @route POST /api/employees/:id/approve 
+   * @group Employees - Employee approval operations
+   * @security session, apikey
+   * @returns {object} 200 - Updated employee with approved status
+   */
+  app.post('/api/employees/:id/approve',
+    apiKeyAuth,
+    requireAnyAuth, 
+    requirePermission('write:employees'),
+    requireRole(['admin', 'hr']),
+    auditMiddleware('employees'),
+    validateId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const id = parseInt(req.params.id);
+        const employee = await storage.getEmployee(id);
+        
+        if (!employee) {
+          return res.status(404).json({ error: 'Employee not found' });
+        }
+        
+        // Check if employee has a user account
+        if (!employee.userId) {
+          return res.status(400).json({ error: 'Employee does not have an associated user account' });
+        }
+        
+        // Get the user account
+        const user = await storage.getUser(employee.userId);
+        if (!user) {
+          return res.status(400).json({ error: 'User account not found' });
+        }
+        
+        // Check if user is a prospective employee
+        if (user.role !== 'prospective_employee') {
+          return res.status(400).json({ error: 'User is not a prospective employee' });
+        }
+        
+        // Update employee application status
+        const updatedEmployee = await storage.updateEmployee(id, {
+          applicationStatus: 'approved',
+          approvedAt: new Date(),
+          approvedBy: req.user?.id || null,
+          status: 'active',
+          onboardingStatus: 'approved'
+        });
+        
+        // Update user role to employee
+        await storage.updateUser(employee.userId, {
+          role: 'employee'
+        });
+        
+        await logAudit(req, id, employee, updatedEmployee);
+        
+        res.json({
+          ...updatedEmployee,
+          message: 'Employee approved successfully'
+        });
+      } catch (error) {
+        console.error('Error approving employee:', error);
+        res.status(500).json({ error: 'Failed to approve employee' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/employees/:id/reject
+   * Reject a prospective employee application
+   * @route POST /api/employees/:id/reject
+   * @group Employees - Employee approval operations
+   * @security session, apikey
+   * @param {string} body.reason - Reason for rejection
+   * @returns {object} 200 - Updated employee with rejected status
+   */
+  app.post('/api/employees/:id/reject',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:employees'),
+    requireRole(['admin', 'hr']),
+    auditMiddleware('employees'),
+    validateId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const id = parseInt(req.params.id);
+        const { reason } = req.body;
+        const employee = await storage.getEmployee(id);
+        
+        if (!employee) {
+          return res.status(404).json({ error: 'Employee not found' });
+        }
+        
+        // Update employee application status
+        const updatedEmployee = await storage.updateEmployee(id, {
+          applicationStatus: 'rejected',
+          status: 'inactive',
+          onboardingStatus: 'rejected'
+        });
+        
+        // If employee has a user account, disable it
+        if (employee.userId) {
+          await storage.updateUser(employee.userId, {
+            status: 'disabled'
+          });
+        }
+        
+        await logAudit(req, id, employee, updatedEmployee);
+        
+        res.json({
+          ...updatedEmployee,
+          message: 'Employee application rejected'
+        });
+      } catch (error) {
+        console.error('Error rejecting employee:', error);
+        res.status(500).json({ error: 'Failed to reject employee' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/employees/pending-approval
+   * Get all employees pending approval
+   * @route GET /api/employees/pending-approval
+   * @group Employees - Employee approval operations
+   * @security session, apikey
+   * @returns {array} 200 - List of employees pending approval
+   */
+  app.get('/api/employees/pending-approval',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('read:employees'),
+    requireRole(['admin', 'hr']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const pendingEmployees = await storage.getEmployeesByApplicationStatus('pending');
+        
+        // Mask sensitive data
+        const maskedEmployees = pendingEmployees.map((employee: any) => ({
+          ...employee,
+          ssn: maskSSN(employee.ssn || ''),
+          caqhPassword: employee.caqhPassword ? '***' : '',
+          nppesPassword: employee.nppesPassword ? '***' : ''
+        }));
+        
+        res.json(maskedEmployees);
+      } catch (error) {
+        console.error('Error fetching pending employees:', error);
+        res.status(500).json({ error: 'Failed to fetch pending employees' });
+      }
+    }
+  );
+
   // Education routes - accessible via API key or session
   app.get('/api/employees/:id/educations', 
     apiKeyAuth,

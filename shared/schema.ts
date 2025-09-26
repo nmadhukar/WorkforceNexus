@@ -39,9 +39,10 @@ import { z } from "zod";
  * Implements role-based access control with secure password hashing.
  * 
  * Roles:
- * - 'hr': Standard HR staff with full employee management access
  * - 'admin': System administrators with elevated privileges
- * - 'viewer': Read-only access for reporting and viewing
+ * - 'hr': Standard HR staff with full employee management access
+ * - 'prospective_employee': New employees awaiting approval (limited access to onboarding)
+ * - 'employee': Approved employees with self-service portal access
  */
 export const users = pgTable("users", {
   id: serial("id").primaryKey(), // Auto-incrementing primary key
@@ -140,6 +141,7 @@ export const employees = pgTable("employees", {
   
   // RECORD MANAGEMENT
   status: varchar("status", { length: 20 }).default("active"), // active | inactive | on_leave | terminated | onboarding
+  applicationStatus: varchar("application_status", { length: 20 }).default("pending"), // pending | approved | rejected
   
   // ONBOARDING FIELDS
   onboardingStatus: varchar("onboarding_status", { length: 50 }), // invited | registered | in_progress | completed | approved

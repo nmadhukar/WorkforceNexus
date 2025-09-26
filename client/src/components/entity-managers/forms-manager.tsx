@@ -141,7 +141,7 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
   
   // CRITICAL FIX: Show employee self-service view if:
   // 1. User is viewing their own profile (regardless of their role)
-  // 2. User doesn't have management role (regular employees/viewers)
+  // 2. User doesn't have management role (regular employees and prospective employees)
   // Show management view ONLY if user is HR/Admin viewing SOMEONE ELSE's profile
   const showEmployeeView = isOwnProfile || (!hasManagementRole);
   const isManagementView = hasManagementRole && !isOwnProfile;

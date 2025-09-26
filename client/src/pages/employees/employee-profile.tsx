@@ -1,5 +1,5 @@
 import { useParams, useLocation, Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/main-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -61,6 +61,9 @@ import { TrainingsManager } from "@/components/entity-managers/trainings-manager
 import { PayerEnrollmentsManager } from "@/components/entity-managers/payer-enrollments-manager";
 import { IncidentLogsManager } from "@/components/entity-managers/incident-logs-manager";
 import { FormsManager } from "@/components/entity-managers/forms-manager";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 /**
  * Comprehensive employee profile page displaying detailed employee information with tabbed navigation
@@ -90,6 +93,8 @@ import { FormsManager } from "@/components/entity-managers/forms-manager";
 export default function EmployeeProfile() {
   const params = useParams();
   const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const { user } = useAuth();
   const employeeId = parseInt(params.id || "0");
   const lastUpdated = new Date().toLocaleString('en-US', {
     month: 'short',
@@ -102,6 +107,45 @@ export default function EmployeeProfile() {
   const { data: employee, isLoading, error } = useQuery<Employee>({
     queryKey: ["/api/employees", employeeId],
     enabled: !!employeeId
+  });
+
+  // Approval mutation
+  const approveMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/employees/${employeeId}/approve`, {}),
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Employee approved successfully"
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to approve employee",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Rejection mutation
+  const rejectMutation = useMutation({
+    mutationFn: (reason?: string) => 
+      apiRequest("POST", `/api/employees/${employeeId}/reject`, { reason }),
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Employee application rejected"
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reject employee",
+        variant: "destructive"
+      });
+    }
   });
 
   if (isLoading) {
@@ -336,6 +380,58 @@ export default function EmployeeProfile() {
               </div>
             </div>
           </div>
+
+          {/* Approval Section - Shows only for pending employees when user is HR/Admin */}
+          {employee.applicationStatus === 'pending' && (user?.role === 'admin' || user?.role === 'hr') && (
+            <Card className="border-warning/50 bg-warning/5">
+              <CardHeader className="bg-warning/10">
+                <CardTitle className="flex items-center text-lg">
+                  <UserCheck className="w-5 h-5 mr-2 text-warning" />
+                  Pending Approval
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="space-y-4">
+                  <div className="p-4 bg-background rounded-lg border border-warning/20">
+                    <p className="text-sm text-muted-foreground mb-4">
+                      This employee registration is pending approval. Review their information and decide whether to approve or reject their application.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Button
+                        onClick={() => approveMutation.mutate()}
+                        disabled={approveMutation.isPending || rejectMutation.isPending}
+                        className="bg-green-600 hover:bg-green-700"
+                        data-testid="button-approve-employee"
+                      >
+                        <UserCheck className="w-4 h-4 mr-2" />
+                        {approveMutation.isPending ? "Approving..." : "Approve Employee"}
+                      </Button>
+                      <Button
+                        onClick={() => rejectMutation.mutate()}
+                        disabled={approveMutation.isPending || rejectMutation.isPending}
+                        variant="destructive"
+                        data-testid="button-reject-employee"
+                      >
+                        <AlertTriangle className="w-4 h-4 mr-2" />
+                        {rejectMutation.isPending ? "Rejecting..." : "Reject Application"}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2 p-3 bg-muted/50 rounded-lg">
+                    <Shield className="w-4 h-4 text-muted-foreground mt-0.5" />
+                    <div className="text-sm text-muted-foreground">
+                      <p className="font-medium">What happens after approval?</p>
+                      <ul className="mt-1 space-y-1 ml-2">
+                        <li>• Employee role changes from Prospective Employee to Employee</li>
+                        <li>• They gain access to the self-service portal</li>
+                        <li>• They can view and manage their own information</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Information Cards Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

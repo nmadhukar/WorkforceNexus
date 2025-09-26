@@ -212,8 +212,8 @@ export const validateUser = (): ValidationChain[] => [
     .withMessage('Valid email is required'),
   body('role')
     .optional()
-    .isIn(['admin', 'hr', 'viewer'])
-    .withMessage('Role must be admin, hr, or viewer'),
+    .isIn(['admin', 'hr', 'prospective_employee', 'employee'])
+    .withMessage('Role must be admin, hr, prospective_employee, or employee'),
   body('status')
     .optional()
     .isIn(['active', 'suspended', 'locked', 'disabled'])
