@@ -334,8 +334,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         username: 'admin',
         passwordHash: hashedPassword,
         role: 'admin',
-        status: 'active',
-        requirePasswordChange: false  // Don't require password change for recovery
+        status: 'active'
       });
       
       console.log('Recovery: Default admin account created');
@@ -854,7 +853,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const { sesService } = await import('./services/sesService');
           
           // Generate full name for personalization
-          const userName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username;
+          const userName = user.username;
           
           // Get the base URL for the reset link
           const baseUrl = getBaseUrl(req);

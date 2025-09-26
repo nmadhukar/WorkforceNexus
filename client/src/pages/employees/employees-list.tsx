@@ -199,7 +199,8 @@ export default function EmployeesList() {
           firstName: "",
           lastName: "",
           position: "",
-          department: ""
+          department: "",
+          intendedRole: "prospective_employee"
         });
       }
     }
