@@ -4482,6 +4482,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         if (!employee) {
           console.log('[/api/onboarding/submit] Creating new employee record');
+          
+          // Remove NPI number if it's the hardcoded test value or empty
+          if (data.npiNumber === '1234567890' || data.npiNumber === '' || data.npiNumber === undefined || data.npiNumber === null) {
+            console.log('[/api/onboarding/submit] NPI is empty or test value - removing from data');
+            delete data.npiNumber;
+          }
+          
           // Create new employee record - already sanitized
           const employeeData = {
             ...data,
@@ -4491,18 +4498,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
           };
           
           // Log the data being sent to createEmployee
-          console.log('[/api/onboarding/submit] Employee data for creation (sample fields):', {
+          console.log('[/api/onboarding/submit] Employee data for creation (including NPI):', {
+            npiNumber: employeeData.npiNumber || 'Not provided (optional)',
             dateOfBirth: employeeData.dateOfBirth || employeeData.date_of_birth,
             dlExpirationDate: employeeData.dlExpirationDate || employeeData.dl_expiration_date,
             onboarding_completed_at: employeeData.onboarding_completed_at,
             status: employeeData.status
           });
           
-          const newEmployee = await storage.createEmployee(employeeData);
-          employee = newEmployee;
-          console.log('[/api/onboarding/submit] Employee created with id:', employee.id);
+          try {
+            const newEmployee = await storage.createEmployee(employeeData);
+            employee = newEmployee;
+            console.log('[/api/onboarding/submit] Employee created with id:', employee.id);
+          } catch (createError: any) {
+            console.error('[/api/onboarding/submit] Error creating employee:', createError);
+            
+            // Check for unique constraint violation
+            if (createError.code === '23505' || createError.message?.includes('duplicate key') || createError.message?.includes('unique constraint')) {
+              // Extract which field caused the violation
+              if (createError.message?.includes('npi_number')) {
+                console.error('[/api/onboarding/submit] NPI number already exists');
+                return res.status(409).json({ 
+                  error: 'This NPI number is already in use. Please provide a different NPI number or leave it blank to add it later.' 
+                });
+              } else if (createError.message?.includes('work_email')) {
+                console.error('[/api/onboarding/submit] Work email already exists');
+                return res.status(409).json({ 
+                  error: 'This email address is already registered. Please use a different email or contact HR for assistance.' 
+                });
+              } else {
+                console.error('[/api/onboarding/submit] Unique constraint violation:', createError.message);
+                return res.status(409).json({ 
+                  error: 'A record with this information already exists. Please check your data or contact HR for assistance.' 
+                });
+              }
+            }
+            throw createError; // Re-throw if not a unique constraint error
+          }
         } else {
           console.log('[/api/onboarding/submit] Updating existing employee record id:', employee.id);
+          
+          // Remove NPI number if it's the hardcoded test value or empty
+          if (data.npiNumber === '1234567890' || data.npiNumber === '' || data.npiNumber === undefined || data.npiNumber === null) {
+            console.log('[/api/onboarding/submit] NPI is empty or test value - removing from update data');
+            delete data.npiNumber;
+          }
+          
           // Update existing employee record - already sanitized
           const updateData = {
             ...data,
@@ -4511,7 +4552,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           };
           
           // Log the data being sent to updateEmployee
-          console.log('[/api/onboarding/submit] Employee data for update (all date fields):');
+          console.log('[/api/onboarding/submit] Employee data for update (including NPI):', {
+            npiNumber: updateData.npiNumber || 'Not provided (optional)'
+          });
+          console.log('[/api/onboarding/submit] Date fields being sent:');
           const dateFields = Object.keys(updateData).filter(key => 
             key.toLowerCase().includes('date') || 
             key.toLowerCase().includes('_at') ||
@@ -4520,10 +4564,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
           dateFields.forEach(field => {
             dateFieldValues[field] = updateData[field];
           });
-          console.log('[/api/onboarding/submit] Date fields being sent:', dateFieldValues);
+          console.log('[/api/onboarding/submit] Date fields:', dateFieldValues);
           
-          await storage.updateEmployee(employee.id!, updateData);
-          console.log('[/api/onboarding/submit] Employee updated successfully');
+          try {
+            await storage.updateEmployee(employee.id!, updateData);
+            console.log('[/api/onboarding/submit] Employee updated successfully');
+          } catch (updateError: any) {
+            console.error('[/api/onboarding/submit] Error updating employee:', updateError);
+            
+            // Check for unique constraint violation
+            if (updateError.code === '23505' || updateError.message?.includes('duplicate key') || updateError.message?.includes('unique constraint')) {
+              // Extract which field caused the violation
+              if (updateError.message?.includes('npi_number')) {
+                console.error('[/api/onboarding/submit] NPI number already exists');
+                return res.status(409).json({ 
+                  error: 'This NPI number is already in use. Please provide a different NPI number or leave it blank to add it later.' 
+                });
+              } else if (updateError.message?.includes('work_email')) {
+                console.error('[/api/onboarding/submit] Work email already exists');
+                return res.status(409).json({ 
+                  error: 'This email address is already registered. Please use a different email or contact HR for assistance.' 
+                });
+              } else {
+                console.error('[/api/onboarding/submit] Unique constraint violation:', updateError.message);
+                return res.status(409).json({ 
+                  error: 'A record with this information already exists. Please check your data or contact HR for assistance.' 
+                });
+              }
+            }
+            throw updateError; // Re-throw if not a unique constraint error
+          }
         }
         
         const employeeId = employee.id!;
@@ -4562,8 +4632,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: 'Onboarding submitted successfully',
           employeeId
         });
-      } catch (error) {
+      } catch (error: any) {
         console.error('[/api/onboarding/submit] Error submitting onboarding:', error);
+        
+        // Check if this is a unique constraint violation that wasn't caught earlier
+        if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('unique constraint')) {
+          if (error.message?.includes('npi_number')) {
+            console.error('[/api/onboarding/submit] NPI unique constraint violation');
+            return res.status(409).json({ 
+              error: 'This NPI number is already in use. Please provide a different NPI number or leave it blank to add it later.' 
+            });
+          } else if (error.message?.includes('work_email')) {
+            console.error('[/api/onboarding/submit] Email unique constraint violation');
+            return res.status(409).json({ 
+              error: 'This email address is already registered. Please use a different email or contact HR for assistance.' 
+            });
+          } else {
+            console.error('[/api/onboarding/submit] Unique constraint violation:', error.message);
+            return res.status(409).json({ 
+              error: 'A record with this information already exists. Please check your data or contact HR for assistance.' 
+            });
+          }
+        }
+        
         // Log more details for date-related errors
         if (error instanceof Error && error.message.includes('date')) {
           console.error('[/api/onboarding/submit] Date-related error details:', {
@@ -4571,6 +4662,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             stack: error.stack
           });
         }
+        
         res.status(500).json({ error: 'Failed to submit onboarding', details: error instanceof Error ? error.message : 'Unknown error' });
       }
     }

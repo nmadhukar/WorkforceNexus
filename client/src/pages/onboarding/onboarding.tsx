@@ -189,6 +189,13 @@ export default function OnboardingPage() {
         ...employeeData
       } = data;
       
+      // Remove NPI if it's empty or the test value
+      if (employeeData.npiNumber === '' || employeeData.npiNumber === '1234567890') {
+        delete employeeData.npiNumber;
+      }
+      
+      console.log('[Onboarding] Submitting data with NPI:', employeeData.npiNumber || 'Not provided (optional)');
+      
       // Submit onboarding data
       const response = await apiRequest("POST", "/api/onboarding/submit", {
         ...employeeData,
@@ -206,6 +213,13 @@ export default function OnboardingPage() {
 
       if (!response.ok) {
         const error = await response.json();
+        console.error('[Onboarding] Submission error:', error);
+        
+        // Throw error with user-friendly message
+        if (response.status === 409) {
+          // Unique constraint violation - use the server's message
+          throw new Error(error.error || 'This information already exists in our system.');
+        }
         throw new Error(error.error || 'Failed to submit onboarding');
       }
       
@@ -228,10 +242,14 @@ export default function OnboardingPage() {
       }, 2000);
     },
     onError: (error: Error) => {
+      console.error('[Onboarding] Mutation error:', error);
+      
+      // Display user-friendly error message
       toast({
         title: "Submission Failed",
-        description: error.message,
-        variant: "destructive"
+        description: error.message || "Failed to submit onboarding. Please try again or contact HR for assistance.",
+        variant: "destructive",
+        duration: 10000
       });
     }
   });

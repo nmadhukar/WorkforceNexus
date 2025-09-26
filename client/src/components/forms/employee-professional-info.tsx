@@ -57,12 +57,12 @@ export function EmployeeProfessionalInfo({ data, onChange }: EmployeeProfessiona
         </div>
         
         <div>
-          <Label htmlFor="npiNumber">NPI Number</Label>
+          <Label htmlFor="npiNumber">NPI Number (Optional)</Label>
           <Input
             id="npiNumber"
             value={data.npiNumber || ""}
             onChange={(e) => handleChange("npiNumber", e.target.value)}
-            placeholder="Enter NPI number"
+            placeholder="Optional - Can be added later"
             data-testid="input-npi-number"
           />
         </div>

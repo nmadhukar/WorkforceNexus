@@ -49,6 +49,7 @@ interface EmployeeInvitation {
   reminderCount: number;
   lastReminderAt: string | null;
   expiresAt: string;
+  employeeId: number | null;
 }
 
 /**
@@ -683,7 +684,7 @@ export default function EmployeesList() {
                                       <AlertDialogFooter>
                                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                                         <AlertDialogAction 
-                                          onClick={() => handleApproveEmployee(invitation.id)}
+                                          onClick={() => handleApproveEmployee(invitation.employeeId!)}
                                           className="bg-green-600 hover:bg-green-700"
                                         >
                                           Approve Employee
@@ -734,7 +735,7 @@ export default function EmployeesList() {
                                       <AlertDialogFooter>
                                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                                         <AlertDialogAction 
-                                          onClick={() => handleRejectEmployee(invitation.id)}
+                                          onClick={() => handleRejectEmployee(invitation.employeeId!)}
                                           className="bg-destructive hover:bg-destructive/90"
                                           disabled={!rejectionReason.trim()}
                                         >
