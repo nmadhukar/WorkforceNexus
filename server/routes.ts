@@ -6524,6 +6524,343 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
+  // =====================
+  // EMPLOYEE SELF-SERVICE APIs
+  // =====================
+
+  /**
+   * Middleware to ensure employees can only access their own data
+   */
+  const employeeSelfServiceAuth = async (req: any, res: Response, next: any) => {
+    try {
+      // Check if user is authenticated
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      // Check if user role is employee
+      if (req.user.role !== 'employee') {
+        return res.status(403).json({ message: "Access denied. Employee access only." });
+      }
+
+      // Get employee data for this user by matching work email with username
+      const employee = await storage.getEmployeeByWorkEmail(req.user.username);
+      if (!employee) {
+        return res.status(404).json({ message: "Employee profile not found" });
+      }
+
+      // Attach employee data to request for use in route handlers
+      req.employee = employee;
+      next();
+    } catch (error) {
+      console.error('Employee self-service auth error:', error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  };
+
+  /**
+   * GET /api/employee/profile
+   * Get own employee profile (employee only)
+   */
+  app.get('/api/employee/profile',
+    requireAuth,
+    employeeSelfServiceAuth,
+    async (req: any, res: Response) => {
+      try {
+        const employee = req.employee;
+        
+        // Decrypt sensitive fields before sending
+        const decryptedEmployee = decryptSensitiveFields(employee);
+        
+        res.json(decryptedEmployee);
+      } catch (error) {
+        console.error('Error fetching employee profile:', error);
+        res.status(500).json({ error: 'Failed to fetch employee profile' });
+      }
+    }
+  );
+
+  /**
+   * PUT /api/employee/profile
+   * Update own employee profile (employee only)
+   * Limited fields can be updated by employees
+   */
+  app.put('/api/employee/profile',
+    requireAuth,
+    employeeSelfServiceAuth,
+    auditMiddleware('employees'),
+    async (req: any, res: Response) => {
+      try {
+        const employeeId = req.employee.id;
+        const oldEmployee = req.employee;
+        
+        // Only allow employees to update certain fields
+        const allowedFields = [
+          'personalEmail', 'cellPhone', 
+          'homeAddress1', 'homeAddress2', 'homeCity', 'homeState', 'homeZip'
+        ];
+        
+        const updates: any = {};
+        for (const field of allowedFields) {
+          if (req.body[field] !== undefined) {
+            updates[field] = req.body[field];
+          }
+        }
+        
+        // Sanitize date fields in updates
+        const sanitizedUpdates = sanitizeDateFields(updates);
+        
+        // Update employee
+        const updatedEmployee = await storage.updateEmployee(employeeId, sanitizedUpdates);
+        await logAudit(req as AuditRequest, employeeId, oldEmployee, updatedEmployee);
+        
+        // Decrypt before sending
+        const decryptedEmployee = decryptSensitiveFields(updatedEmployee);
+        
+        res.json(decryptedEmployee);
+      } catch (error) {
+        console.error('Error updating employee profile:', error);
+        res.status(500).json({ error: 'Failed to update employee profile' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/employee/documents
+   * Get own documents (employee only)
+   */
+  app.get('/api/employee/documents',
+    requireAuth,
+    employeeSelfServiceAuth,
+    async (req: any, res: Response) => {
+      try {
+        const employeeId = req.employee.id;
+        const documents = await storage.getDocumentsByEmployee(employeeId);
+        
+        res.json(documents);
+      } catch (error) {
+        console.error('Error fetching employee documents:', error);
+        res.status(500).json({ error: 'Failed to fetch documents' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/employee/documents
+   * Upload own documents (employee only)
+   */
+  app.post('/api/employee/documents',
+    requireAuth,
+    employeeSelfServiceAuth,
+    upload.single('document'),
+    auditMiddleware('documents'),
+    async (req: any, res: Response) => {
+      try {
+        const employeeId = req.employee.id;
+        
+        if (!req.file) {
+          return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        const { documentType, documentNumber, expirationDate, description } = req.body;
+        
+        // Upload to S3 if configured
+        const s3Config = await storage.getS3Configuration();
+        let s3Key = null;
+        let storageType = 'local';
+        
+        if (s3Config?.isActive) {
+          s3Key = generateDocumentKey(
+            employeeId.toString(),
+            documentType || 'general',
+            req.file.originalname
+          );
+          
+          const uploaded = await s3Service.uploadFile(
+            req.file.path,
+            s3Key,
+            req.file.mimetype
+          );
+          
+          if (uploaded) {
+            storageType = 's3';
+            // Delete local file after successful S3 upload
+            fs.unlinkSync(req.file.path);
+          }
+        }
+        
+        // Create document record
+        const document = await storage.createDocument({
+          employeeId,
+          documentType: documentType || 'other',
+          documentNumber,
+          fileName: req.file.originalname,
+          fileType: req.file.mimetype,
+          fileSize: req.file.size,
+          filePath: storageType === 's3' ? s3Key : req.file.path,
+          storageType,
+          storageKey: s3Key,
+          uploadedBy: req.user?.username || 'employee',
+          expirationDate: expirationDate || null,
+          description: description || null
+        });
+        
+        await logAudit(req as AuditRequest, document.id, null, document);
+        
+        res.status(201).json(document);
+      } catch (error) {
+        console.error('Error uploading document:', error);
+        res.status(500).json({ error: 'Failed to upload document' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/employee/emergency-contacts
+   * Get own emergency contacts (employee only)
+   */
+  app.get('/api/employee/emergency-contacts',
+    requireAuth,
+    employeeSelfServiceAuth,
+    async (req: any, res: Response) => {
+      try {
+        const employeeId = req.employee.id;
+        const contacts = await storage.getEmergencyContactsByEmployee(employeeId);
+        
+        res.json(contacts);
+      } catch (error) {
+        console.error('Error fetching emergency contacts:', error);
+        res.status(500).json({ error: 'Failed to fetch emergency contacts' });
+      }
+    }
+  );
+
+  /**
+   * PUT /api/employee/emergency-contacts
+   * Update/create own emergency contacts (employee only)
+   */
+  app.put('/api/employee/emergency-contacts',
+    requireAuth,
+    employeeSelfServiceAuth,
+    auditMiddleware('emergency_contacts'),
+    async (req: any, res: Response) => {
+      try {
+        const employeeId = req.employee.id;
+        const contacts = req.body.contacts || [];
+        
+        // Delete existing contacts
+        const existingContacts = await storage.getEmergencyContactsByEmployee(employeeId);
+        for (const contact of existingContacts) {
+          await storage.deleteEmergencyContact(contact.id);
+        }
+        
+        // Create new contacts
+        const newContacts = [];
+        for (const contact of contacts) {
+          const newContact = await storage.createEmergencyContact({
+            ...contact,
+            employeeId
+          });
+          newContacts.push(newContact);
+        }
+        
+        res.json(newContacts);
+      } catch (error) {
+        console.error('Error updating emergency contacts:', error);
+        res.status(500).json({ error: 'Failed to update emergency contacts' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/employee/licenses
+   * Get own licenses and certifications (employee only)
+   */
+  app.get('/api/employee/licenses',
+    requireAuth,
+    employeeSelfServiceAuth,
+    async (req: any, res: Response) => {
+      try {
+        const employeeId = req.employee.id;
+        
+        const [stateLicenses, deaLicenses, boardCertifications] = await Promise.all([
+          storage.getStateLicensesByEmployee(employeeId),
+          storage.getDeaLicensesByEmployee(employeeId),
+          storage.getBoardCertificationsByEmployee(employeeId)
+        ]);
+        
+        res.json({
+          stateLicenses,
+          deaLicenses,
+          boardCertifications
+        });
+      } catch (error) {
+        console.error('Error fetching licenses:', error);
+        res.status(500).json({ error: 'Failed to fetch licenses' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/employee/trainings
+   * Get own training records (employee only)
+   */
+  app.get('/api/employee/trainings',
+    requireAuth,
+    employeeSelfServiceAuth,
+    async (req: any, res: Response) => {
+      try {
+        const employeeId = req.employee.id;
+        const trainings = await storage.getTrainingsByEmployee(employeeId);
+        
+        res.json(trainings);
+      } catch (error) {
+        console.error('Error fetching trainings:', error);
+        res.status(500).json({ error: 'Failed to fetch trainings' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/employee/education
+   * Get own education records (employee only)
+   */
+  app.get('/api/employee/education',
+    requireAuth,
+    employeeSelfServiceAuth,
+    async (req: any, res: Response) => {
+      try {
+        const employeeId = req.employee.id;
+        const educations = await storage.getEducationsByEmployee(employeeId);
+        
+        res.json(educations);
+      } catch (error) {
+        console.error('Error fetching education records:', error);
+        res.status(500).json({ error: 'Failed to fetch education records' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/employee/employment
+   * Get own employment history (employee only)
+   */
+  app.get('/api/employee/employment',
+    requireAuth,
+    employeeSelfServiceAuth,
+    async (req: any, res: Response) => {
+      try {
+        const employeeId = req.employee.id;
+        const employments = await storage.getEmploymentsByEmployee(employeeId);
+        
+        res.json(employments);
+      } catch (error) {
+        console.error('Error fetching employment history:', error);
+        res.status(500).json({ error: 'Failed to fetch employment history' });
+      }
+    }
+  );
+
   const httpServer = createServer(app);
   return httpServer;
 }

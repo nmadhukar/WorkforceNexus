@@ -104,6 +104,12 @@ export default function EmployeeProfile() {
     minute: '2-digit'
   });
 
+  // Fetch the employee's own data if they are an employee
+  const { data: ownEmployeeData } = useQuery({
+    queryKey: ["/api/employee/profile"],
+    enabled: user?.role === "employee"
+  });
+
   const { data: employee, isLoading, error } = useQuery<Employee>({
     queryKey: ["/api/employees", employeeId],
     enabled: !!employeeId
@@ -156,6 +162,37 @@ export default function EmployeeProfile() {
             <div className="inline-flex h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent motion-reduce:animate-[spin_1.5s_linear_infinite]" />
             <p className="text-muted-foreground animate-pulse">Loading employee profile...</p>
           </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // Check if employee is trying to view someone else's profile
+  const isOwnProfile = user?.role === "employee" && ownEmployeeData?.id === employeeId;
+  const canViewProfile = user?.role === "admin" || user?.role === "hr" || 
+                         (user?.role === "employee" && isOwnProfile);
+
+  if (!canViewProfile) {
+    return (
+      <MainLayout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <Card className="max-w-md w-full">
+            <CardContent className="pt-6 text-center">
+              <AlertTriangle className="h-12 w-12 text-destructive mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">Access Denied</h3>
+              <p className="text-muted-foreground mb-4">
+                {user?.role === "employee" 
+                  ? "You can only view your own profile. Please use 'My Portal' to access your information."
+                  : "You don't have permission to view this profile."}
+              </p>
+              <Button 
+                onClick={() => navigate(user?.role === "employee" ? "/employee-portal" : "/")} 
+                variant="outline"
+              >
+                {user?.role === "employee" ? "Go to My Portal" : "Return to Dashboard"}
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       </MainLayout>
     );

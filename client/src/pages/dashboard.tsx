@@ -267,19 +267,42 @@ export default function Dashboard() {
             <p className="text-muted-foreground">Welcome back, {user?.username}</p>
           </div>
 
+          {/* Employee Self-Service Portal Link - Prominent */}
+          <Card className="border-2 border-primary/50 bg-gradient-to-br from-primary/5 to-primary/10">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-foreground mb-2">My Self-Service Portal</h2>
+                  <p className="text-muted-foreground">
+                    Manage your personal information, documents, emergency contacts, licenses, and more in one central location
+                  </p>
+                </div>
+                <User className="w-12 h-12 text-primary" />
+              </div>
+              <div className="mt-6">
+                <Link href="/employee-portal">
+                  <Button size="lg" className="w-full" data-testid="link-my-portal">
+                    <User className="w-5 h-5 mr-2" />
+                    Access My Portal
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Employee Quick Stats */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">My Profile</p>
-                    <p className="text-lg font-semibold">View and update your information</p>
+                    <p className="text-sm font-medium text-muted-foreground">Quick Access</p>
+                    <p className="text-lg font-semibold">View your complete profile</p>
                   </div>
                   <User className="w-8 h-8 text-primary" />
                 </div>
                 <div className="mt-4">
-                  <Link href="/profile">
+                  <Link href="/employee-portal">
                     <Button variant="outline" size="sm" className="w-full">
                       View Profile
                     </Button>
@@ -298,7 +321,7 @@ export default function Dashboard() {
                   <FileText className="w-8 h-8 text-secondary" />
                 </div>
                 <div className="mt-4">
-                  <Link href="/documents">
+                  <Link href="/employee-portal?tab=documents">
                     <Button variant="outline" size="sm" className="w-full">
                       View Documents
                     </Button>
@@ -315,14 +338,14 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                <Link href="/profile">
+                <Link href="/employee-portal">
                   <Button className="w-full" data-testid="button-view-profile">
                     <User className="w-5 h-5 mr-3" />
-                    View Profile
+                    Access My Portal
                   </Button>
                 </Link>
                 
-                <Link href="/documents">
+                <Link href="/employee-portal?tab=documents">
                   <Button className="w-full" variant="outline" data-testid="button-upload-documents">
                     <Upload className="w-5 h-5 mr-3" />
                     Upload Documents

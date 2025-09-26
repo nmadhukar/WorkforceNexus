@@ -14,6 +14,7 @@ import Dashboard from "@/pages/dashboard";
 import EmployeesList from "@/pages/employees/employees-list";
 import EmployeeForm from "@/pages/employees/employee-form";
 import EmployeeProfile from "@/pages/employees/employee-profile";
+import EmployeePortal from "@/pages/employee-portal";
 import Documents from "@/pages/documents";
 import Reports from "@/pages/reports";
 import Audits from "@/pages/audits";
@@ -33,6 +34,7 @@ function Router() {
     <Switch>
       <ProtectedRoute path="/" component={Dashboard} />
       <ProtectedRoute path="/onboarding" component={OnboardingPage} />
+      <ProtectedRoute path="/employee-portal" component={EmployeePortal} />
       <ProtectedRoute path="/employees" component={EmployeesList} />
       <ProtectedRoute path="/employees/new" component={EmployeeForm} />
       <ProtectedRoute path="/employees/:id/edit" component={EmployeeForm} />

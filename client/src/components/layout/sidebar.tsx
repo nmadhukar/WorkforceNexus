@@ -35,8 +35,8 @@ const allNavigationItems = [
     roles: ["prospective_employee"] 
   },
   { 
-    path: "/profile", 
-    label: "My Profile", 
+    path: "/employee-portal", 
+    label: "My Portal", 
     icon: User, 
     roles: ["employee"] 
   },
@@ -156,7 +156,7 @@ export function Sidebar() {
             const hasSubmenu = 'submenu' in item;
             const isActive = location === item.path || 
               (item.path === "/employees" && location.startsWith("/employees")) ||
-              (item.path === "/profile" && location.startsWith("/profile")) ||
+              (item.path === "/employee-portal" && location.startsWith("/employee-portal")) ||
               (item.path === "/onboarding" && location.startsWith("/onboarding")) ||
               (hasSubmenu && item.submenu?.some(sub => location === sub.path));
             const isExpanded = expandedItem === item.path;
