@@ -105,16 +105,21 @@ export function Header() {
                       <p className="text-xs leading-none text-muted-foreground">
                         {user?.email || "No email set"}
                       </p>
+                      <p className="text-xs leading-none text-muted-foreground">
+                        Role: {user?.role || "viewer"}
+                      </p>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => setShowProfileDialog(true)}
-                    data-testid="dropdown-item-profile-settings"
-                  >
-                    <User className="mr-2 h-4 w-4" />
-                    <span>Profile Settings</span>
-                  </DropdownMenuItem>
+                  {(user?.role === "admin" || user?.role === "hr") && (
+                    <DropdownMenuItem
+                      onClick={() => setShowProfileDialog(true)}
+                      data-testid="dropdown-item-profile-settings"
+                    >
+                      <User className="mr-2 h-4 w-4" />
+                      <span>Profile Settings</span>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem
                     onClick={() => setShowPasswordDialog(true)}
                     data-testid="dropdown-item-change-password"

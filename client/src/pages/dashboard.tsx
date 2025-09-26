@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { MainLayout } from "@/components/layout/main-layout";
-import { Users, UserCheck, AlertTriangle, UserPlus, Download, Upload, TrendingUp, Award, Clock, FileText, AlertCircle, CheckCircle, Building2 } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { Users, UserCheck, AlertTriangle, UserPlus, Download, Upload, TrendingUp, Award, Clock, FileText, AlertCircle, CheckCircle, Building2, ClipboardList, User, Lock, Calendar } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
 
@@ -70,9 +71,15 @@ interface RecentActivity {
  */
 export default function Dashboard() {
   const [location, setLocation] = useLocation();
+  const { user } = useAuth();
+  const userRole = user?.role || "viewer";
+  
+  // Only fetch admin/hr data for authorized roles
+  const shouldFetchAdminData = userRole === "admin" || userRole === "hr";
   
   const { data: stats } = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard/stats"],
+    enabled: shouldFetchAdminData,
     queryFn: async () => {
       const res = await fetch("/api/dashboard/stats", { credentials: "include" });
       if (!res.ok) throw new Error('Failed to fetch dashboard stats');
@@ -82,6 +89,7 @@ export default function Dashboard() {
 
   const { data: activities = [] } = useQuery<RecentActivity[]>({
     queryKey: ["/api/dashboard/activities"],
+    enabled: shouldFetchAdminData,
     queryFn: async ({ queryKey }) => {
       const res = await fetch(`${queryKey[0]}?limit=5`, { credentials: "include" });
       if (!res.ok) throw new Error('Failed to fetch activities');
@@ -91,6 +99,7 @@ export default function Dashboard() {
 
   const { data: expiringItems = [] } = useQuery({
     queryKey: ["/api/dashboard/expirations"],
+    enabled: shouldFetchAdminData,
     queryFn: async ({ queryKey }) => {
       const res = await fetch(`${queryKey[0]}?days=30`, { credentials: "include" });
       if (!res.ok) throw new Error('Failed to fetch expiring items');
@@ -100,12 +109,14 @@ export default function Dashboard() {
 
   // Fetch compliance dashboard data
   const { data: complianceData } = useQuery<ComplianceMetrics>({
-    queryKey: ["/api/compliance/dashboard"]
+    queryKey: ["/api/compliance/dashboard"],
+    enabled: shouldFetchAdminData
   });
 
   // Fetch compliance alerts
   const { data: complianceAlerts = [] } = useQuery<ComplianceAlert[]>({
-    queryKey: ["/api/compliance/alerts"]
+    queryKey: ["/api/compliance/alerts"],
+    enabled: shouldFetchAdminData
   });
 
   // Calculate compliance score
@@ -113,6 +124,169 @@ export default function Dashboard() {
     ? Math.round((complianceData.activeLicenses / Math.max(complianceData.totalLicenses, 1)) * 100)
     : 0;
 
+  // Render different dashboards based on user role
+  if (userRole === "prospective_employee") {
+    // Limited onboarding dashboard for prospective employees
+    return (
+      <MainLayout>
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground" data-testid="text-dashboard-title">Welcome</h1>
+            <p className="text-muted-foreground">Complete your onboarding to get started</p>
+          </div>
+
+          {/* Onboarding Status Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ClipboardList className="w-5 h-5 text-primary" />
+                Onboarding Status
+              </CardTitle>
+              <CardDescription>Track your onboarding progress</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Action Required</AlertTitle>
+                  <AlertDescription>
+                    Please complete your onboarding forms to gain full access to the system.
+                  </AlertDescription>
+                </Alert>
+                
+                <div className="pt-4">
+                  <Link href="/onboarding">
+                    <Button className="w-full" data-testid="button-continue-onboarding">
+                      <ClipboardList className="w-4 h-4 mr-2" />
+                      Continue Onboarding
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Quick Actions for Prospective Employees */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <Link href="/onboarding">
+                  <Button className="w-full" variant="outline" data-testid="button-view-onboarding">
+                    <ClipboardList className="w-5 h-5 mr-3" />
+                    View Onboarding Tasks
+                  </Button>
+                </Link>
+                
+                <Button 
+                  className="w-full" 
+                  variant="outline" 
+                  onClick={() => {/* Password change dialog should be handled */}}
+                  data-testid="button-change-password"
+                >
+                  <Lock className="w-5 h-5 mr-3" />
+                  Change Password
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  if (userRole === "employee") {
+    // Self-service dashboard for regular employees
+    return (
+      <MainLayout>
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground" data-testid="text-dashboard-title">My Dashboard</h1>
+            <p className="text-muted-foreground">Welcome back, {user?.username}</p>
+          </div>
+
+          {/* Employee Quick Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">My Profile</p>
+                    <p className="text-lg font-semibold">View and update your information</p>
+                  </div>
+                  <User className="w-8 h-8 text-primary" />
+                </div>
+                <div className="mt-4">
+                  <Link href="/profile">
+                    <Button variant="outline" size="sm" className="w-full">
+                      View Profile
+                    </Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">My Documents</p>
+                    <p className="text-lg font-semibold">Access your documents</p>
+                  </div>
+                  <FileText className="w-8 h-8 text-secondary" />
+                </div>
+                <div className="mt-4">
+                  <Link href="/documents">
+                    <Button variant="outline" size="sm" className="w-full">
+                      View Documents
+                    </Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Employee Quick Actions */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <Link href="/profile">
+                  <Button className="w-full" variant="outline" data-testid="button-my-profile">
+                    <User className="w-5 h-5 mr-3" />
+                    My Profile
+                  </Button>
+                </Link>
+                
+                <Link href="/documents">
+                  <Button className="w-full" variant="outline" data-testid="button-my-documents">
+                    <FileText className="w-5 h-5 mr-3" />
+                    My Documents
+                  </Button>
+                </Link>
+                
+                <Button 
+                  className="w-full" 
+                  variant="outline" 
+                  onClick={() => {/* Password change dialog should be handled */}}
+                  data-testid="button-change-password"
+                >
+                  <Lock className="w-5 h-5 mr-3" />
+                  Change Password
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // Full dashboard for admin/hr users
   return (
     <MainLayout>
       <div className="space-y-6">

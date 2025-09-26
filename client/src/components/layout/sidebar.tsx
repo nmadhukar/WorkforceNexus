@@ -1,7 +1,8 @@
 import { useLocation } from "wouter";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/use-auth";
 import { 
   Home, 
   Users, 
@@ -14,34 +15,137 @@ import {
   ChevronRight,
   Building2,
   FileCheck,
-  LayoutDashboard
+  LayoutDashboard,
+  ClipboardList,
+  User
 } from "lucide-react";
 
-const navigationItems = [
-  { path: "/", label: "Dashboard", icon: Home },
-  { path: "/employees", label: "Employees", icon: Users },
-  { path: "/documents", label: "Documents", icon: FileText },
+// Define all navigation items with their required roles
+const allNavigationItems = [
+  { 
+    path: "/", 
+    label: "Dashboard", 
+    icon: Home, 
+    roles: ["admin", "hr", "employee", "prospective_employee", "viewer"] 
+  },
+  { 
+    path: "/onboarding", 
+    label: "Onboarding", 
+    icon: ClipboardList, 
+    roles: ["prospective_employee"] 
+  },
+  { 
+    path: "/profile", 
+    label: "My Profile", 
+    icon: User, 
+    roles: ["employee"] 
+  },
+  { 
+    path: "/employees", 
+    label: "Employees", 
+    icon: Users, 
+    roles: ["admin", "hr"] 
+  },
+  { 
+    path: "/documents", 
+    label: "Documents", 
+    icon: FileText, 
+    roles: ["admin", "hr", "employee"] 
+  },
   { 
     path: "/compliance", 
     label: "Compliance", 
     icon: Award,
+    roles: ["admin", "hr"],
     submenu: [
-      { path: "/compliance-dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { path: "/locations", label: "Locations", icon: Building2 },
-      { path: "/licenses", label: "Licenses", icon: Award },
-      { path: "/license-types", label: "License Types", icon: FileCheck },
-      { path: "/responsible-persons", label: "Responsible Persons", icon: Users },
-      { path: "/compliance-documents", label: "Documents", icon: FileText }
+      { 
+        path: "/compliance-dashboard", 
+        label: "Dashboard", 
+        icon: LayoutDashboard, 
+        roles: ["admin", "hr"] 
+      },
+      { 
+        path: "/locations", 
+        label: "Locations", 
+        icon: Building2, 
+        roles: ["admin", "hr"] 
+      },
+      { 
+        path: "/licenses", 
+        label: "Licenses", 
+        icon: Award, 
+        roles: ["admin", "hr"] 
+      },
+      { 
+        path: "/license-types", 
+        label: "License Types", 
+        icon: FileCheck, 
+        roles: ["admin", "hr"] 
+      },
+      { 
+        path: "/responsible-persons", 
+        label: "Responsible Persons", 
+        icon: Users, 
+        roles: ["admin", "hr"] 
+      },
+      { 
+        path: "/compliance-documents", 
+        label: "Documents", 
+        icon: FileText, 
+        roles: ["admin", "hr"] 
+      }
     ]
   },
-  { path: "/reports", label: "Reports", icon: BarChart2 },
-  { path: "/audits", label: "Audits", icon: Shield },
-  { path: "/settings", label: "Settings", icon: Settings }
+  { 
+    path: "/reports", 
+    label: "Reports", 
+    icon: BarChart2, 
+    roles: ["admin", "hr"] 
+  },
+  { 
+    path: "/audits", 
+    label: "Audits", 
+    icon: Shield, 
+    roles: ["admin", "hr"] 
+  },
+  { 
+    path: "/settings", 
+    label: "Settings", 
+    icon: Settings, 
+    roles: ["admin", "hr"] 
+  }
 ];
 
 export function Sidebar() {
   const [location, navigate] = useLocation();
   const [expandedItem, setExpandedItem] = useState<string | null>("compliance");
+  const { user } = useAuth();
+  
+  // Filter navigation items based on user role
+  const navigationItems = useMemo(() => {
+    const userRole = user?.role || "viewer";
+    
+    return allNavigationItems
+      .filter(item => item.roles.includes(userRole))
+      .map(item => {
+        // Filter submenu items if they exist
+        if (item.submenu) {
+          const filteredSubmenu = item.submenu.filter(subItem => 
+            subItem.roles.includes(userRole)
+          );
+          // Only include the parent item if it has submenu items after filtering
+          if (filteredSubmenu.length > 0) {
+            return {
+              ...item,
+              submenu: filteredSubmenu
+            };
+          }
+          return null;
+        }
+        return item;
+      })
+      .filter(item => item !== null);
+  }, [user?.role]);
 
   return (
     <nav className="w-64 bg-card border-r border-border h-screen sticky top-0 pt-0">
@@ -52,6 +156,8 @@ export function Sidebar() {
             const hasSubmenu = 'submenu' in item;
             const isActive = location === item.path || 
               (item.path === "/employees" && location.startsWith("/employees")) ||
+              (item.path === "/profile" && location.startsWith("/profile")) ||
+              (item.path === "/onboarding" && location.startsWith("/onboarding")) ||
               (hasSubmenu && item.submenu?.some(sub => location === sub.path));
             const isExpanded = expandedItem === item.path;
             
@@ -70,7 +176,7 @@ export function Sidebar() {
                       navigate(item.path);
                     }
                   }}
-                  data-testid={`nav-${item.label.toLowerCase()}`}
+                  data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                 >
                   <Icon className="w-5 h-5" />
                   <span className="flex-1 text-left">{item.label}</span>
