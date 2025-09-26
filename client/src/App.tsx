@@ -9,6 +9,7 @@ import NotFound from "@/pages/not-found";
 import AuthPage from "@/pages/auth-page";
 import ResetPasswordPage from "@/pages/reset-password";
 import OnboardingRegisterPage from "@/pages/onboarding/register";
+import OnboardingPage from "@/pages/onboarding/onboarding";
 import Dashboard from "@/pages/dashboard";
 import EmployeesList from "@/pages/employees/employees-list";
 import EmployeeForm from "@/pages/employees/employee-form";
@@ -31,6 +32,7 @@ function Router() {
   return (
     <Switch>
       <ProtectedRoute path="/" component={Dashboard} />
+      <ProtectedRoute path="/onboarding" component={OnboardingPage} />
       <ProtectedRoute path="/employees" component={EmployeesList} />
       <ProtectedRoute path="/employees/new" component={EmployeeForm} />
       <ProtectedRoute path="/employees/:id/edit" component={EmployeeForm} />

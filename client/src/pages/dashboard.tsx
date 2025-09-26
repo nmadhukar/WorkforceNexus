@@ -174,21 +174,81 @@ export default function Dashboard() {
             <CardContent>
               <div className="space-y-3">
                 <Link href="/onboarding">
-                  <Button className="w-full" variant="outline" data-testid="button-view-onboarding">
+                  <Button className="w-full" data-testid="button-continue-onboarding">
                     <ClipboardList className="w-5 h-5 mr-3" />
-                    View Onboarding Tasks
+                    Continue Onboarding
                   </Button>
                 </Link>
                 
                 <Button 
                   className="w-full" 
                   variant="outline" 
-                  onClick={() => {/* Password change dialog should be handled */}}
-                  data-testid="button-change-password"
+                  onClick={() => {
+                    const element = document.querySelector('[data-testid="card-required-documents"]');
+                    if (element) {
+                      element.scrollIntoView({ behavior: 'smooth' });
+                    }
+                  }}
+                  data-testid="button-view-required-documents"
                 >
-                  <Lock className="w-5 h-5 mr-3" />
-                  Change Password
+                  <FileText className="w-5 h-5 mr-3" />
+                  View Required Documents
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+          
+          {/* Required Documents Card */}
+          <Card data-testid="card-required-documents">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-primary" />
+                Required Documents
+              </CardTitle>
+              <CardDescription>Documents needed to complete your onboarding</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <Alert className="border-blue-200 bg-blue-50">
+                  <AlertCircle className="h-4 w-4 text-blue-600" />
+                  <AlertDescription className="text-blue-800">
+                    Please prepare the following documents for your onboarding:
+                  </AlertDescription>
+                </Alert>
+                <ul className="space-y-2 text-sm">
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-muted-foreground mt-0.5" />
+                    <span>Valid government-issued ID</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-muted-foreground mt-0.5" />
+                    <span>Social Security card</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-muted-foreground mt-0.5" />
+                    <span>Professional licenses and certifications</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-muted-foreground mt-0.5" />
+                    <span>Education transcripts or diplomas</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-muted-foreground mt-0.5" />
+                    <span>Employment verification letters</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-muted-foreground mt-0.5" />
+                    <span>Professional references</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-muted-foreground mt-0.5" />
+                    <span>Emergency contact information</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-muted-foreground mt-0.5" />
+                    <span>Tax forms (W-4, state tax forms)</span>
+                  </li>
+                </ul>
               </div>
             </CardContent>
           </Card>
@@ -256,27 +316,30 @@ export default function Dashboard() {
             <CardContent>
               <div className="space-y-3">
                 <Link href="/profile">
-                  <Button className="w-full" variant="outline" data-testid="button-my-profile">
+                  <Button className="w-full" data-testid="button-view-profile">
                     <User className="w-5 h-5 mr-3" />
-                    My Profile
+                    View Profile
                   </Button>
                 </Link>
                 
                 <Link href="/documents">
-                  <Button className="w-full" variant="outline" data-testid="button-my-documents">
-                    <FileText className="w-5 h-5 mr-3" />
-                    My Documents
+                  <Button className="w-full" variant="outline" data-testid="button-upload-documents">
+                    <Upload className="w-5 h-5 mr-3" />
+                    Upload Documents
                   </Button>
                 </Link>
                 
                 <Button 
                   className="w-full" 
                   variant="outline" 
-                  onClick={() => {/* Password change dialog should be handled */}}
-                  data-testid="button-change-password"
+                  onClick={() => {
+                    // Request Time Off functionality to be implemented
+                    alert('Time off request feature coming soon!');
+                  }}
+                  data-testid="button-request-time-off"
                 >
-                  <Lock className="w-5 h-5 mr-3" />
-                  Change Password
+                  <Calendar className="w-5 h-5 mr-3" />
+                  Request Time Off
                 </Button>
               </div>
             </CardContent>

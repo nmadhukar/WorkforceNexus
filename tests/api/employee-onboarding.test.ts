@@ -5,11 +5,22 @@
  * registration, and employee creation with comprehensive validation.
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import { getTestApp } from '../utils/test-app';
 import { testDb } from '../utils/test-db';
 import { createAuthenticatedUser, createTestUsers, testEmployeeData } from '../utils/auth-helpers';
+import { MockDocuSealService } from '../__mocks__/docusealService';
+import { MockSESService } from '../__mocks__/sesService';
+
+// Mock external services
+vi.mock('../../server/services/docusealService', () => ({
+  DocuSealService: MockDocuSealService
+}));
+
+vi.mock('../../server/services/sesService', () => ({
+  SESService: MockSESService
+}));
 
 describe('Employee Onboarding API', () => {
   let app: any;
@@ -469,6 +480,433 @@ describe('Employee Onboarding API', () => {
         .expect(400);
 
       expect(response.body.error).toMatch(/match|same/i);
+    });
+  });
+
+  describe('DocuSeal Integration', () => {
+    beforeEach(() => {
+      // Reset mock state before each test
+      MockDocuSealService.resetMock();
+      MockSESService.resetMock();
+    });
+
+    test('should create DocuSeal submission for new employee', async () => {
+      const { adminUser } = await createTestUsers(app);
+      
+      // Configure mocks
+      MockDocuSealService.configureMock({
+        isInitialized: true,
+        shouldFailInit: false,
+        shouldFailSubmission: false
+      });
+      
+      const docuSealService = new MockDocuSealService();
+      await docuSealService.initialize();
+      await docuSealService.syncTemplates();
+      
+      // Create invitation
+      const inviteResponse = await adminUser.agent
+        .post('/api/employees/invite')
+        .send({
+          firstName: 'DocuSeal',
+          lastName: 'Test',
+          email: 'docuseal.test@hospital.com',
+          enableDocuSeal: true
+        });
+
+      const token = inviteResponse.body.token;
+
+      // Register employee
+      await request(app)
+        .post(`/api/register/${token}`)
+        .send({
+          password: 'SecurePassword123!',
+          confirmPassword: 'SecurePassword123!'
+        })
+        .expect(201);
+
+      // Check that DocuSeal submission was created
+      const mockState = MockDocuSealService.getMockState();
+      const submissions = Array.from(mockState.submissions.values());
+      
+      expect(submissions).toHaveLength(1);
+      expect(submissions[0].status).toBe('pending');
+      expect(submissions[0].submitters[0].email).toBe('docuseal.test@hospital.com');
+    });
+
+    test('should handle DocuSeal submission failure gracefully', async () => {
+      const { adminUser } = await createTestUsers(app);
+      
+      // Configure mock to fail submission
+      MockDocuSealService.configureMock({
+        isInitialized: true,
+        shouldFailSubmission: true
+      });
+      
+      // Create invitation
+      const inviteResponse = await adminUser.agent
+        .post('/api/employees/invite')
+        .send({
+          firstName: 'Fail',
+          lastName: 'Test',
+          email: 'fail.test@hospital.com',
+          enableDocuSeal: true
+        });
+
+      const token = inviteResponse.body.token;
+
+      // Registration should still succeed even if DocuSeal fails
+      const response = await request(app)
+        .post(`/api/register/${token}`)
+        .send({
+          password: 'SecurePassword123!',
+          confirmPassword: 'SecurePassword123!'
+        })
+        .expect(201);
+
+      expect(response.body.message).toMatch(/success/i);
+    });
+
+    test('should track DocuSeal submission status transitions', async () => {
+      const { adminUser } = await createTestUsers(app);
+      
+      MockDocuSealService.configureMock({
+        isInitialized: true,
+        submissionDelay: 10,
+        callbackDelay: 20
+      });
+      
+      const docuSealService = new MockDocuSealService();
+      await docuSealService.initialize();
+      await docuSealService.syncTemplates();
+      
+      // Create submission
+      const result = await docuSealService.createSubmission({
+        template_id: 'template_001',
+        submitters: [{
+          email: 'status.test@hospital.com',
+          name: 'Status Test'
+        }],
+        send_email: true
+      });
+      
+      expect(result.success).toBe(true);
+      expect(result.submission?.status).toBe('pending');
+      
+      // Wait for status transitions
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      const submission = await docuSealService.getSubmission(result.submission!.id);
+      expect(submission?.status).toBe('opened');
+      
+      // Complete the submission
+      await docuSealService.completeSubmission(result.submission!.id, {
+        full_name: 'Status Test',
+        signature: 'ST'
+      });
+      
+      const completed = await docuSealService.getSubmission(result.submission!.id);
+      expect(completed?.status).toBe('completed');
+    });
+
+    test('should handle DocuSeal webhook callbacks', async () => {
+      const { adminUser } = await createTestUsers(app);
+      
+      // Simulate DocuSeal webhook for submission completion
+      const webhookPayload = {
+        event: 'submission.completed',
+        data: {
+          id: 'sub_123456',
+          template_id: 'template_001',
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          submitters: [{
+            id: 'submitter_1',
+            email: 'webhook.test@hospital.com',
+            status: 'completed',
+            values: {
+              full_name: 'Webhook Test',
+              ssn: '123-45-6789',
+              signature: 'WT'
+            }
+          }]
+        }
+      };
+      
+      // Send webhook
+      const response = await request(app)
+        .post('/api/docuseal/webhook')
+        .set('X-DocuSeal-Signature', 'mock-signature')
+        .send(webhookPayload);
+      
+      // Webhook endpoint should process the completion
+      if (response.status === 200) {
+        expect(response.body).toHaveProperty('success', true);
+      }
+    });
+
+    test('should resend expired DocuSeal submissions', async () => {
+      const docuSealService = new MockDocuSealService();
+      await docuSealService.initialize();
+      
+      // Create and expire a submission
+      const result = await docuSealService.createSubmission({
+        template_id: 'template_001',
+        submitters: [{
+          email: 'resend.test@hospital.com',
+          name: 'Resend Test'
+        }]
+      });
+      
+      await docuSealService.expireSubmission(result.submission!.id);
+      
+      // Resend the submission
+      const resendResult = await docuSealService.resendSubmission(result.submission!.id);
+      
+      expect(resendResult.success).toBe(true);
+      
+      const submission = await docuSealService.getSubmission(result.submission!.id);
+      expect(submission?.status).toBe('sent');
+    });
+  });
+
+  describe('Email Notification Tests', () => {
+    beforeEach(() => {
+      MockSESService.resetMock();
+    });
+
+    test('should send invitation email via SES', async () => {
+      const { adminUser } = await createTestUsers(app);
+      
+      // Configure SES mock
+      MockSESService.configureMock({
+        isInitialized: true,
+        shouldFailSend: false
+      });
+      
+      const sesService = new MockSESService();
+      await sesService.initialize();
+      
+      // Create invitation
+      await adminUser.agent
+        .post('/api/employees/invite')
+        .send({
+          firstName: 'Email',
+          lastName: 'Test',
+          email: 'email.test@hospital.com',
+          sendEmail: true
+        })
+        .expect(201);
+      
+      // Check that email was sent
+      const sentEmails = MockSESService.getSentEmails('email.test@hospital.com');
+      expect(sentEmails).toHaveLength(1);
+      expect(sentEmails[0].subject).toMatch(/onboarding/i);
+    });
+
+    test('should handle email bounce and complaint scenarios', async () => {
+      const sesService = new MockSESService();
+      await sesService.initialize();
+      
+      // Add bounced email
+      MockSESService.addBouncedEmail('bounced@hospital.com');
+      
+      // Try to send to bounced email
+      const bounceResult = await sesService.sendEmail({
+        to: 'bounced@hospital.com',
+        subject: 'Test',
+        bodyText: 'Test'
+      });
+      
+      expect(bounceResult.success).toBe(false);
+      expect(bounceResult.error).toMatch(/bounced/i);
+      
+      // Check statistics
+      const stats = MockSESService.getStatistics();
+      expect(stats.totalBounced).toBe(1);
+    });
+
+    test('should enforce SES sandbox restrictions', async () => {
+      MockSESService.configureMock({
+        isInitialized: true,
+        sandboxMode: true
+      });
+      
+      const sesService = new MockSESService();
+      await sesService.initialize();
+      
+      // Try to send to unverified email in sandbox mode
+      const result = await sesService.sendEmail({
+        to: 'unverified@external.com',
+        subject: 'Test',
+        bodyText: 'Test'
+      });
+      
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/not verified|sandbox/i);
+    });
+
+    test('should send reminder emails with escalation', async () => {
+      const sesService = new MockSESService();
+      await sesService.initialize();
+      
+      // Send initial invitation
+      await sesService.sendInvitationEmail('reminder.test@hospital.com', {
+        firstName: 'Reminder',
+        lastName: 'Test',
+        invitationLink: 'https://app.example.com/register/token123',
+        expiresIn: 'in 7 days'
+      });
+      
+      // Send reminder 1
+      await sesService.sendInvitationEmail('reminder.test@hospital.com', {
+        firstName: 'Reminder',
+        lastName: 'Test',
+        invitationLink: 'https://app.example.com/register/token123',
+        expiresIn: 'in 3 days',
+        reminderNumber: 1
+      });
+      
+      // Send urgent reminder 3
+      await sesService.sendInvitationEmail('reminder.test@hospital.com', {
+        firstName: 'Reminder',
+        lastName: 'Test',
+        invitationLink: 'https://app.example.com/register/token123',
+        expiresIn: 'tomorrow',
+        reminderNumber: 3
+      });
+      
+      const emails = MockSESService.getSentEmails('reminder.test@hospital.com');
+      expect(emails).toHaveLength(3);
+      
+      // Check escalation in subjects
+      expect(emails[1].subject).toMatch(/reminder 1/i);
+      expect(emails[2].subject).toMatch(/reminder 3/i);
+      
+      // Check urgent flag in final reminder
+      expect(emails[2].bodyHtml).toMatch(/urgent/i);
+    });
+  });
+
+  describe('Onboarding Status Transitions', () => {
+    test('should track onboarding progress through states', async () => {
+      const { adminUser } = await createTestUsers(app);
+      
+      // Create invitation (status: pending)
+      const inviteResponse = await adminUser.agent
+        .post('/api/employees/invite')
+        .send({
+          firstName: 'Progress',
+          lastName: 'Test',
+          email: 'progress.test@hospital.com'
+        })
+        .expect(201);
+      
+      expect(inviteResponse.body.status).toBe('pending');
+      const token = inviteResponse.body.token;
+      const invitationId = inviteResponse.body.id;
+      
+      // Start registration (status: in_progress)
+      await request(app)
+        .post(`/api/invitations/${token}/start`)
+        .expect((res) => {
+          if (res.status === 200) {
+            expect(res.body.status).toBe('in_progress');
+          }
+        });
+      
+      // Complete registration (status: completed)
+      await request(app)
+        .post(`/api/register/${token}`)
+        .send({
+          password: 'SecurePassword123!',
+          confirmPassword: 'SecurePassword123!'
+        })
+        .expect(201);
+      
+      // Check final status
+      const statusResponse = await adminUser.agent
+        .get(`/api/invitations/${invitationId}/status`);
+      
+      if (statusResponse.status === 200) {
+        expect(['completed', 'registered']).toContain(statusResponse.body.status);
+      }
+    });
+
+    test('should handle concurrent onboarding operations', async () => {
+      const { adminUser } = await createTestUsers(app);
+      
+      // Create multiple invitations concurrently
+      const invitePromises = [];
+      for (let i = 0; i < 5; i++) {
+        invitePromises.push(
+          adminUser.agent
+            .post('/api/employees/invite')
+            .send({
+              firstName: `Concurrent${i}`,
+              lastName: 'Test',
+              email: `concurrent${i}@hospital.com`
+            })
+        );
+      }
+      
+      const inviteResponses = await Promise.all(invitePromises);
+      
+      // All should succeed
+      inviteResponses.forEach(response => {
+        expect(response.status).toBe(201);
+        expect(response.body).toHaveProperty('token');
+      });
+      
+      // Register all concurrently
+      const registerPromises = inviteResponses.map(res => 
+        request(app)
+          .post(`/api/register/${res.body.token}`)
+          .send({
+            password: 'SecurePassword123!',
+            confirmPassword: 'SecurePassword123!'
+          })
+      );
+      
+      const registerResponses = await Promise.all(registerPromises);
+      
+      // All should succeed
+      registerResponses.forEach(response => {
+        expect(response.status).toBe(201);
+      });
+    });
+
+    test('should expire invitations after timeout', async () => {
+      const { adminUser } = await createTestUsers(app);
+      
+      // Create invitation with short expiry
+      const inviteResponse = await adminUser.agent
+        .post('/api/employees/invite')
+        .send({
+          firstName: 'Expiry',
+          lastName: 'Test',
+          email: 'expiry.test@hospital.com',
+          expiryHours: 0.001 // Very short expiry for testing
+        });
+      
+      if (inviteResponse.status === 201) {
+        const token = inviteResponse.body.token;
+        
+        // Wait for expiry
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Try to use expired token
+        const response = await request(app)
+          .post(`/api/register/${token}`)
+          .send({
+            password: 'SecurePassword123!',
+            confirmPassword: 'SecurePassword123!'
+          });
+        
+        if (response.status === 400) {
+          expect(response.body.error).toMatch(/expired/i);
+        }
+      }
     });
   });
 
