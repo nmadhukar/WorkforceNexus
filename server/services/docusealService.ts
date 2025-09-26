@@ -718,6 +718,134 @@ export class DocuSealService {
       return false;
     }
   }
+
+  /**
+   * Get signing URL for a specific signer
+   * Generates a fresh signing URL for the specified signer email
+   */
+  async getSigningUrl(submissionId: string, signerEmail: string): Promise<string | null> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!this.apiKey) {
+      throw new Error("DocuSeal API key not configured");
+    }
+
+    try {
+      // Get submission details from DocuSeal API
+      const submission = await this.getSubmission(submissionId);
+      
+      // Find the submitter by email
+      const submitter = submission.submitters.find(
+        s => s.email.toLowerCase() === signerEmail.toLowerCase()
+      );
+
+      if (!submitter) {
+        console.error(`Signer ${signerEmail} not found in submission ${submissionId}`);
+        return null;
+      }
+
+      // Generate signing URL based on submitter ID
+      // DocuSeal uses the pattern: https://docuseal.co/s/{submitter_id}
+      const signingUrl = `https://docuseal.co/s/${submitter.id}`;
+      
+      return signingUrl;
+    } catch (error) {
+      console.error(`Failed to get signing URL for submission ${submissionId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send reminder to signer(s) for a submission
+   */
+  async sendReminder(submissionId: string, signerEmail?: string): Promise<{ success: boolean; message: string }> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!this.apiKey) {
+      throw new Error("DocuSeal API key not configured");
+    }
+
+    try {
+      // Build the reminder endpoint URL
+      let reminderUrl = `${this.baseUrl}/submissions/${submissionId}/remind`;
+      
+      // Prepare request body based on whether a specific signer is targeted
+      let requestBody = {};
+      if (signerEmail) {
+        // Get submission to find submitter ID
+        const submission = await this.getSubmission(submissionId);
+        const submitter = submission.submitters.find(
+          s => s.email.toLowerCase() === signerEmail.toLowerCase()
+        );
+        
+        if (!submitter) {
+          return {
+            success: false,
+            message: `Signer ${signerEmail} not found in submission`
+          };
+        }
+
+        // DocuSeal API expects submitter_id for targeted reminders
+        requestBody = { submitter_id: submitter.id };
+      }
+
+      // Send reminder request to DocuSeal API
+      const response = await fetch(reminderUrl, {
+        method: 'POST',
+        headers: {
+          'X-Auth-Token': this.apiKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to send reminder: ${response.status} ${errorText}`);
+      }
+
+      // Update reminder tracking in database
+      const dbSubmissions = await db.select()
+        .from(formSubmissions)
+        .where(eq(formSubmissions.submissionId, submissionId))
+        .limit(1);
+
+      if (dbSubmissions.length > 0) {
+        const submission = dbSubmissions[0];
+        await db.update(formSubmissions)
+          .set({
+            remindersSent: (submission.remindersSent || 0) + 1,
+            lastReminderAt: new Date(),
+            nextReminderAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour from now
+            updatedAt: new Date()
+          })
+          .where(eq(formSubmissions.id, submission.id));
+      }
+
+      return {
+        success: true,
+        message: signerEmail 
+          ? `Reminder sent to ${signerEmail}` 
+          : 'Reminders sent to all pending signers'
+      };
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.error("Failed to send reminder:", {
+        message: err.message,
+        submissionId,
+        signerEmail,
+        error: err.stack || err.message
+      });
+      return {
+        success: false,
+        message: `Failed to send reminder: ${err.message}`
+      };
+    }
+  }
 }
 
 // Export singleton instance

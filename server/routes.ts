@@ -3795,58 +3795,109 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   /**
-   * GET /api/forms/submissions/:id/sign
-   * Get signing URL for employee
-   * Returns the appropriate signing URL for the employee to sign the document
+   * GET /api/forms/submissions/:id/sign (Updated)
+   * Get signing URL for a specific signer
+   * Query param: signer (email address)
+   * Auth: Employees can only get their own signing URL, HR/Admin can get any signer's URL
    */
   app.get('/api/forms/submissions/:id/sign',
     requireAuth,
     async (req: AuditRequest, res: Response) => {
       try {
         const submissionId = parseInt(req.params.id);
-        const submission = await storage.getFormSubmission(submissionId);
+        const signerEmail = req.query.signer as string;
         
+        const submission = await storage.getFormSubmission(submissionId);
         if (!submission) {
           return res.status(404).json({ error: 'Form submission not found' });
         }
         
-        // Verify the current user is the employee or has HR permissions
+        // Get employee details
         const employee = await storage.getEmployee(submission.employeeId);
         if (!employee) {
           return res.status(404).json({ error: 'Employee not found' });
         }
         
+        // Check permissions
         const isOwnProfile = employee.userId === req.user!.id;
         const hasManagementRole = req.user!.role === 'admin' || req.user!.role === 'hr';
         
-        if (!isOwnProfile && !hasManagementRole) {
-          return res.status(403).json({ error: 'Insufficient permissions to access signing URL' });
+        // If signer email is provided, validate access and generate fresh URL
+        if (signerEmail) {
+          // Employees can only get their own signing URL
+          if (!hasManagementRole && signerEmail.toLowerCase() !== employee.workEmail.toLowerCase()) {
+            return res.status(403).json({ error: 'Insufficient permissions to access signing URL for other signers' });
+          }
+          
+          // Check if DocuSeal is configured
+          const { docuSealService } = await import('./services/docusealService');
+          const serviceInitialized = await docuSealService.initialize();
+          
+          if (!serviceInitialized) {
+            return res.status(503).json({ error: 'DocuSeal service is not configured' });
+          }
+          
+          // Generate fresh signing URL for the specific signer
+          const signingUrl = await docuSealService.getSigningUrl(submission.submissionId, signerEmail);
+          
+          if (!signingUrl) {
+            return res.status(404).json({ error: `Signing URL not found for signer: ${signerEmail}` });
+          }
+          
+          // Log audit for signing URL access
+          await logAudit(req, 8, {
+            action: 'get_signing_url',
+            submissionId: submission.id,
+            employeeId: submission.employeeId,
+            signerEmail,
+            requestedBy: req.user!.username
+          });
+          
+          res.json({
+            signingUrl,
+            submissionId: submission.id,
+            status: submission.status,
+            employeeId: submission.employeeId,
+            signerEmail
+          });
+        } else {
+          // Legacy behavior - return employee's signing URL from stored data
+          if (!isOwnProfile && !hasManagementRole) {
+            return res.status(403).json({ error: 'Insufficient permissions to access signing URL' });
+          }
+          
+          // Check if form is already completed
+          if (submission.status === 'completed') {
+            return res.status(400).json({ error: 'Form has already been completed' });
+          }
+          
+          // Return the signing URL from submission data
+          const submissionData = submission.submissionData as any;
+          let signingUrl = submissionData?.signingUrl;
+          
+          if (submissionData?.signingUrls?.employee) {
+            signingUrl = submissionData.signingUrls.employee;
+          }
+          
+          if (!signingUrl) {
+            return res.status(400).json({ error: 'No signing URL available for this submission' });
+          }
+          
+          // Log audit for signing URL access
+          await logAudit(req, 8, {
+            action: 'get_signing_url_legacy',
+            submissionId: submission.id,
+            employeeId: submission.employeeId,
+            requestedBy: req.user!.username
+          });
+          
+          res.json({
+            signingUrl,
+            submissionId: submission.id,
+            status: submission.status,
+            employeeId: submission.employeeId
+          });
         }
-        
-        // Check if form is already completed
-        if (submission.status === 'completed') {
-          return res.status(400).json({ error: 'Form has already been completed' });
-        }
-        
-        // Return the signing URL
-        // If submissionData contains multiple signing URLs, return the employee one
-        const submissionData = submission.submissionData as any;
-        let signingUrl = submissionData?.signingUrl;
-        
-        if (submissionData?.signingUrls?.employee) {
-          signingUrl = submissionData.signingUrls.employee;
-        }
-        
-        if (!signingUrl) {
-          return res.status(400).json({ error: 'No signing URL available for this submission' });
-        }
-        
-        res.json({
-          signingUrl,
-          submissionId: submission.id,
-          status: submission.status,
-          employeeId: submission.employeeId
-        });
       } catch (error) {
         console.error('Error fetching signing URL:', error);
         res.status(500).json({ error: 'Failed to fetch signing URL' });
@@ -3905,6 +3956,240 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error('Error fetching HR signing URL:', error);
         res.status(500).json({ error: 'Failed to fetch HR signing URL' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/forms/signing-queue
+   * Get signing queue for an employee with full party/signer details
+   * Query params: employeeId (required), includeParties (optional boolean)
+   * Auth: HR/Admin can query any employeeId, employees only their own
+   */
+  app.get('/api/forms/signing-queue',
+    requireAuth,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.query.employeeId as string);
+        const includeParties = req.query.includeParties === 'true';
+        
+        if (!employeeId || isNaN(employeeId)) {
+          return res.status(400).json({ error: 'Employee ID is required' });
+        }
+        
+        // Check if user is the employee themselves or has HR/admin role
+        const employee = await storage.getEmployee(employeeId);
+        if (!employee) {
+          return res.status(404).json({ error: 'Employee not found' });
+        }
+        
+        const isOwnProfile = employee.userId === req.user!.id;
+        const hasManagementRole = req.user!.role === 'admin' || req.user!.role === 'hr';
+        
+        if (!isOwnProfile && !hasManagementRole) {
+          return res.status(403).json({ error: 'Insufficient permissions to view signing queue' });
+        }
+        
+        // Get form submissions for the employee
+        const submissions = await storage.getFormSubmissions(employeeId);
+        
+        // Filter to only pending or in-progress submissions
+        const pendingSubmissions = submissions.filter(s => 
+          s.status !== 'completed' && s.status !== 'cancelled' && s.status !== 'expired'
+        );
+        
+        // Build the signing queue with party details if requested
+        const signingQueue = await Promise.all(
+          pendingSubmissions.map(async (submission) => {
+            const template = await storage.getDocusealTemplate(submission.templateId);
+            
+            // Base response
+            const queueItem: any = {
+              submissionId: submission.submissionId,
+              templateName: template?.name || submission.templateName || 'Unknown Form',
+              createdAt: submission.createdAt,
+              status: submission.status as 'pending' | 'completed',
+            };
+            
+            // Add party details if requested
+            if (includeParties) {
+              try {
+                // Initialize DocuSeal service if not already done
+                const { docuSealService } = await import('./services/docusealService');
+                const serviceInitialized = await docuSealService.initialize();
+                
+                if (!serviceInitialized) {
+                  // If DocuSeal is not configured, use basic info from database
+                  const submissionData = submission.submissionData as any || {};
+                  queueItem.parties = [
+                    {
+                      name: submission.recipientName || `${employee.firstName} ${employee.lastName}`,
+                      email: submission.recipientEmail,
+                      role: 'employee',
+                      status: submission.status === 'completed' ? 'completed' : 
+                             submission.openedAt ? 'opened' : 
+                             submission.sentAt ? 'sent' : 'pending',
+                      sentAt: submission.sentAt?.toISOString(),
+                      openedAt: submission.openedAt?.toISOString(),
+                      completedAt: submission.completedAt?.toISOString()
+                    }
+                  ];
+                  
+                  // Add HR party if multi-party signing
+                  if (submissionData.requiresHrSignature) {
+                    queueItem.parties.push({
+                      name: 'HR Department',
+                      email: process.env.HR_EMAIL || 'hr@company.com',
+                      role: 'hr',
+                      status: submissionData.hrSigned ? 'completed' : 'pending',
+                      sentAt: submission.sentAt?.toISOString(),
+                      completedAt: submissionData.hrSigned ? submission.completedAt?.toISOString() : undefined
+                    });
+                  }
+                } else {
+                  // Fetch real-time details from DocuSeal API
+                  const apiSubmission = await docuSealService.getSubmission(submission.submissionId);
+                  
+                  queueItem.parties = apiSubmission.submitters.map((submitter: any) => ({
+                    name: submitter.name || submitter.email,
+                    email: submitter.email,
+                    role: submitter.role || 'signer',
+                    status: submitter.status as 'pending' | 'sent' | 'opened' | 'completed',
+                    sentAt: submitter.sent_at,
+                    openedAt: submitter.opened_at,
+                    completedAt: submitter.completed_at
+                  }));
+                }
+              } catch (error) {
+                console.error(`Failed to fetch party details for submission ${submission.id}:`, error);
+                // Fallback to basic info if API call fails
+                queueItem.parties = [
+                  {
+                    name: submission.recipientName || `${employee.firstName} ${employee.lastName}`,
+                    email: submission.recipientEmail,
+                    role: 'employee',
+                    status: submission.status as 'pending' | 'sent' | 'opened' | 'completed',
+                    sentAt: submission.sentAt?.toISOString(),
+                    openedAt: submission.openedAt?.toISOString(),
+                    completedAt: submission.completedAt?.toISOString()
+                  }
+                ];
+              }
+            }
+            
+            return queueItem;
+          })
+        );
+        
+        // Log access for audit trail
+        await logAudit(req, 8, { 
+          action: 'view_signing_queue',
+          employeeId, 
+          isOwnProfile, 
+          queueCount: signingQueue.length,
+          includeParties 
+        });
+        
+        res.json(signingQueue);
+      } catch (error) {
+        console.error('Error fetching signing queue:', error);
+        res.status(500).json({ error: 'Failed to fetch signing queue' });
+      }
+    }
+  );
+
+  /**
+   * Rate limiter for reminder endpoints
+   * Max 1 reminder per submission per hour
+   */
+  const reminderLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 1, // limit each submission to 1 reminder per hour
+    keyGenerator: (req: any) => {
+      // Use submission ID as the key for rate limiting
+      return `reminder_${req.params.id}`;
+    },
+    message: 'Too many reminder requests. Please wait at least 1 hour between reminders for the same submission.'
+  });
+
+  /**
+   * POST /api/forms/submissions/:id/remind
+   * Send reminder to signer(s) for a submission
+   * Body: { signerEmail?: string }
+   * Auth: HR/Admin only
+   */
+  app.post('/api/forms/submissions/:id/remind',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    reminderLimiter,
+    [
+      body('signerEmail').optional().isEmail().withMessage('Invalid email address')
+    ],
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const submissionId = parseInt(req.params.id);
+        const { signerEmail } = req.body;
+        
+        // Get submission from database
+        const submission = await storage.getFormSubmission(submissionId);
+        if (!submission) {
+          return res.status(404).json({ error: 'Form submission not found' });
+        }
+        
+        // Check if submission is already completed
+        if (submission.status === 'completed') {
+          return res.status(400).json({ error: 'Cannot send reminder for completed submission' });
+        }
+        
+        // Check if submission is expired
+        if (submission.status === 'expired') {
+          return res.status(400).json({ error: 'Cannot send reminder for expired submission' });
+        }
+        
+        // Check rate limiting at database level for specific signer
+        if (signerEmail && submission.lastReminderAt) {
+          const hoursSinceLastReminder = (Date.now() - new Date(submission.lastReminderAt).getTime()) / (1000 * 60 * 60);
+          if (hoursSinceLastReminder < 1) {
+            return res.status(429).json({ 
+              error: `Reminder was already sent ${Math.round(hoursSinceLastReminder * 60)} minutes ago. Please wait at least 1 hour between reminders.`
+            });
+          }
+        }
+        
+        // Check if DocuSeal is configured
+        const { docuSealService } = await import('./services/docusealService');
+        const serviceInitialized = await docuSealService.initialize();
+        
+        if (!serviceInitialized) {
+          return res.status(503).json({ error: 'DocuSeal service is not configured' });
+        }
+        
+        // Send reminder via DocuSeal
+        const result = await docuSealService.sendReminder(submission.submissionId, signerEmail);
+        
+        if (!result.success) {
+          return res.status(400).json({ error: result.message });
+        }
+        
+        // Log audit for reminder sent
+        await logAudit(req, 8, {
+          action: 'send_reminder',
+          submissionId: submission.id,
+          employeeId: submission.employeeId,
+          signerEmail: signerEmail || 'all',
+          sentBy: req.user!.username
+        });
+        
+        res.json({
+          success: true,
+          message: result.message,
+          submissionId: submission.id,
+          remindersSent: (submission.remindersSent || 0) + 1
+        });
+      } catch (error) {
+        console.error('Error sending reminder:', error);
+        res.status(500).json({ error: 'Failed to send reminder' });
       }
     }
   );
