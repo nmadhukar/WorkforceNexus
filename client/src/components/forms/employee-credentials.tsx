@@ -1,7 +1,54 @@
+import { useEffect } from "react";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+
+// Validation schema with at least one license number required
+const credentialsSchema = z.object({
+  medicalLicenseNumber: z.string().optional(),
+  substanceUseLicenseNumber: z.string().optional(),
+  mentalHealthLicenseNumber: z.string().optional(),
+  substanceUseQualification: z.string().optional(),
+  mentalHealthQualification: z.string().optional(),
+  medicaidNumber: z.string().optional(),
+  medicarePtanNumber: z.string().optional(),
+  caqhProviderId: z.string().optional(),
+  caqhIssueDate: z.string().optional(),
+  caqhLastAttestationDate: z.string().optional(),
+  caqhReattestationDueDate: z.string().optional(),
+  caqhEnabled: z.boolean().optional().default(false),
+}).refine(
+  (data) => {
+    // At least one license number must be provided
+    return !!(
+      data.medicalLicenseNumber ||
+      data.substanceUseLicenseNumber ||
+      data.mentalHealthLicenseNumber
+    );
+  },
+  {
+    message: "At least one license number is required",
+    path: ["medicalLicenseNumber"], // Show error on first license field
+  }
+).refine(
+  (data) => {
+    // If CAQH is enabled, CAQH Provider ID is required
+    if (data.caqhEnabled && !data.caqhProviderId) {
+      return false;
+    }
+    return true;
+  },
+  {
+    message: "CAQH Provider ID is required when CAQH is enabled",
+    path: ["caqhProviderId"],
+  }
+);
+
+type CredentialsFormData = z.infer<typeof credentialsSchema>;
 
 interface EmployeeCredentialsProps {
   data: any;
@@ -9,162 +56,287 @@ interface EmployeeCredentialsProps {
 }
 
 export function EmployeeCredentials({ data, onChange }: EmployeeCredentialsProps) {
-  const handleChange = (field: string, value: string | boolean) => {
-    onChange({ [field]: value });
-  };
+  const form = useForm<CredentialsFormData>({
+    resolver: zodResolver(credentialsSchema),
+    defaultValues: {
+      medicalLicenseNumber: data.medicalLicenseNumber || "",
+      substanceUseLicenseNumber: data.substanceUseLicenseNumber || "",
+      mentalHealthLicenseNumber: data.mentalHealthLicenseNumber || "",
+      substanceUseQualification: data.substanceUseQualification || "",
+      mentalHealthQualification: data.mentalHealthQualification || "",
+      medicaidNumber: data.medicaidNumber || "",
+      medicarePtanNumber: data.medicarePtanNumber || "",
+      caqhProviderId: data.caqhProviderId || "",
+      caqhIssueDate: data.caqhIssueDate || "",
+      caqhLastAttestationDate: data.caqhLastAttestationDate || "",
+      caqhReattestationDueDate: data.caqhReattestationDueDate || "",
+      caqhEnabled: data.caqhEnabled || false,
+    },
+  });
+
+  // Watch form values and update parent on valid changes
+  useEffect(() => {
+    const subscription = form.watch((value) => {
+      // Update parent with current form values to maintain backward compatibility
+      onChange(value);
+    });
+    return () => subscription.unsubscribe();
+  }, [form, onChange]);
+
+  // Re-validate when CAQH enabled changes
+  const caqhEnabled = form.watch("caqhEnabled");
+  useEffect(() => {
+    form.trigger(["caqhProviderId"]);
+  }, [caqhEnabled, form]);
 
   return (
-    <div className="space-y-6">
-      {/* Medical Licenses */}
-      <div className="space-y-4">
-        <h4 className="text-md font-semibold text-foreground">Medical Licenses</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <Label htmlFor="medicalLicenseNumber">Medical License Number</Label>
-            <Input
-              id="medicalLicenseNumber"
-              value={data.medicalLicenseNumber || ""}
-              onChange={(e) => handleChange("medicalLicenseNumber", e.target.value)}
-              placeholder="Enter medical license number"
-              data-testid="input-medical-license-number"
-            />
-          </div>
-          
-          <div>
-            <Label htmlFor="substanceUseLicenseNumber">Substance Use License Number</Label>
-            <Input
-              id="substanceUseLicenseNumber"
-              value={data.substanceUseLicenseNumber || ""}
-              onChange={(e) => handleChange("substanceUseLicenseNumber", e.target.value)}
-              placeholder="Enter substance use license number"
-              data-testid="input-substance-use-license-number"
-            />
-          </div>
-          
-          <div>
-            <Label htmlFor="mentalHealthLicenseNumber">Mental Health License Number</Label>
-            <Input
-              id="mentalHealthLicenseNumber"
-              value={data.mentalHealthLicenseNumber || ""}
-              onChange={(e) => handleChange("mentalHealthLicenseNumber", e.target.value)}
-              placeholder="Enter mental health license number"
-              data-testid="input-mental-health-license-number"
-            />
-          </div>
-        </div>
-        
+    <Form {...form}>
+      <div className="space-y-6">
+        {/* Medical Licenses */}
         <div className="space-y-4">
-          <div>
-            <Label htmlFor="substanceUseQualification">Substance Use Qualification</Label>
-            <Textarea
-              id="substanceUseQualification"
-              value={data.substanceUseQualification || ""}
-              onChange={(e) => handleChange("substanceUseQualification", e.target.value)}
-              placeholder="Enter substance use qualifications"
-              data-testid="textarea-substance-use-qualification"
+          <h4 className="text-md font-semibold text-foreground">
+            Medical Licenses <span className="text-red-500">*</span>
+            <span className="text-sm font-normal text-muted-foreground ml-2">
+              (At least one license number is required)
+            </span>
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <FormField
+              control={form.control}
+              name="medicalLicenseNumber"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Medical License Number</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder="Enter medical license number"
+                      data-testid="input-medical-license-number"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="substanceUseLicenseNumber"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Substance Use License Number</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder="Enter substance use license number"
+                      data-testid="input-substance-use-license-number"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="mentalHealthLicenseNumber"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Mental Health License Number</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder="Enter mental health license number"
+                      data-testid="input-mental-health-license-number"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
           </div>
           
-          <div>
-            <Label htmlFor="mentalHealthQualification">Mental Health Qualification</Label>
-            <Textarea
-              id="mentalHealthQualification"
-              value={data.mentalHealthQualification || ""}
-              onChange={(e) => handleChange("mentalHealthQualification", e.target.value)}
-              placeholder="Enter mental health qualifications"
-              data-testid="textarea-mental-health-qualification"
+          <div className="space-y-4">
+            <FormField
+              control={form.control}
+              name="substanceUseQualification"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Substance Use Qualification</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      placeholder="Enter substance use qualifications"
+                      data-testid="textarea-substance-use-qualification"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="mentalHealthQualification"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Mental Health Qualification</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      placeholder="Enter mental health qualifications"
+                      data-testid="textarea-mental-health-qualification"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
           </div>
         </div>
-      </div>
 
-      {/* Provider Numbers */}
-      <div className="space-y-4">
-        <h4 className="text-md font-semibold text-foreground">Provider Numbers</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <Label htmlFor="medicaidNumber">Medicaid Number</Label>
-            <Input
-              id="medicaidNumber"
-              value={data.medicaidNumber || ""}
-              onChange={(e) => handleChange("medicaidNumber", e.target.value)}
-              placeholder="Enter Medicaid number"
-              data-testid="input-medicaid-number"
+        {/* Provider Numbers */}
+        <div className="space-y-4">
+          <h4 className="text-md font-semibold text-foreground">Provider Numbers</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <FormField
+              control={form.control}
+              name="medicaidNumber"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Medicaid Number</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder="Enter Medicaid number"
+                      data-testid="input-medicaid-number"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-          
-          <div>
-            <Label htmlFor="medicarePtanNumber">Medicare PTAN Number</Label>
-            <Input
-              id="medicarePtanNumber"
-              value={data.medicarePtanNumber || ""}
-              onChange={(e) => handleChange("medicarePtanNumber", e.target.value)}
-              placeholder="Enter Medicare PTAN number"
-              data-testid="input-medicare-ptan-number"
+            
+            <FormField
+              control={form.control}
+              name="medicarePtanNumber"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Medicare PTAN Number</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder="Enter Medicare PTAN number"
+                      data-testid="input-medicare-ptan-number"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
           </div>
         </div>
-      </div>
 
-      {/* CAQH Information */}
-      <div className="space-y-4">
-        <h4 className="text-md font-semibold text-foreground">CAQH Information</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <Label htmlFor="caqhProviderId">CAQH Provider ID</Label>
-            <Input
-              id="caqhProviderId"
-              value={data.caqhProviderId || ""}
-              onChange={(e) => handleChange("caqhProviderId", e.target.value)}
-              placeholder="Enter CAQH Provider ID"
-              data-testid="input-caqh-provider-id"
+        {/* CAQH Information */}
+        <div className="space-y-4">
+          <h4 className="text-md font-semibold text-foreground">CAQH Information</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <FormField
+              control={form.control}
+              name="caqhProviderId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    CAQH Provider ID
+                    {form.watch("caqhEnabled") && <span className="text-red-500"> *</span>}
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder="Enter CAQH Provider ID"
+                      data-testid="input-caqh-provider-id"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="caqhIssueDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>CAQH Issue Date</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="date"
+                      data-testid="input-caqh-issue-date"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="caqhLastAttestationDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Last Attestation Date</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="date"
+                      data-testid="input-caqh-last-attestation-date"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="caqhReattestationDueDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Re-attestation Due Date</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="date"
+                      data-testid="input-caqh-reattestation-due-date"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
           </div>
           
-          <div>
-            <Label htmlFor="caqhIssueDate">CAQH Issue Date</Label>
-            <Input
-              id="caqhIssueDate"
-              type="date"
-              value={data.caqhIssueDate || ""}
-              onChange={(e) => handleChange("caqhIssueDate", e.target.value)}
-              data-testid="input-caqh-issue-date"
-            />
-          </div>
-          
-          <div>
-            <Label htmlFor="caqhLastAttestationDate">Last Attestation Date</Label>
-            <Input
-              id="caqhLastAttestationDate"
-              type="date"
-              value={data.caqhLastAttestationDate || ""}
-              onChange={(e) => handleChange("caqhLastAttestationDate", e.target.value)}
-              data-testid="input-caqh-last-attestation-date"
-            />
-          </div>
-          
-          <div>
-            <Label htmlFor="caqhReattestationDueDate">Re-attestation Due Date</Label>
-            <Input
-              id="caqhReattestationDueDate"
-              type="date"
-              value={data.caqhReattestationDueDate || ""}
-              onChange={(e) => handleChange("caqhReattestationDueDate", e.target.value)}
-              data-testid="input-caqh-reattestation-due-date"
-            />
-          </div>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          <Checkbox
-            id="caqhEnabled"
-            checked={data.caqhEnabled || false}
-            onCheckedChange={(checked) => handleChange("caqhEnabled", checked)}
-            data-testid="checkbox-caqh-enabled"
+          <FormField
+            control={form.control}
+            name="caqhEnabled"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                <FormControl>
+                  <Checkbox
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    data-testid="checkbox-caqh-enabled"
+                  />
+                </FormControl>
+                <FormLabel className="font-normal">
+                  CAQH Enabled
+                </FormLabel>
+              </FormItem>
+            )}
           />
-          <Label htmlFor="caqhEnabled">CAQH Enabled</Label>
         </div>
       </div>
-    </div>
+    </Form>
   );
 }
