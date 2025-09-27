@@ -413,6 +413,8 @@ export default function OnboardingPage() {
         <EmployeePersonalInfo
           data={formData}
           onChange={updateFormData}
+          registerValidation={(fn) => registerValidation(1, fn)}
+          onValidationChange={handleValidationChange}
           data-testid="step-personal-info"
         />
       )
@@ -423,6 +425,8 @@ export default function OnboardingPage() {
         <EmployeeProfessionalInfo
           data={formData}
           onChange={updateFormData}
+          registerValidation={(fn) => registerValidation(2, fn)}
+          onValidationChange={handleValidationChange}
           data-testid="step-professional-info"
         />
       )
@@ -433,6 +437,8 @@ export default function OnboardingPage() {
         <EmployeeCredentials
           data={formData}
           onChange={updateFormData}
+          registerValidation={(fn) => registerValidation(3, fn)}
+          onValidationChange={handleValidationChange}
           data-testid="step-credentials"
         />
       )
@@ -443,6 +449,8 @@ export default function OnboardingPage() {
         <EmployeeAdditionalInfo
           data={formData}
           onChange={updateFormData}
+          registerValidation={(fn) => registerValidation(4, fn)}
+          onValidationChange={handleValidationChange}
           data-testid="step-additional-info"
         />
       )
