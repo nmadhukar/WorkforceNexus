@@ -1420,20 +1420,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(404).json({ error: 'Employee not found' });
         }
         
+        let userId = employee.userId;
+        
         // Check if employee has a user account
-        if (!employee.userId) {
-          return res.status(400).json({ error: 'Employee does not have an associated user account' });
-        }
-        
-        // Get the user account
-        const user = await storage.getUser(employee.userId);
-        if (!user) {
-          return res.status(400).json({ error: 'User account not found' });
-        }
-        
-        // Check if user is a prospective employee
-        if (user.role !== 'prospective_employee') {
-          return res.status(400).json({ error: 'User is not a prospective employee' });
+        if (!userId) {
+          console.log(`Creating user account for employee ${id} during approval`);
+          
+          // Generate username from email or create a default one
+          let username = '';
+          if (employee.workEmail) {
+            username = employee.workEmail.split('@')[0];
+          } else if (employee.personalEmail) {
+            username = employee.personalEmail.split('@')[0];
+          } else {
+            // Generate username from name or employee ID
+            if (employee.firstName && employee.lastName) {
+              username = `${employee.firstName.toLowerCase()}.${employee.lastName.toLowerCase()}`;
+            } else {
+              username = `employee_${id}`;
+            }
+          }
+          
+          // Check if username already exists and make it unique if needed
+          let finalUsername = username;
+          let counter = 1;
+          while (await storage.getUserByUsername(finalUsername)) {
+            finalUsername = `${username}${counter}`;
+            counter++;
+          }
+          
+          // Generate temporary password
+          const tempPassword = `Temp${crypto.randomBytes(4).toString('hex')}!`;
+          const hashedPassword = await hashPassword(tempPassword);
+          
+          // Create user account with 'employee' role directly
+          const newUser = await storage.createUser({
+            username: finalUsername,
+            passwordHash: hashedPassword,
+            role: 'employee', // Set directly to 'employee' since they're being approved
+            status: 'active',
+            email: employee.workEmail || employee.personalEmail || null,
+            requirePasswordChange: true // Force password change on first login
+          });
+          
+          userId = newUser.id;
+          
+          // Update employee with the new userId
+          await storage.updateEmployee(id, { userId });
+          
+          console.log(`Created user account for employee ${id}: username=${finalUsername}, userId=${userId}`);
+        } else {
+          // Employee has a user account, verify it exists
+          const user = await storage.getUser(userId);
+          if (!user) {
+            return res.status(400).json({ error: 'User account not found' });
+          }
+          
+          // If user exists and is a prospective_employee, update their role
+          if (user.role === 'prospective_employee') {
+            await storage.updateUser(userId, {
+              role: 'employee'
+            });
+          }
+          // If user already has 'employee' role or higher, just proceed with approval
         }
         
         // Update employee application status
@@ -1442,12 +1491,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           approvedAt: new Date(),
           approvedBy: req.user?.id || null,
           status: 'active',
-          onboardingStatus: 'approved'
-        });
-        
-        // Update user role to employee
-        await storage.updateUser(employee.userId, {
-          role: 'employee'
+          onboardingStatus: 'approved',
+          userId: userId // Ensure userId is set
         });
         
         await logAudit(req, id, employee, updatedEmployee);
