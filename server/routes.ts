@@ -6920,6 +6920,223 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   // =====================
+  // REQUIRED DOCUMENT TYPES APIs
+  // =====================
+  
+  // GET /api/admin/required-documents - Get all document types (admin only)
+  app.get('/api/admin/required-documents',
+    requireAuth,
+    requireRole(['admin']),
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const documentTypes = await storage.getRequiredDocumentTypes();
+        res.json(documentTypes);
+      } catch (error) {
+        console.error('Error fetching required document types:', error);
+        res.status(500).json({ error: 'Failed to fetch required document types' });
+      }
+    }
+  );
+  
+  // POST /api/admin/required-documents - Create new document type (admin only)
+  app.post('/api/admin/required-documents',
+    requireAuth,
+    requireRole(['admin']),
+    body('name').notEmpty().isLength({ max: 100 }).withMessage('Name is required and must be less than 100 characters'),
+    body('category').isIn(['tax', 'compliance', 'payroll', 'identification', 'other']).withMessage('Invalid category'),
+    body('isRequired').optional().isBoolean().withMessage('isRequired must be a boolean'),
+    body('sortOrder').optional().isInt({ min: 0 }).withMessage('sortOrder must be a positive integer'),
+    handleValidationErrors,
+    auditMiddleware('required_document_types'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const documentTypeData = sanitizeDateFields(req.body);
+        const documentType = await storage.createRequiredDocumentType(documentTypeData);
+        await logAudit(req, documentType.id, null, documentType);
+        res.status(201).json(documentType);
+      } catch (error) {
+        console.error('Error creating required document type:', error);
+        res.status(500).json({ error: 'Failed to create required document type' });
+      }
+    }
+  );
+  
+  // PUT /api/admin/required-documents/:id - Update document type (admin only)
+  app.put('/api/admin/required-documents/:id',
+    requireAuth,
+    requireRole(['admin']),
+    validateId(),
+    body('name').optional().isLength({ max: 100 }).withMessage('Name must be less than 100 characters'),
+    body('category').optional().isIn(['tax', 'compliance', 'payroll', 'identification', 'other']).withMessage('Invalid category'),
+    body('isRequired').optional().isBoolean().withMessage('isRequired must be a boolean'),
+    body('sortOrder').optional().isInt({ min: 0 }).withMessage('sortOrder must be a positive integer'),
+    handleValidationErrors,
+    auditMiddleware('required_document_types'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const id = parseInt(req.params.id);
+        const documentTypeData = sanitizeDateFields(req.body);
+        const oldDocumentType = await storage.getRequiredDocumentTypes().then(types => types.find(t => t.id === id));
+        const documentType = await storage.updateRequiredDocumentType(id, documentTypeData);
+        await logAudit(req, id, oldDocumentType, documentType);
+        res.json(documentType);
+      } catch (error) {
+        console.error('Error updating required document type:', error);
+        res.status(500).json({ error: 'Failed to update required document type' });
+      }
+    }
+  );
+  
+  // DELETE /api/admin/required-documents/:id - Delete document type (admin only)
+  app.delete('/api/admin/required-documents/:id',
+    requireAuth,
+    requireRole(['admin']),
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('required_document_types'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const id = parseInt(req.params.id);
+        const oldDocumentType = await storage.getRequiredDocumentTypes().then(types => types.find(t => t.id === id));
+        await storage.deleteRequiredDocumentType(id);
+        await logAudit(req, id, oldDocumentType, null);
+        res.status(204).send();
+      } catch (error) {
+        console.error('Error deleting required document type:', error);
+        res.status(500).json({ error: 'Failed to delete required document type' });
+      }
+    }
+  );
+  
+  // GET /api/onboarding/required-documents - Get required documents for onboarding (public for onboarding users)
+  app.get('/api/onboarding/required-documents',
+    // No requireAuth here - available for onboarding users
+    async (req: Request, res: Response) => {
+      try {
+        const documentTypes = await storage.getRequiredDocumentTypesForOnboarding();
+        res.json(documentTypes);
+      } catch (error) {
+        console.error('Error fetching onboarding document types:', error);
+        res.status(500).json({ error: 'Failed to fetch onboarding document types' });
+      }
+    }
+  );
+  
+  // =====================
+  // EMPLOYEE DOCUMENT UPLOADS APIs
+  // =====================
+  
+  // GET /api/employees/:employeeId/document-uploads - Get all document uploads for an employee
+  app.get('/api/employees/:employeeId/document-uploads',
+    requireAuth,
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.employeeId);
+        const uploads = await storage.getEmployeeDocumentUploads(employeeId);
+        res.json(uploads);
+      } catch (error) {
+        console.error('Error fetching employee document uploads:', error);
+        res.status(500).json({ error: 'Failed to fetch employee document uploads' });
+      }
+    }
+  );
+  
+  // GET /api/employees/:employeeId/document-uploads/type/:typeId - Get uploads by type
+  app.get('/api/employees/:employeeId/document-uploads/type/:typeId',
+    requireAuth,
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.employeeId);
+        const typeId = parseInt(req.params.typeId);
+        const uploads = await storage.getEmployeeDocumentUploadsByType(employeeId, typeId);
+        res.json(uploads);
+      } catch (error) {
+        console.error('Error fetching employee document uploads by type:', error);
+        res.status(500).json({ error: 'Failed to fetch employee document uploads by type' });
+      }
+    }
+  );
+  
+  // POST /api/employees/:employeeId/document-uploads - Create new upload record
+  app.post('/api/employees/:employeeId/document-uploads',
+    requireAuth,
+    validateId(),
+    body('documentTypeId').optional().isInt().withMessage('documentTypeId must be an integer'),
+    body('fileName').notEmpty().isLength({ max: 255 }).withMessage('fileName is required and must be less than 255 characters'),
+    body('filePath').notEmpty().isLength({ max: 500 }).withMessage('filePath is required and must be less than 500 characters'),
+    body('fileSize').isInt({ min: 1 }).withMessage('fileSize must be a positive integer'),
+    body('mimeType').notEmpty().isLength({ max: 100 }).withMessage('mimeType is required and must be less than 100 characters'),
+    body('status').optional().isIn(['pending', 'approved', 'rejected']).withMessage('Invalid status'),
+    handleValidationErrors,
+    auditMiddleware('employee_document_uploads'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.employeeId);
+        const uploadData = {
+          ...req.body,
+          employeeId
+        };
+        const upload = await storage.createEmployeeDocumentUpload(uploadData);
+        await logAudit(req, upload.id, null, upload);
+        res.status(201).json(upload);
+      } catch (error) {
+        console.error('Error creating employee document upload:', error);
+        res.status(500).json({ error: 'Failed to create employee document upload' });
+      }
+    }
+  );
+  
+  // PUT /api/employee-document-uploads/:id - Update upload record
+  app.put('/api/employee-document-uploads/:id',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateId(),
+    body('status').optional().isIn(['pending', 'approved', 'rejected']).withMessage('Invalid status'),
+    body('notes').optional().isString().withMessage('notes must be a string'),
+    handleValidationErrors,
+    auditMiddleware('employee_document_uploads'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const id = parseInt(req.params.id);
+        const oldUpload = await storage.getEmployeeDocumentUploads(0).then(uploads => uploads.find(u => u.id === id));
+        const upload = await storage.updateEmployeeDocumentUpload(id, req.body);
+        await logAudit(req, id, oldUpload, upload);
+        res.json(upload);
+      } catch (error) {
+        console.error('Error updating employee document upload:', error);
+        res.status(500).json({ error: 'Failed to update employee document upload' });
+      }
+    }
+  );
+  
+  // DELETE /api/employee-document-uploads/:id - Delete upload record
+  app.delete('/api/employee-document-uploads/:id',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('employee_document_uploads'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const id = parseInt(req.params.id);
+        const oldUpload = await storage.getEmployeeDocumentUploads(0).then(uploads => uploads.find(u => u.id === id));
+        await storage.deleteEmployeeDocumentUpload(id);
+        await logAudit(req, id, oldUpload, null);
+        res.status(204).send();
+      } catch (error) {
+        console.error('Error deleting employee document upload:', error);
+        res.status(500).json({ error: 'Failed to delete employee document upload' });
+      }
+    }
+  );
+
+  // =====================
   // EMPLOYEE SELF-SERVICE APIs
   // =====================
 

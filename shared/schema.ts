@@ -1362,6 +1362,52 @@ export type InsertDocusealTemplate = z.infer<typeof insertDocusealTemplateSchema
 export type FormSubmission = typeof formSubmissions.$inferSelect;
 export type InsertFormSubmission = z.infer<typeof insertFormSubmissionSchema>;
 
+/**
+ * REQUIRED DOCUMENT TYPES TABLE
+ * 
+ * Defines the types of documents required for employee onboarding and compliance.
+ * Supports categorization and ordering of document requirements.
+ * Used to ensure all necessary documentation is collected during onboarding.
+ */
+export const requiredDocumentTypes = pgTable("required_document_types", {
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  name: varchar("name", { length: 100 }).notNull(), // Document type name (e.g., "W-4 Form", "I-9 Form")
+  description: text("description"), // Optional description of the document
+  isRequired: boolean("is_required").default(true).notNull(), // Whether document is mandatory
+  category: varchar("category", { length: 50 }).notNull(), // Category: tax, compliance, payroll, identification
+  sortOrder: integer("sort_order").default(0).notNull(), // Display order for UI
+  createdAt: timestamp("created_at").defaultNow().notNull(), // Record creation timestamp
+  updatedAt: timestamp("updated_at").defaultNow().notNull() // Last update timestamp
+}, (table) => ({
+  sortOrderIdx: index("idx_required_doc_types_sort").on(table.sortOrder),
+  categoryIdx: index("idx_required_doc_types_category").on(table.category)
+}));
+
+/**
+ * EMPLOYEE DOCUMENT UPLOADS TABLE
+ * 
+ * Tracks documents uploaded by employees during onboarding or employment.
+ * Links uploaded files to document types and maintains approval workflow.
+ * Essential for document management and compliance verification.
+ */
+export const employeeDocumentUploads = pgTable("employee_document_uploads", {
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }).notNull(), // Foreign key to employees
+  documentTypeId: integer("document_type_id").references(() => requiredDocumentTypes.id, { onDelete: "set null" }), // Foreign key to document types (nullable for custom docs)
+  fileName: varchar("file_name", { length: 255 }).notNull(), // Original file name
+  filePath: varchar("file_path", { length: 500 }).notNull(), // Storage path or S3 key
+  fileSize: integer("file_size").notNull(), // File size in bytes
+  mimeType: varchar("mime_type", { length: 100 }).notNull(), // MIME type of the file
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(), // Upload timestamp
+  status: varchar("status", { length: 50 }).default("pending").notNull(), // pending | approved | rejected
+  notes: text("notes") // Optional notes or rejection reason
+}, (table) => ({
+  employeeIdx: index("idx_doc_uploads_employee").on(table.employeeId),
+  documentTypeIdx: index("idx_doc_uploads_type").on(table.documentTypeId),
+  statusIdx: index("idx_doc_uploads_status").on(table.status),
+  uploadedAtIdx: index("idx_doc_uploads_uploaded").on(table.uploadedAt)
+}));
+
 // =====================
 // COMPLIANCE TRACKING SCHEMAS
 // =====================
@@ -1467,3 +1513,32 @@ export type InsertClinicLicense = z.infer<typeof insertClinicLicenseSchema>;
 // Types for compliance documents
 export type ComplianceDocument = typeof complianceDocuments.$inferSelect;
 export type InsertComplianceDocument = z.infer<typeof insertComplianceDocumentSchema>;
+
+// Insert schemas for required document types
+export const insertRequiredDocumentTypeSchema = createInsertSchema(requiredDocumentTypes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+}).extend({
+  category: z.enum(["tax", "compliance", "payroll", "identification", "other"]),
+  isRequired: z.boolean().default(true),
+  sortOrder: z.number().int().default(0)
+});
+
+// Insert schemas for employee document uploads
+export const insertEmployeeDocumentUploadSchema = createInsertSchema(employeeDocumentUploads).omit({
+  id: true,
+  uploadedAt: true
+}).extend({
+  status: z.enum(["pending", "approved", "rejected"]).default("pending"),
+  fileSize: z.number().int().positive(),
+  notes: z.string().optional()
+});
+
+// Types for required document types
+export type RequiredDocumentType = typeof requiredDocumentTypes.$inferSelect;
+export type InsertRequiredDocumentType = z.infer<typeof insertRequiredDocumentTypeSchema>;
+
+// Types for employee document uploads
+export type EmployeeDocumentUpload = typeof employeeDocumentUploads.$inferSelect;
+export type InsertEmployeeDocumentUpload = z.infer<typeof insertEmployeeDocumentUploadSchema>;

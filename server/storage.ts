@@ -99,7 +99,13 @@ import {
   type ResponsiblePerson,
   type InsertResponsiblePerson,
   type ClinicLicense,
-  type InsertClinicLicense
+  type InsertClinicLicense,
+  requiredDocumentTypes,
+  employeeDocumentUploads,
+  type RequiredDocumentType,
+  type InsertRequiredDocumentType,
+  type EmployeeDocumentUpload,
+  type InsertEmployeeDocumentUpload
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, asc, like, and, or, lte, sql, count } from "drizzle-orm";
@@ -1094,6 +1100,85 @@ export interface IStorage {
     entityType: string;
     dueDate?: Date;
   }>>;
+  
+  /**
+   * Required Document Types Management
+   */
+  
+  /**
+   * Get all required document types ordered by sortOrder
+   * @returns {Promise<RequiredDocumentType[]>} Array of document types sorted by display order
+   */
+  getRequiredDocumentTypes(): Promise<RequiredDocumentType[]>;
+  
+  /**
+   * Create a new required document type
+   * @param {InsertRequiredDocumentType} data - Document type data
+   * @returns {Promise<RequiredDocumentType>} Created document type
+   */
+  createRequiredDocumentType(data: InsertRequiredDocumentType): Promise<RequiredDocumentType>;
+  
+  /**
+   * Update an existing required document type
+   * @param {number} id - Document type ID
+   * @param {Partial<InsertRequiredDocumentType>} data - Partial document type data
+   * @returns {Promise<RequiredDocumentType>} Updated document type
+   */
+  updateRequiredDocumentType(id: number, data: Partial<InsertRequiredDocumentType>): Promise<RequiredDocumentType>;
+  
+  /**
+   * Delete a required document type
+   * @param {number} id - Document type ID to delete
+   * @returns {Promise<void>} Resolves when deletion is complete
+   */
+  deleteRequiredDocumentType(id: number): Promise<void>;
+  
+  /**
+   * Get only required document types for onboarding
+   * @returns {Promise<RequiredDocumentType[]>} Array of required documents sorted by display order
+   */
+  getRequiredDocumentTypesForOnboarding(): Promise<RequiredDocumentType[]>;
+  
+  /**
+   * Employee Document Uploads Management
+   */
+  
+  /**
+   * Get all document uploads for an employee
+   * @param {number} employeeId - Employee ID
+   * @returns {Promise<EmployeeDocumentUpload[]>} Array of document uploads
+   */
+  getEmployeeDocumentUploads(employeeId: number): Promise<EmployeeDocumentUpload[]>;
+  
+  /**
+   * Create a new employee document upload record
+   * @param {InsertEmployeeDocumentUpload} data - Document upload data
+   * @returns {Promise<EmployeeDocumentUpload>} Created upload record
+   */
+  createEmployeeDocumentUpload(data: InsertEmployeeDocumentUpload): Promise<EmployeeDocumentUpload>;
+  
+  /**
+   * Update an employee document upload record
+   * @param {number} id - Upload record ID
+   * @param {Partial<InsertEmployeeDocumentUpload>} data - Partial upload data
+   * @returns {Promise<EmployeeDocumentUpload>} Updated upload record
+   */
+  updateEmployeeDocumentUpload(id: number, data: Partial<InsertEmployeeDocumentUpload>): Promise<EmployeeDocumentUpload>;
+  
+  /**
+   * Delete an employee document upload record
+   * @param {number} id - Upload record ID to delete
+   * @returns {Promise<void>} Resolves when deletion is complete
+   */
+  deleteEmployeeDocumentUpload(id: number): Promise<void>;
+  
+  /**
+   * Get employee document uploads by document type
+   * @param {number} employeeId - Employee ID
+   * @param {number} documentTypeId - Document type ID
+   * @returns {Promise<EmployeeDocumentUpload[]>} Array of uploads for specific type
+   */
+  getEmployeeDocumentUploadsByType(employeeId: number, documentTypeId: number): Promise<EmployeeDocumentUpload[]>;
   
   sessionStore: session.Store;
 }
@@ -3568,6 +3653,102 @@ export class DatabaseStorage implements IStorage {
     alerts.sort((a, b) => severityOrder[a.severity as keyof typeof severityOrder] - severityOrder[b.severity as keyof typeof severityOrder]);
     
     return alerts;
+  }
+  
+  /**
+   * Required Document Types Implementation
+   */
+  
+  async getRequiredDocumentTypes(): Promise<RequiredDocumentType[]> {
+    return await db.select()
+      .from(requiredDocumentTypes)
+      .orderBy(asc(requiredDocumentTypes.sortOrder));
+  }
+  
+  async createRequiredDocumentType(data: InsertRequiredDocumentType): Promise<RequiredDocumentType> {
+    const [documentType] = await db.insert(requiredDocumentTypes)
+      .values({
+        ...data,
+        updatedAt: sql`NOW()`
+      })
+      .returning();
+    return documentType;
+  }
+  
+  async updateRequiredDocumentType(id: number, data: Partial<InsertRequiredDocumentType>): Promise<RequiredDocumentType> {
+    const [documentType] = await db.update(requiredDocumentTypes)
+      .set({
+        ...data,
+        updatedAt: sql`NOW()`
+      })
+      .where(eq(requiredDocumentTypes.id, id))
+      .returning();
+    if (!documentType) {
+      throw new Error(`Required document type with id ${id} not found`);
+    }
+    return documentType;
+  }
+  
+  async deleteRequiredDocumentType(id: number): Promise<void> {
+    const result = await db.delete(requiredDocumentTypes)
+      .where(eq(requiredDocumentTypes.id, id));
+    if (!result) {
+      throw new Error(`Required document type with id ${id} not found`);
+    }
+  }
+  
+  async getRequiredDocumentTypesForOnboarding(): Promise<RequiredDocumentType[]> {
+    return await db.select()
+      .from(requiredDocumentTypes)
+      .where(eq(requiredDocumentTypes.isRequired, true))
+      .orderBy(asc(requiredDocumentTypes.sortOrder));
+  }
+  
+  /**
+   * Employee Document Uploads Implementation
+   */
+  
+  async getEmployeeDocumentUploads(employeeId: number): Promise<EmployeeDocumentUpload[]> {
+    return await db.select()
+      .from(employeeDocumentUploads)
+      .where(eq(employeeDocumentUploads.employeeId, employeeId))
+      .orderBy(desc(employeeDocumentUploads.uploadedAt));
+  }
+  
+  async createEmployeeDocumentUpload(data: InsertEmployeeDocumentUpload): Promise<EmployeeDocumentUpload> {
+    const [upload] = await db.insert(employeeDocumentUploads)
+      .values(data)
+      .returning();
+    return upload;
+  }
+  
+  async updateEmployeeDocumentUpload(id: number, data: Partial<InsertEmployeeDocumentUpload>): Promise<EmployeeDocumentUpload> {
+    const [upload] = await db.update(employeeDocumentUploads)
+      .set(data)
+      .where(eq(employeeDocumentUploads.id, id))
+      .returning();
+    if (!upload) {
+      throw new Error(`Employee document upload with id ${id} not found`);
+    }
+    return upload;
+  }
+  
+  async deleteEmployeeDocumentUpload(id: number): Promise<void> {
+    const result = await db.delete(employeeDocumentUploads)
+      .where(eq(employeeDocumentUploads.id, id));
+    if (!result) {
+      throw new Error(`Employee document upload with id ${id} not found`);
+    }
+  }
+  
+  async getEmployeeDocumentUploadsByType(employeeId: number, documentTypeId: number): Promise<EmployeeDocumentUpload[]> {
+    return await db.select()
+      .from(employeeDocumentUploads)
+      .where(and(
+        eq(employeeDocumentUploads.employeeId, employeeId),
+        eq(employeeDocumentUploads.documentTypeId, documentTypeId)
+      ))
+      .orderBy(desc(employeeDocumentUploads.uploadedAt));
   }
 }
 
