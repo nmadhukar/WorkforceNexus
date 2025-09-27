@@ -18,7 +18,7 @@ import { EmployeeReview } from "@/components/forms/employee-review";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { ClipboardList, CheckCircle, Save, FileText, AlertTriangle, Upload } from "lucide-react";
+import { ClipboardList, CheckCircle, Save, FileText, AlertTriangle, Upload, FileSignature } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -91,6 +91,12 @@ interface OnboardingFormData {
   allRequiredDocumentsUploaded?: boolean;
   uploadedRequiredCount?: number;
   requiredDocumentsCount?: number;
+  
+  // Forms validation (DocuSeal)
+  allFormsCompleted?: boolean;
+  completedForms?: number;
+  totalRequiredForms?: number;
+  submissions?: any[];
 }
 
 /**
@@ -264,6 +270,32 @@ export default function OnboardingPage() {
    * Handle form submission
    */
   const handleSubmit = () => {
+    // Validate all required documents are uploaded
+    if (!formData.allRequiredDocumentsUploaded) {
+      const missingCount = (formData.requiredDocumentsCount || 0) - (formData.uploadedRequiredCount || 0);
+      toast({
+        title: "Submission Blocked",
+        description: `Please upload all required documents before submitting. You have ${missingCount} required document${missingCount > 1 ? 's' : ''} remaining. Navigate to Step 9 to upload documents.`,
+        variant: "destructive",
+        duration: 7000
+      });
+      return;
+    }
+    
+    // Validate all required forms are signed
+    if (!formData.allFormsCompleted) {
+      const completedForms = formData.completedForms || 0;
+      const totalRequiredForms = formData.totalRequiredForms || 0;
+      const remaining = totalRequiredForms - completedForms;
+      toast({
+        title: "Submission Blocked",
+        description: `Please complete all required forms before submitting. ${completedForms} of ${totalRequiredForms} forms are signed. Navigate to Step 11 to complete the remaining ${remaining} form${remaining > 1 ? 's' : ''}.`,
+        variant: "destructive",
+        duration: 7000
+      });
+      return;
+    }
+    
     submitOnboardingMutation.mutate(formData);
   };
 
@@ -285,6 +317,21 @@ export default function OnboardingPage() {
         toast({
           title: "Cannot Proceed",
           description: `Please upload all required documents before continuing. You have ${missingCount} required document${missingCount > 1 ? 's' : ''} remaining.`,
+          variant: "destructive",
+          duration: 5000
+        });
+        return;
+      }
+    }
+    
+    // Check if Forms step (step 11) has validation requirement
+    if (currentStep === 11) {
+      if (!formData.allFormsCompleted) {
+        const completedForms = formData.completedForms || 0;
+        const totalRequiredForms = formData.totalRequiredForms || 0;
+        toast({
+          title: "Cannot Proceed",
+          description: `Please complete all required forms. ${completedForms} of ${totalRequiredForms} forms signed.`,
           variant: "destructive",
           duration: 5000
         });
@@ -400,7 +447,7 @@ export default function OnboardingPage() {
       )
     },
     {
-      title: "Documents Submission",
+      title: `Documents Submission${formData.allRequiredDocumentsUploaded ? ' ✓' : formData.uploadedRequiredCount ? ` (${formData.uploadedRequiredCount}/${formData.requiredDocumentsCount || 0})` : ''}`,
       component: (
         <EmployeeDocumentsSubmission
           data={formData}
@@ -420,7 +467,7 @@ export default function OnboardingPage() {
       )
     },
     {
-      title: "Required Forms",
+      title: `Required Forms${formData.allFormsCompleted ? ' ✓' : formData.completedForms ? ` (${formData.completedForms}/${formData.totalRequiredForms || 0} signed)` : ''}`,
       component: (
         <EmployeeForms
           data={formData}
@@ -468,6 +515,24 @@ export default function OnboardingPage() {
                 </CardTitle>
                 <CardDescription className="mt-2">
                   Complete all 12 steps to finalize your onboarding process
+                  {formData.totalRequiredForms && formData.totalRequiredForms > 0 && (
+                    <span className="block mt-1">
+                      <FileSignature className="inline w-3 h-3 mr-1" />
+                      Forms: {formData.completedForms || 0}/{formData.totalRequiredForms} signed
+                      {formData.allFormsCompleted && (
+                        <CheckCircle className="inline w-3 h-3 ml-1 text-green-600" />
+                      )}
+                    </span>
+                  )}
+                  {formData.requiredDocumentsCount && formData.requiredDocumentsCount > 0 && (
+                    <span className="block">
+                      <Upload className="inline w-3 h-3 mr-1" />
+                      Documents: {formData.uploadedRequiredCount || 0}/{formData.requiredDocumentsCount} uploaded
+                      {formData.allRequiredDocumentsUploaded && (
+                        <CheckCircle className="inline w-3 h-3 ml-1 text-green-600" />
+                      )}
+                    </span>
+                  )}
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
@@ -537,11 +602,19 @@ export default function OnboardingPage() {
           onSubmit={handleSubmit}
           isSubmitting={submitOnboardingMutation.isPending}
           canNext={true}
-          canProceed={currentStep === 9 ? formData.allRequiredDocumentsUploaded : undefined}
+          canProceed={
+            currentStep === 9 
+              ? formData.allRequiredDocumentsUploaded 
+              : currentStep === 11 
+                ? formData.allFormsCompleted === true
+                : undefined
+          }
           proceedBlockedMessage={
             currentStep === 9 && !formData.allRequiredDocumentsUploaded
               ? `Please upload all ${(formData.requiredDocumentsCount || 0) - (formData.uploadedRequiredCount || 0)} remaining required documents before proceeding`
-              : undefined
+              : currentStep === 11 && !formData.allFormsCompleted
+                ? `Complete all ${(formData.totalRequiredForms || 0) - (formData.completedForms || 0)} required forms before proceeding`
+                : undefined
           }
         />
 
