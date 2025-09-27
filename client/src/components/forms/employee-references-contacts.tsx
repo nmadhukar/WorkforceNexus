@@ -34,9 +34,11 @@ interface EmployeeReferencesContactsProps {
   data: any;
   onChange: (data: any) => void;
   employeeId?: number;
+  onValidationChange?: (isValid: boolean) => void;
+  registerValidation?: (validationFn: () => Promise<boolean>) => void;
 }
 
-export function EmployeeReferencesContacts({ data, onChange, employeeId }: EmployeeReferencesContactsProps) {
+export function EmployeeReferencesContacts({ data, onChange, employeeId, onValidationChange, registerValidation }: EmployeeReferencesContactsProps) {
   const [isReferenceDialogOpen, setIsReferenceDialogOpen] = useState(false);
   const [isContactDialogOpen, setIsContactDialogOpen] = useState(false);
   const [selectedReference, setSelectedReference] = useState<any>(null);
@@ -81,6 +83,23 @@ export function EmployeeReferencesContacts({ data, onChange, employeeId }: Emplo
       setLocalContacts(contacts);
     }
   }, [references, contacts, employeeId]);
+
+  // Register validation function with parent
+  useEffect(() => {
+    if (registerValidation) {
+      registerValidation(async () => {
+        // References and contacts are optional
+        return true;
+      });
+    }
+  }, [registerValidation]);
+
+  // Report validation state - always valid as these are optional
+  useEffect(() => {
+    if (onValidationChange) {
+      onValidationChange(true);
+    }
+  }, [onValidationChange]);
 
   useEffect(() => {
     onChange({ ...data, peerReferences: localReferences, emergencyContacts: localContacts });

@@ -19,9 +19,11 @@ interface EmployeeCertificationsProps {
   data: any;
   onChange: (data: any) => void;
   employeeId?: number;
+  onValidationChange?: (isValid: boolean) => void;
+  registerValidation?: (validationFn: () => Promise<boolean>) => void;
 }
 
-export function EmployeeCertifications({ data, onChange, employeeId }: EmployeeCertificationsProps) {
+export function EmployeeCertifications({ data, onChange, employeeId, onValidationChange, registerValidation }: EmployeeCertificationsProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedCertification, setSelectedCertification] = useState<any>(null);
   const [localCertifications, setLocalCertifications] = useState<any[]>(data.boardCertifications || []);
@@ -51,6 +53,25 @@ export function EmployeeCertifications({ data, onChange, employeeId }: EmployeeC
   useEffect(() => {
     onChange({ ...data, boardCertifications: localCertifications });
   }, [localCertifications]);
+
+  // Register validation function with parent
+  useEffect(() => {
+    if (registerValidation) {
+      registerValidation(async () => {
+        // Certifications are optional, so always valid (even if empty)
+        // But if certifications are added, they must have required fields filled via form validation
+        return true;
+      });
+    }
+  }, [registerValidation]);
+
+  // Report validation state to parent - certifications are optional
+  useEffect(() => {
+    if (onValidationChange) {
+      // Always valid since certifications are optional
+      onValidationChange(true);
+    }
+  }, [onValidationChange]);
 
   const isExpiringSoon = (date: string) => {
     if (!date) return false;

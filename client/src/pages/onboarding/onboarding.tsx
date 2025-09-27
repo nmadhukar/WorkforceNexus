@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/main-layout";
@@ -110,6 +110,8 @@ export default function OnboardingPage() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
+  const [isCurrentStepValid, setIsCurrentStepValid] = useState(false);
+  const formValidationRefs = useRef<{ [key: number]: () => Promise<boolean> }>({});
   const [formData, setFormData] = useState<OnboardingFormData>({
     firstName: "",
     lastName: "",
@@ -309,7 +311,19 @@ export default function OnboardingPage() {
   /**
    * Validates current step before advancing
    */
-  const handleNext = () => {
+  const handleNext = async () => {
+    // First validate the current step's form fields
+    const isValid = await validateCurrentStep();
+    if (!isValid) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields correctly before proceeding.",
+        variant: "destructive",
+        duration: 5000
+      });
+      return;
+    }
+
     // Check if Documents Submission step (step 9) has validation requirement
     if (currentStep === 9) {
       if (!formData.allRequiredDocumentsUploaded) {
@@ -362,6 +376,33 @@ export default function OnboardingPage() {
    */
   const updateFormData = (data: Partial<OnboardingFormData>) => {
     setFormData(prev => ({ ...prev, ...data }));
+  };
+
+  /**
+   * Validation callback for child forms to report their validity
+   */
+  const handleValidationChange = (isValid: boolean) => {
+    setIsCurrentStepValid(isValid);
+  };
+
+  /**
+   * Register validation functions from child components
+   */
+  const registerValidation = (step: number, validationFn: () => Promise<boolean>) => {
+    formValidationRefs.current[step] = validationFn;
+  };
+
+  /**
+   * Validate current step before navigation
+   */
+  const validateCurrentStep = async (): Promise<boolean> => {
+    const validationFn = formValidationRefs.current[currentStep];
+    if (validationFn) {
+      const isValid = await validationFn();
+      setIsCurrentStepValid(isValid);
+      return isValid;
+    }
+    return true; // Default to true for steps without validation
   };
 
   // 12-step onboarding process (excluding Incidents step which is for existing employees)
@@ -601,7 +642,7 @@ export default function OnboardingPage() {
           onPrevious={handlePrevious}
           onSubmit={handleSubmit}
           isSubmitting={submitOnboardingMutation.isPending}
-          canNext={true}
+          canNext={isCurrentStepValid}
           canProceed={
             currentStep === 9 
               ? formData.allRequiredDocumentsUploaded 

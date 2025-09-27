@@ -23,9 +23,11 @@ interface EmployeeEducationEmploymentProps {
   data: any;
   onChange: (data: any) => void;
   employeeId?: number;
+  onValidationChange?: (isValid: boolean) => void;
+  registerValidation?: (validationFn: () => Promise<boolean>) => void;
 }
 
-export function EmployeeEducationEmployment({ data, onChange, employeeId }: EmployeeEducationEmploymentProps) {
+export function EmployeeEducationEmployment({ data, onChange, employeeId, onValidationChange, registerValidation }: EmployeeEducationEmploymentProps) {
   const { toast } = useToast();
   const [isEducationDialogOpen, setIsEducationDialogOpen] = useState(false);
   const [isEmploymentDialogOpen, setIsEmploymentDialogOpen] = useState(false);
@@ -78,6 +80,30 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId }: Empl
   useEffect(() => {
     onChange({ ...data, educations: localEducations, employments: localEmployments });
   }, [localEducations, localEmployments]);
+
+  // Register validation function with parent
+  useEffect(() => {
+    if (registerValidation) {
+      registerValidation(async () => {
+        // Validate that at least one education entry exists
+        const hasEducation = localEducations.length > 0;
+        // Report validation state
+        if (onValidationChange) {
+          onValidationChange(hasEducation);
+        }
+        return hasEducation;
+      });
+    }
+  }, [registerValidation, localEducations, onValidationChange]);
+
+  // Report validation state changes to parent
+  useEffect(() => {
+    if (onValidationChange) {
+      // Check if at least one education entry exists
+      const isValid = localEducations.length > 0;
+      onValidationChange(isValid);
+    }
+  }, [localEducations, onValidationChange]);
 
   // Education handlers
   const handleEducationSubmit = (formData: EducationFormData) => {

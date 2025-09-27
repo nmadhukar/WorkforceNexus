@@ -15,9 +15,11 @@ type AdditionalInfoFormData = z.infer<typeof additionalInfoSchema>;
 interface EmployeeAdditionalInfoProps {
   data: any;
   onChange: (data: any) => void;
+  onValidationChange?: (isValid: boolean) => void;
+  registerValidation?: (validationFn: () => Promise<boolean>) => void;
 }
 
-export function EmployeeAdditionalInfo({ data, onChange }: EmployeeAdditionalInfoProps) {
+export function EmployeeAdditionalInfo({ data, onChange, onValidationChange, registerValidation }: EmployeeAdditionalInfoProps) {
   const form = useForm<AdditionalInfoFormData>({
     resolver: zodResolver(additionalInfoSchema),
     defaultValues: {
@@ -40,6 +42,37 @@ export function EmployeeAdditionalInfo({ data, onChange }: EmployeeAdditionalInf
   useEffect(() => {
     onChange(watchedValues);
   }, [watchedValues, onChange]);
+
+  // Register validation function with parent
+  useEffect(() => {
+    if (registerValidation) {
+      registerValidation(async () => {
+        // Trigger validation on all fields
+        const isValid = await form.trigger();
+        // Return validation result
+        return isValid;
+      });
+    }
+  }, [form, registerValidation]);
+
+  // Report validation state changes to parent
+  useEffect(() => {
+    if (onValidationChange) {
+      const subscription = form.watch(() => {
+        // Trigger validation and report state
+        form.trigger().then((isValid) => {
+          onValidationChange(isValid);
+        });
+      });
+      
+      // Initial validation check
+      form.trigger().then((isValid) => {
+        onValidationChange(isValid);
+      });
+      
+      return () => subscription.unsubscribe();
+    }
+  }, [form, onValidationChange]);
 
   return (
     <Form {...form}>

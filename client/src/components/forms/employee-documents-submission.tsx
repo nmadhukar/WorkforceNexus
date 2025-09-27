@@ -76,12 +76,16 @@ interface EmployeeDocumentsSubmissionProps {
   data: any;
   onChange: (data: any) => void;
   employeeId?: number;
+  onValidationChange?: (isValid: boolean) => void;
+  registerValidation?: (validationFn: () => Promise<boolean>) => void;
 }
 
 export function EmployeeDocumentsSubmission({ 
   data, 
   onChange, 
-  employeeId 
+  employeeId,
+  onValidationChange,
+  registerValidation
 }: EmployeeDocumentsSubmissionProps) {
   const { toast } = useToast();
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);

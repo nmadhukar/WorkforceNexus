@@ -1,11 +1,24 @@
+import { useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 interface EmployeeReviewProps {
   data: any;
+  onValidationChange?: (isValid: boolean) => void;
+  registerValidation?: (validationFn: () => Promise<boolean>) => void;
 }
 
-export function EmployeeReview({ data }: EmployeeReviewProps) {
+export function EmployeeReview({ data, onValidationChange, registerValidation }: EmployeeReviewProps) {
+  // Report validation state - review step is always valid
+  useEffect(() => {
+    if (registerValidation) {
+      registerValidation(async () => true);
+    }
+    if (onValidationChange) {
+      onValidationChange(true);
+    }
+  }, [registerValidation, onValidationChange]);
+
   const maskSSN = (ssn: string) => {
     if (!ssn || ssn.length < 4) return "****";
     return `***-**-${ssn.slice(-4)}`;

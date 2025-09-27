@@ -28,9 +28,11 @@ interface EmployeeIncidentsProps {
   data: any;
   onChange: (data: any) => void;
   employeeId?: number;
+  onValidationChange?: (isValid: boolean) => void;
+  registerValidation?: (validationFn: () => Promise<boolean>) => void;
 }
 
-export function EmployeeIncidents({ data, onChange, employeeId }: EmployeeIncidentsProps) {
+export function EmployeeIncidents({ data, onChange, employeeId, onValidationChange, registerValidation }: EmployeeIncidentsProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState<any>(null);
   const [localIncidents, setLocalIncidents] = useState<any[]>(data.incidentLogs || []);
@@ -61,6 +63,24 @@ export function EmployeeIncidents({ data, onChange, employeeId }: EmployeeIncide
   useEffect(() => {
     onChange({ ...data, incidentLogs: localIncidents });
   }, [localIncidents]);
+
+  // Register validation function with parent
+  useEffect(() => {
+    if (registerValidation) {
+      registerValidation(async () => {
+        // Incidents are optional, so always valid
+        return true;
+      });
+    }
+  }, [registerValidation]);
+
+  // Report validation state to parent - incidents are optional
+  useEffect(() => {
+    if (onValidationChange) {
+      // Always valid since incidents are optional
+      onValidationChange(true);
+    }
+  }, [onValidationChange]);
 
   const getSeverityBadge = (severity: string) => {
     switch (severity) {

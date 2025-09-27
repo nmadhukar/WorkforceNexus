@@ -36,9 +36,11 @@ interface EmployeeTrainingPayerProps {
   data: any;
   onChange: (data: any) => void;
   employeeId?: number;
+  onValidationChange?: (isValid: boolean) => void;
+  registerValidation?: (validationFn: () => Promise<boolean>) => void;
 }
 
-export function EmployeeTrainingPayer({ data, onChange, employeeId }: EmployeeTrainingPayerProps) {
+export function EmployeeTrainingPayer({ data, onChange, employeeId, onValidationChange, registerValidation }: EmployeeTrainingPayerProps) {
   const [isTrainingDialogOpen, setIsTrainingDialogOpen] = useState(false);
   const [isPayerDialogOpen, setIsPayerDialogOpen] = useState(false);
   const [selectedTraining, setSelectedTraining] = useState<any>(null);
@@ -89,6 +91,24 @@ export function EmployeeTrainingPayer({ data, onChange, employeeId }: EmployeeTr
   useEffect(() => {
     onChange({ ...data, trainings: localTrainings, payerEnrollments: localPayers });
   }, [localTrainings, localPayers]);
+
+  // Register validation function with parent
+  useEffect(() => {
+    if (registerValidation) {
+      registerValidation(async () => {
+        // Training and payer enrollment are optional, so always valid
+        return true;
+      });
+    }
+  }, [registerValidation]);
+
+  // Report validation state to parent - training and payers are optional
+  useEffect(() => {
+    if (onValidationChange) {
+      // Always valid since these are optional
+      onValidationChange(true);
+    }
+  }, [onValidationChange]);
 
   const isExpiringSoon = (date: string) => {
     if (!date) return false;

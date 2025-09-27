@@ -53,9 +53,11 @@ type CredentialsFormData = z.infer<typeof credentialsSchema>;
 interface EmployeeCredentialsProps {
   data: any;
   onChange: (data: any) => void;
+  onValidationChange?: (isValid: boolean) => void;
+  registerValidation?: (validationFn: () => Promise<boolean>) => void;
 }
 
-export function EmployeeCredentials({ data, onChange }: EmployeeCredentialsProps) {
+export function EmployeeCredentials({ data, onChange, onValidationChange, registerValidation }: EmployeeCredentialsProps) {
   const form = useForm<CredentialsFormData>({
     resolver: zodResolver(credentialsSchema),
     defaultValues: {
@@ -88,6 +90,37 @@ export function EmployeeCredentials({ data, onChange }: EmployeeCredentialsProps
   useEffect(() => {
     form.trigger(["caqhProviderId"]);
   }, [caqhEnabled, form]);
+
+  // Register validation function with parent
+  useEffect(() => {
+    if (registerValidation) {
+      registerValidation(async () => {
+        // Trigger validation on all fields
+        const isValid = await form.trigger();
+        // Return validation result
+        return isValid;
+      });
+    }
+  }, [form, registerValidation]);
+
+  // Report validation state changes to parent
+  useEffect(() => {
+    if (onValidationChange) {
+      const subscription = form.watch(() => {
+        // Trigger validation and report state
+        form.trigger().then((isValid) => {
+          onValidationChange(isValid);
+        });
+      });
+      
+      // Initial validation check
+      form.trigger().then((isValid) => {
+        onValidationChange(isValid);
+      });
+      
+      return () => subscription.unsubscribe();
+    }
+  }, [form, onValidationChange]);
 
   return (
     <Form {...form}>

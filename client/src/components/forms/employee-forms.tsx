@@ -82,7 +82,9 @@ export function EmployeeForms({
   data, 
   onChange, 
   employeeId,
-  onboardingId 
+  onboardingId,
+  onValidationChange,
+  registerValidation
 }: EmployeeFormsProps) {
   const { toast } = useToast();
   const [selectedSubmission, setSelectedSubmission] = useState<SubmissionDetail | null>(null);

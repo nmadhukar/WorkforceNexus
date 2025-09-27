@@ -21,9 +21,11 @@ interface EmployeeLicensesProps {
   data: any;
   onChange: (data: any) => void;
   employeeId?: number;
+  onValidationChange?: (isValid: boolean) => void;
+  registerValidation?: (validationFn: () => Promise<boolean>) => void;
 }
 
-export function EmployeeLicenses({ data, onChange, employeeId }: EmployeeLicensesProps) {
+export function EmployeeLicenses({ data, onChange, employeeId, onValidationChange, registerValidation }: EmployeeLicensesProps) {
   const [isStateDialogOpen, setIsStateDialogOpen] = useState(false);
   const [isDeaDialogOpen, setIsDeaDialogOpen] = useState(false);
   const [selectedStateLicense, setSelectedStateLicense] = useState<any>(null);
@@ -74,6 +76,25 @@ export function EmployeeLicenses({ data, onChange, employeeId }: EmployeeLicense
   useEffect(() => {
     onChange({ ...data, stateLicenses: localStateLicenses, deaLicenses: localDeaLicenses });
   }, [localStateLicenses, localDeaLicenses]);
+
+  // Register validation function with parent
+  useEffect(() => {
+    if (registerValidation) {
+      registerValidation(async () => {
+        // Licenses are optional, so always valid (even if empty)
+        // But if licenses are added, they must have required fields filled via form validation
+        return true;
+      });
+    }
+  }, [registerValidation]);
+
+  // Report validation state to parent - licenses are optional
+  useEffect(() => {
+    if (onValidationChange) {
+      // Always valid since licenses are optional
+      onValidationChange(true);
+    }
+  }, [onValidationChange]);
 
   // Calculate actual status based on expiration date
   const getActualStatus = (license: any) => {

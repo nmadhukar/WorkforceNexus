@@ -26,9 +26,11 @@ type ProfessionalInfoFormData = z.infer<typeof professionalInfoSchema>;
 interface EmployeeProfessionalInfoProps {
   data: any;
   onChange: (data: any) => void;
+  onValidationChange?: (isValid: boolean) => void;
+  registerValidation?: (validationFn: () => Promise<boolean>) => void;
 }
 
-export function EmployeeProfessionalInfo({ data, onChange }: EmployeeProfessionalInfoProps) {
+export function EmployeeProfessionalInfo({ data, onChange, onValidationChange, registerValidation }: EmployeeProfessionalInfoProps) {
   const form = useForm<ProfessionalInfoFormData>({
     resolver: zodResolver(professionalInfoSchema),
     defaultValues: {
@@ -50,6 +52,37 @@ export function EmployeeProfessionalInfo({ data, onChange }: EmployeeProfessiona
     });
     return () => subscription.unsubscribe();
   }, [form, onChange]);
+
+  // Register validation function with parent
+  useEffect(() => {
+    if (registerValidation) {
+      registerValidation(async () => {
+        // Trigger validation on all fields
+        const isValid = await form.trigger();
+        // Return validation result
+        return isValid;
+      });
+    }
+  }, [form, registerValidation]);
+
+  // Report validation state changes to parent
+  useEffect(() => {
+    if (onValidationChange) {
+      const subscription = form.watch(() => {
+        // Trigger validation and report state
+        form.trigger().then((isValid) => {
+          onValidationChange(isValid);
+        });
+      });
+      
+      // Initial validation check
+      form.trigger().then((isValid) => {
+        onValidationChange(isValid);
+      });
+      
+      return () => subscription.unsubscribe();
+    }
+  }, [form, onValidationChange]);
 
   return (
     <Form {...form}>
