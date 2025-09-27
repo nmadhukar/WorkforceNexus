@@ -75,12 +75,41 @@ export function EmployeeLicenses({ data, onChange, employeeId }: EmployeeLicense
     onChange({ ...data, stateLicenses: localStateLicenses, deaLicenses: localDeaLicenses });
   }, [localStateLicenses, localDeaLicenses]);
 
+  // Calculate actual status based on expiration date
+  const getActualStatus = (license: any) => {
+    // If no expiration date, return stored status or 'active'
+    if (!license.expirationDate) {
+      return license.status || 'active';
+    }
+
+    const currentDate = new Date();
+    currentDate.setHours(0, 0, 0, 0); // Reset time for date-only comparison
+    const expirationDate = new Date(license.expirationDate);
+    expirationDate.setHours(0, 0, 0, 0);
+    
+    // Check if expired
+    if (currentDate > expirationDate) {
+      return 'expired';
+    }
+    
+    // Check if expiring soon (within 30 days)
+    const daysUntilExpiration = Math.ceil((expirationDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysUntilExpiration <= 30) {
+      return 'expiring_soon';
+    }
+    
+    // Otherwise return stored status or 'active'
+    return license.status || 'active';
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'active':
         return <Badge className="bg-green-100 text-green-800">Active</Badge>;
       case 'expired':
         return <Badge className="bg-red-100 text-red-800">Expired</Badge>;
+      case 'expiring_soon':
+        return <Badge className="bg-amber-100 text-amber-800">Expiring Soon</Badge>;
       case 'pending':
         return <Badge className="bg-yellow-100 text-yellow-800">Pending</Badge>;
       default:
@@ -90,13 +119,35 @@ export function EmployeeLicenses({ data, onChange, employeeId }: EmployeeLicense
 
   // State License handlers
   const handleStateSubmit = (formData: StateLicenseFormData) => {
+    // Calculate status based on expiration date
+    let calculatedStatus = formData.status;
+    if (formData.expirationDate) {
+      const currentDate = new Date();
+      currentDate.setHours(0, 0, 0, 0);
+      const expirationDate = new Date(formData.expirationDate);
+      expirationDate.setHours(0, 0, 0, 0);
+      
+      if (currentDate > expirationDate) {
+        calculatedStatus = 'expired';
+      } else {
+        const daysUntilExpiration = Math.ceil((expirationDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysUntilExpiration <= 30) {
+          calculatedStatus = 'expiring_soon';
+        } else {
+          calculatedStatus = 'active';
+        }
+      }
+    }
+    
+    const licenseData = { ...formData, status: calculatedStatus };
+    
     if (selectedStateLicense) {
       const updated = localStateLicenses.map(lic => 
-        lic.id === selectedStateLicense.id ? { ...lic, ...formData } : lic
+        lic.id === selectedStateLicense.id ? { ...lic, ...licenseData } : lic
       );
       setLocalStateLicenses(updated);
     } else {
-      setLocalStateLicenses([...localStateLicenses, { ...formData, id: Date.now() }]);
+      setLocalStateLicenses([...localStateLicenses, { ...licenseData, id: Date.now() }]);
     }
     setIsStateDialogOpen(false);
     setSelectedStateLicense(null);
@@ -121,13 +172,35 @@ export function EmployeeLicenses({ data, onChange, employeeId }: EmployeeLicense
 
   // DEA License handlers
   const handleDeaSubmit = (formData: DeaLicenseFormData) => {
+    // Calculate status based on expiration date
+    let calculatedStatus = formData.status;
+    if (formData.expirationDate) {
+      const currentDate = new Date();
+      currentDate.setHours(0, 0, 0, 0);
+      const expirationDate = new Date(formData.expirationDate);
+      expirationDate.setHours(0, 0, 0, 0);
+      
+      if (currentDate > expirationDate) {
+        calculatedStatus = 'expired';
+      } else {
+        const daysUntilExpiration = Math.ceil((expirationDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysUntilExpiration <= 30) {
+          calculatedStatus = 'expiring_soon';
+        } else {
+          calculatedStatus = 'active';
+        }
+      }
+    }
+    
+    const licenseData = { ...formData, status: calculatedStatus };
+    
     if (selectedDeaLicense) {
       const updated = localDeaLicenses.map(lic => 
-        lic.id === selectedDeaLicense.id ? { ...lic, ...formData } : lic
+        lic.id === selectedDeaLicense.id ? { ...lic, ...licenseData } : lic
       );
       setLocalDeaLicenses(updated);
     } else {
-      setLocalDeaLicenses([...localDeaLicenses, { ...formData, id: Date.now() }]);
+      setLocalDeaLicenses([...localDeaLicenses, { ...licenseData, id: Date.now() }]);
     }
     setIsDeaDialogOpen(false);
     setSelectedDeaLicense(null);
@@ -199,7 +272,7 @@ export function EmployeeLicenses({ data, onChange, employeeId }: EmployeeLicense
                     <TableCell>{license.state || "-"}</TableCell>
                     <TableCell>{license.issueDate || "-"}</TableCell>
                     <TableCell>{license.expirationDate || "-"}</TableCell>
-                    <TableCell>{getStatusBadge(license.status || "active")}</TableCell>
+                    <TableCell>{getStatusBadge(getActualStatus(license))}</TableCell>
                     <TableCell className="text-right">
                       <Button
                         variant="ghost"
@@ -273,7 +346,7 @@ export function EmployeeLicenses({ data, onChange, employeeId }: EmployeeLicense
                     <TableCell>{license.state || "-"}</TableCell>
                     <TableCell>{license.issueDate || "-"}</TableCell>
                     <TableCell>{license.expirationDate || "-"}</TableCell>
-                    <TableCell>{getStatusBadge(license.status || "active")}</TableCell>
+                    <TableCell>{getStatusBadge(getActualStatus(license))}</TableCell>
                     <TableCell className="text-right">
                       <Button
                         variant="ghost"
