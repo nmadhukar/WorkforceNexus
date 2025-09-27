@@ -7023,6 +7023,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
   
+  // POST /api/onboarding/document-uploads - Upload documents during onboarding
+  app.post('/api/onboarding/document-uploads',
+    requireAuth,
+    requireRole(['prospective_employee']),
+    async (req: Request & { user?: any }, res: Response) => {
+      try {
+        // For onboarding, we store the upload info temporarily
+        // These will be linked to the employee record when onboarding is complete
+        const uploadData = {
+          ...req.body,
+          uploadedBy: req.user?.id,
+          status: 'pending',
+          uploadDate: new Date().toISOString()
+        };
+        
+        // Here you would handle the actual file upload to S3 or local storage
+        // For now, we'll return a mock response
+        const result = {
+          id: Date.now(),
+          ...uploadData,
+          fileUrl: `/uploads/temp/${uploadData.fileName}` // Mock URL
+        };
+        
+        res.status(201).json(result);
+      } catch (error) {
+        console.error('Error uploading onboarding document:', error);
+        res.status(500).json({ error: 'Failed to upload onboarding document' });
+      }
+    }
+  );
+  
   // =====================
   // EMPLOYEE DOCUMENT UPLOADS APIs
   // =====================

@@ -11,7 +11,7 @@ import { EmployeeEducationEmployment } from "@/components/forms/employee-educati
 import { EmployeeLicenses } from "@/components/forms/employee-licenses";
 import { EmployeeCertifications } from "@/components/forms/employee-certifications";
 import { EmployeeReferencesContacts } from "@/components/forms/employee-references-contacts";
-import { EmployeeTaxDocumentation } from "@/components/forms/employee-tax-documentation";
+import { EmployeeDocumentsSubmission } from "@/components/forms/employee-documents-submission";
 import { EmployeeTrainingPayer } from "@/components/forms/employee-training-payer";
 import { EmployeeIncidents } from "@/components/forms/employee-incidents";
 import { EmployeeForms } from "@/components/forms/employee-forms";
@@ -461,13 +461,13 @@ export default function EmployeeForm() {
       )
     },
     {
-      title: "Tax & Documentation",
+      title: "Documents Submission",
       component: (
-        <EmployeeTaxDocumentation
+        <EmployeeDocumentsSubmission
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
-          data-testid="step-tax-documentation"
+          data-testid="step-documents-submission"
         />
       )
     },
