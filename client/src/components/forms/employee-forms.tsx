@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -28,6 +29,11 @@ import {
   FileText,
   ChevronRight,
   Eye,
+  PenTool,
+  SendHorizonal,
+  Users,
+  Info,
+  ExternalLink,
 } from "lucide-react";
 
 interface EmployeeFormsProps {
@@ -90,6 +96,7 @@ export function EmployeeForms({
   const [selectedSubmission, setSelectedSubmission] = useState<SubmissionDetail | null>(null);
   const [submissionModalOpen, setSubmissionModalOpen] = useState(false);
   const [sendingForm, setSendingForm] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("sign");
 
   // Only show forms when we have either an employee ID or an onboarding ID
   const canShowForms = !!(employeeId || onboardingId);
@@ -153,7 +160,7 @@ export function EmployeeForms({
     onSuccess: () => {
       toast({
         title: "Form Sent",
-        description: "The form has been sent successfully.",
+        description: "The form has been sent successfully to the employee.",
       });
       refetchSubmissions();
       setSendingForm(null);
@@ -206,7 +213,7 @@ export function EmployeeForms({
     onSuccess: () => {
       toast({
         title: "Reminder Sent",
-        description: "A reminder email has been sent successfully.",
+        description: "A reminder email has been sent to the employee.",
       });
       refetchSubmissions();
     },
@@ -261,7 +268,7 @@ export function EmployeeForms({
             data-testid={testId}
           >
             <Clock className="w-3 h-3 mr-1" />
-            Pending
+            Not Sent
           </Badge>
         );
     }
@@ -279,7 +286,6 @@ export function EmployeeForms({
   };
 
   const handleSendForm = async (templateId: string) => {
-    // Get employee email from data or use a default
     const email = data?.workEmail || data?.email || "";
     
     if (!email) {
@@ -295,25 +301,14 @@ export function EmployeeForms({
     await sendFormMutation.mutateAsync({ templateId, email });
   };
 
-  const handleViewSubmission = (submission: FormSubmission) => {
-    // Create a detailed submission object for the modal
-    const detail: SubmissionDetail = {
-      submissionId: submission.submissionId,
-      templateName: submission.templateName || requiredTemplates.find(t => t.templateId === submission.templateId)?.name || "Unknown Form",
-      status: submission.status,
-      createdAt: submission.createdAt,
-      signers: [{
-        name: data?.firstName && data?.lastName ? `${data.firstName} ${data.lastName}` : "Employee",
-        email: submission.signerEmail || data?.workEmail || data?.email || "",
-        status: submission.status,
-        sentAt: submission.sentAt || undefined,
-        openedAt: submission.openedAt || undefined,
-        completedAt: submission.completedAt || undefined,
-      }]
-    };
-    
-    setSelectedSubmission(detail);
-    setSubmissionModalOpen(true);
+  const handleSignNow = (submission: FormSubmission) => {
+    const signerEmail = submission.signerEmail || data?.workEmail || data?.email || "";
+    if (signerEmail) {
+      getSigningUrlMutation.mutate({
+        submissionId: submission.submissionId,
+        signerEmail: signerEmail,
+      });
+    }
   };
 
   // If no employee or onboarding context, show waiting message
@@ -342,7 +337,7 @@ export function EmployeeForms({
             <FileSignature className="w-5 h-5 text-muted-foreground" />
             <CardTitle>DocuSeal Forms</CardTitle>
           </div>
-          <CardDescription>Please review and sign all required forms below</CardDescription>
+          <CardDescription>Loading forms...</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Skeleton className="h-24 w-full" />
@@ -384,13 +379,13 @@ export function EmployeeForms({
             <FileSignature className="w-5 h-5 text-muted-foreground" />
             <CardTitle>DocuSeal Forms</CardTitle>
           </div>
-          <CardDescription>Please review and sign all required forms below</CardDescription>
+          <CardDescription>Manage and sign all required onboarding forms</CardDescription>
           
           {/* Progress indicator */}
           {requiredTemplates.length > 0 && (
             <div className="mt-4">
               <div className="flex justify-between text-sm mb-2">
-                <span>Forms Progress</span>
+                <span>Overall Progress</span>
                 <span className="font-medium">
                   {submissions.filter(s => s.status === 'completed').length} / {requiredTemplates.length} completed
                 </span>
@@ -407,204 +402,258 @@ export function EmployeeForms({
           )}
         </CardHeader>
         
-        <CardContent className="space-y-4">
-          {/* DocuSeal configuration check */}
-          {onboardingId && submissions.length === 0 && requiredTemplates.length > 0 && (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Forms need to be sent to the employee. Click "Send Form" to initiate the signing process.
-              </AlertDescription>
-            </Alert>
-          )}
+        <CardContent>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="sign" className="flex items-center gap-2">
+                <PenTool className="h-4 w-4" />
+                Sign Forms
+              </TabsTrigger>
+              <TabsTrigger value="send" className="flex items-center gap-2">
+                <SendHorizonal className="h-4 w-4" />
+                Send Forms
+              </TabsTrigger>
+            </TabsList>
 
-          {/* Forms list */}
-          {requiredTemplates.map((template) => {
-            const submission = submissions.find(s => s.templateId === template.templateId);
-            const isSending = sendingForm === template.templateId;
-            
-            return (
-              <Card 
-                key={template.templateId}
-                data-testid={`form-card-${template.templateId}`}
-                className="border"
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1 flex-1">
-                      <div className="flex items-center gap-2">
-                        <FileSignature className="h-4 w-4 text-muted-foreground" />
-                        <h4 className="font-medium">{template.name}</h4>
-                      </div>
-                      {template.description && (
-                        <p className="text-sm text-muted-foreground">{template.description}</p>
-                      )}
-                      {submission && (
-                        <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2">
-                          {submission.sentAt && (
-                            <span className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              Sent: {formatDate(submission.sentAt)}
-                            </span>
-                          )}
-                          {submission.completedAt && (
-                            <span className="flex items-center gap-1">
-                              <CheckCircle className="h-3 w-3 text-green-600" />
-                              Completed: {formatDate(submission.completedAt)}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-center gap-3">
-                      {submission ? (
-                        <>
-                          {getStatusBadge(submission.status, template.templateId)}
-                          {submission.status !== 'completed' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleViewSubmission(submission)}
-                              data-testid={`button-sign-now-${template.templateId}`}
-                            >
-                              <ChevronRight className="h-4 w-4 mr-1" />
-                              View Details
-                            </Button>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          {getStatusBadge('pending', template.templateId)}
-                          {onboardingId && (
-                            <Button
-                              size="sm"
-                              onClick={() => handleSendForm(template.templateId)}
-                              disabled={isSending || sendFormMutation.isPending}
-                              data-testid={`button-sign-now-${template.templateId}`}
-                            >
-                              {isSending ? (
-                                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                              ) : (
-                                <Send className="h-4 w-4 mr-2" />
-                              )}
-                              Send Form
-                            </Button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </CardContent>
-      </Card>
+            {/* Sign Forms Tab */}
+            <TabsContent value="sign" className="space-y-4 mt-4">
+              <Alert className="border-blue-200 bg-blue-50">
+                <Info className="h-4 w-4 text-blue-600" />
+                <AlertDescription className="text-blue-900">
+                  <strong>For Employees:</strong> Click "Sign Form" to complete your required documents.
+                  <br />
+                  <strong>For HR:</strong> You can facilitate in-person signing by clicking "Sign Form" while the employee is present.
+                </AlertDescription>
+              </Alert>
 
-      {/* Submission Details Modal */}
-      <Dialog open={submissionModalOpen} onOpenChange={setSubmissionModalOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Form Submission Details</DialogTitle>
-            <DialogDescription>
-              View and manage the signing process for this form
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedSubmission && (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Form:</span>
-                  <span className="text-sm">{selectedSubmission.templateName}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Submission ID:</span>
-                  <span className="text-sm font-mono text-muted-foreground">
-                    {selectedSubmission.submissionId}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Created:</span>
-                  <span className="text-sm">{formatDate(selectedSubmission.createdAt)}</span>
-                </div>
-              </div>
-
-              <div className="border-t pt-4">
-                <h4 className="text-sm font-medium mb-3">Signers Status</h4>
-                <div className="space-y-3">
-                  {selectedSubmission.signers.map((signer) => (
-                    <div key={signer.email} className="p-3 bg-muted/30 rounded-lg">
+              {requiredTemplates.map((template) => {
+                const submission = submissions.find(s => s.templateId === template.templateId);
+                const canSign = submission && ['sent', 'opened'].includes(submission.status);
+                
+                return (
+                  <Card 
+                    key={template.templateId}
+                    data-testid={`form-card-sign-${template.templateId}`}
+                    className="border"
+                  >
+                    <CardContent className="p-4">
                       <div className="flex items-center justify-between">
-                        <div className="space-y-1">
+                        <div className="space-y-1 flex-1">
                           <div className="flex items-center gap-2">
-                            <User className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">{signer.name}</span>
+                            <FileSignature className="h-4 w-4 text-muted-foreground" />
+                            <h4 className="font-medium">{template.name}</h4>
                           </div>
-                          <div className="text-sm text-muted-foreground">
-                            {signer.email}
-                          </div>
-                          {signer.sentAt && (
-                            <div className="text-xs text-muted-foreground">
-                              Sent: {formatDate(signer.sentAt)}
-                            </div>
+                          {template.description && (
+                            <p className="text-sm text-muted-foreground">{template.description}</p>
                           )}
-                          {signer.openedAt && (
-                            <div className="text-xs text-muted-foreground">
-                              Opened: {formatDate(signer.openedAt)}
-                            </div>
-                          )}
-                          {signer.completedAt && (
-                            <div className="text-xs text-green-600">
-                              Completed: {formatDate(signer.completedAt)}
+                          {submission && (
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2">
+                              {submission.sentAt && (
+                                <span className="flex items-center gap-1">
+                                  <Mail className="h-3 w-3" />
+                                  Sent: {formatDate(submission.sentAt)}
+                                </span>
+                              )}
+                              {submission.openedAt && (
+                                <span className="flex items-center gap-1">
+                                  <Eye className="h-3 w-3" />
+                                  Opened: {formatDate(submission.openedAt)}
+                                </span>
+                              )}
+                              {submission.completedAt && (
+                                <span className="flex items-center gap-1">
+                                  <CheckCircle className="h-3 w-3 text-green-600" />
+                                  Completed: {formatDate(submission.completedAt)}
+                                </span>
+                              )}
                             </div>
                           )}
                         </div>
                         
-                        <div className="flex flex-col gap-2">
-                          {signer.status !== 'completed' && (
+                        <div className="flex items-center gap-3">
+                          {submission ? (
                             <>
-                              <Button
-                                size="sm"
-                                onClick={() => getSigningUrlMutation.mutate({
-                                  submissionId: selectedSubmission.submissionId,
-                                  signerEmail: signer.email,
-                                })}
-                                disabled={getSigningUrlMutation.isPending}
-                              >
-                                Sign Now
-                              </Button>
+                              {getStatusBadge(submission.status, template.templateId)}
+                              {submission.status === 'completed' ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled
+                                  data-testid={`button-sign-${template.templateId}`}
+                                >
+                                  <CheckCircle className="h-4 w-4 mr-2" />
+                                  Signed
+                                </Button>
+                              ) : canSign ? (
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleSignNow(submission)}
+                                  disabled={getSigningUrlMutation.isPending}
+                                  data-testid={`button-sign-${template.templateId}`}
+                                >
+                                  <PenTool className="h-4 w-4 mr-2" />
+                                  Sign Form
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled
+                                  data-testid={`button-sign-${template.templateId}`}
+                                >
+                                  <Clock className="h-4 w-4 mr-2" />
+                                  Awaiting Send
+                                </Button>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {getStatusBadge('pending', template.templateId)}
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => sendReminderMutation.mutate({
-                                  submissionId: selectedSubmission.submissionId,
-                                  signerEmail: signer.email,
-                                })}
-                                disabled={sendReminderMutation.isPending}
+                                disabled
+                                data-testid={`button-sign-${template.templateId}`}
                               >
-                                <Mail className="h-3 w-3 mr-1" />
-                                Remind
+                                <Clock className="h-4 w-4 mr-2" />
+                                Not Sent Yet
                               </Button>
                             </>
                           )}
-                          {signer.status === 'completed' && (
-                            <Badge className="bg-green-100 text-green-800 border-green-200">
-                              <CheckCircle className="w-3 h-3 mr-1" />
-                              Signed
-                            </Badge>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </TabsContent>
+
+            {/* Send Forms Tab */}
+            <TabsContent value="send" className="space-y-4 mt-4">
+              <Alert>
+                <Users className="h-4 w-4" />
+                <AlertDescription>
+                  Send forms to employees for electronic signing or facilitate in-person signing. 
+                  Sent forms can be accessed from the "Sign Forms" tab.
+                </AlertDescription>
+              </Alert>
+
+              {requiredTemplates.map((template) => {
+                const submission = submissions.find(s => s.templateId === template.templateId);
+                const isSending = sendingForm === template.templateId;
+                const signerEmail = submission?.signerEmail || data?.workEmail || data?.email || "";
+                
+                return (
+                  <Card 
+                    key={template.templateId}
+                    data-testid={`form-card-send-${template.templateId}`}
+                    className="border"
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1 flex-1">
+                          <div className="flex items-center gap-2">
+                            <FileSignature className="h-4 w-4 text-muted-foreground" />
+                            <h4 className="font-medium">{template.name}</h4>
+                          </div>
+                          {template.description && (
+                            <p className="text-sm text-muted-foreground">{template.description}</p>
+                          )}
+                          {submission && signerEmail && (
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
+                              <Mail className="h-3 w-3" />
+                              <span>Recipient: {signerEmail}</span>
+                            </div>
+                          )}
+                          {submission && (
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">
+                              {submission.sentAt && (
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="h-3 w-3" />
+                                  Sent: {formatDate(submission.sentAt)}
+                                </span>
+                              )}
+                              {submission.completedAt && (
+                                <span className="flex items-center gap-1">
+                                  <CheckCircle className="h-3 w-3 text-green-600" />
+                                  Completed: {formatDate(submission.completedAt)}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-3">
+                          {submission ? (
+                            <>
+                              {getStatusBadge(submission.status, template.templateId)}
+                              {submission.status === 'completed' ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled
+                                  data-testid={`button-send-${template.templateId}`}
+                                >
+                                  <CheckCircle className="h-4 w-4 mr-2" />
+                                  Completed
+                                </Button>
+                              ) : (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => sendReminderMutation.mutate({
+                                      submissionId: submission.submissionId,
+                                      signerEmail: signerEmail,
+                                    })}
+                                    disabled={sendReminderMutation.isPending || !signerEmail}
+                                    data-testid={`button-remind-${template.templateId}`}
+                                  >
+                                    <RefreshCw className="h-4 w-4 mr-2" />
+                                    Resend
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleSignNow(submission)}
+                                    disabled={getSigningUrlMutation.isPending}
+                                    data-testid={`button-view-${template.templateId}`}
+                                  >
+                                    <ExternalLink className="h-4 w-4 mr-2" />
+                                    View & Sign
+                                  </Button>
+                                </>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {getStatusBadge('pending', template.templateId)}
+                              {onboardingId && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleSendForm(template.templateId)}
+                                  disabled={isSending || sendFormMutation.isPending}
+                                  data-testid={`button-send-${template.templateId}`}
+                                >
+                                  {isSending ? (
+                                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <Send className="h-4 w-4 mr-2" />
+                                  )}
+                                  Send to Employee
+                                </Button>
+                              )}
+                            </>
                           )}
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
     </>
   );
 }
