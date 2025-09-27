@@ -42,6 +42,8 @@ import {
   docusealConfigurations,
   docusealTemplates,
   formSubmissions,
+  docusealRequiredTemplates,
+  onboardingFormSubmissions,
   type User, 
   type InsertUser,
   type Employee,
@@ -90,6 +92,10 @@ import {
   type InsertDocusealTemplate,
   type FormSubmission,
   type InsertFormSubmission,
+  type DocusealRequiredTemplate,
+  type InsertDocusealRequiredTemplate,
+  type OnboardingFormSubmission,
+  type InsertOnboardingFormSubmission,
   type ComplianceDocument,
   type InsertComplianceDocument,
   type Location,
@@ -978,6 +984,19 @@ export interface IStorage {
   deleteFormSubmission(id: number): Promise<void>;
   getFormSubmissionsByInvitation(invitationId: number): Promise<FormSubmission[]>;
   getPendingFormSubmissions(): Promise<FormSubmission[]>;
+  
+  // DocuSeal Required Templates operations
+  getDocusealRequiredTemplates(): Promise<DocusealRequiredTemplate[]>;
+  createDocusealRequiredTemplate(template: InsertDocusealRequiredTemplate): Promise<DocusealRequiredTemplate>;
+  updateDocusealRequiredTemplate(id: number, template: Partial<InsertDocusealRequiredTemplate>): Promise<DocusealRequiredTemplate>;
+  deleteDocusealRequiredTemplate(id: number): Promise<void>;
+  
+  // Onboarding Form Submissions operations
+  getOnboardingFormSubmissions(onboardingId: number): Promise<OnboardingFormSubmission[]>;
+  getOnboardingFormSubmissionsByEmployeeId(employeeId: number): Promise<OnboardingFormSubmission[]>;
+  createOnboardingFormSubmission(submission: InsertOnboardingFormSubmission): Promise<OnboardingFormSubmission>;
+  updateOnboardingFormSubmission(submissionId: string, submission: Partial<InsertOnboardingFormSubmission>): Promise<OnboardingFormSubmission>;
+  getOnboardingFormSubmissionBySubmissionId(submissionId: string): Promise<OnboardingFormSubmission | undefined>;
   
   // Location Management operations
   getLocations(options?: {
@@ -2793,6 +2812,77 @@ export class DatabaseStorage implements IStorage {
         lte(formSubmissions.expiresAt, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)) // Within 7 days of expiry
       ))
       .orderBy(formSubmissions.expiresAt);
+  }
+
+  /**
+   * DocuSeal Required Templates Operations
+   */
+  
+  async getDocusealRequiredTemplates(): Promise<DocusealRequiredTemplate[]> {
+    return await db.select()
+      .from(docusealRequiredTemplates)
+      .orderBy(docusealRequiredTemplates.sortOrder, docusealRequiredTemplates.templateName);
+  }
+
+  async createDocusealRequiredTemplate(template: InsertDocusealRequiredTemplate): Promise<DocusealRequiredTemplate> {
+    const [newTemplate] = await db.insert(docusealRequiredTemplates)
+      .values(template)
+      .returning();
+    return newTemplate;
+  }
+
+  async updateDocusealRequiredTemplate(id: number, template: Partial<InsertDocusealRequiredTemplate>): Promise<DocusealRequiredTemplate> {
+    const [updated] = await db.update(docusealRequiredTemplates)
+      .set({ ...template, updatedAt: new Date() })
+      .where(eq(docusealRequiredTemplates.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDocusealRequiredTemplate(id: number): Promise<void> {
+    await db.delete(docusealRequiredTemplates)
+      .where(eq(docusealRequiredTemplates.id, id));
+  }
+
+  /**
+   * Onboarding Form Submissions Operations
+   */
+  
+  async getOnboardingFormSubmissions(onboardingId: number): Promise<OnboardingFormSubmission[]> {
+    return await db.select()
+      .from(onboardingFormSubmissions)
+      .where(eq(onboardingFormSubmissions.onboardingId, onboardingId))
+      .orderBy(onboardingFormSubmissions.createdAt);
+  }
+
+  async getOnboardingFormSubmissionsByEmployeeId(employeeId: number): Promise<OnboardingFormSubmission[]> {
+    return await db.select()
+      .from(onboardingFormSubmissions)
+      .where(eq(onboardingFormSubmissions.employeeId, employeeId))
+      .orderBy(onboardingFormSubmissions.createdAt);
+  }
+
+  async createOnboardingFormSubmission(submission: InsertOnboardingFormSubmission): Promise<OnboardingFormSubmission> {
+    const [newSubmission] = await db.insert(onboardingFormSubmissions)
+      .values(submission)
+      .returning();
+    return newSubmission;
+  }
+
+  async updateOnboardingFormSubmission(submissionId: string, submission: Partial<InsertOnboardingFormSubmission>): Promise<OnboardingFormSubmission> {
+    const [updated] = await db.update(onboardingFormSubmissions)
+      .set(submission)
+      .where(eq(onboardingFormSubmissions.submissionId, submissionId))
+      .returning();
+    return updated;
+  }
+
+  async getOnboardingFormSubmissionBySubmissionId(submissionId: string): Promise<OnboardingFormSubmission | undefined> {
+    const [submission] = await db.select()
+      .from(onboardingFormSubmissions)
+      .where(eq(onboardingFormSubmissions.submissionId, submissionId))
+      .limit(1);
+    return submission;
   }
   
   // =====================

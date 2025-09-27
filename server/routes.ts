@@ -3528,6 +3528,206 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   /**
+   * DocuSeal Required Templates Routes
+   */
+
+  /**
+   * GET /api/admin/docuseal-required-templates
+   * Get all required templates (admin only)
+   */
+  app.get('/api/admin/docuseal-required-templates',
+    requireAuth,
+    requireRole(['admin']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const templates = await storage.getDocusealRequiredTemplates();
+        res.json(templates);
+      } catch (error) {
+        console.error('Error fetching required templates:', error);
+        res.status(500).json({ error: 'Failed to fetch required templates' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/admin/docuseal-required-templates
+   * Add required template (admin only)
+   */
+  app.post('/api/admin/docuseal-required-templates',
+    requireAuth,
+    requireRole(['admin']),
+    body('templateId').notEmpty().withMessage('Template ID is required'),
+    body('templateName').notEmpty().withMessage('Template name is required'),
+    body('isRequired').optional().isBoolean(),
+    body('sortOrder').optional().isInt(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const template = await storage.createDocusealRequiredTemplate(req.body);
+        await logAudit(req, 1, null, { templateCreated: template.id });
+        res.json(template);
+      } catch (error) {
+        console.error('Error creating required template:', error);
+        res.status(500).json({ error: 'Failed to create required template' });
+      }
+    }
+  );
+
+  /**
+   * PUT /api/admin/docuseal-required-templates/:id
+   * Update required template (admin only)
+   */
+  app.put('/api/admin/docuseal-required-templates/:id',
+    requireAuth,
+    requireRole(['admin']),
+    validateId,
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const id = parseInt(req.params.id);
+        const template = await storage.updateDocusealRequiredTemplate(id, req.body);
+        await logAudit(req, 2, null, { templateUpdated: id });
+        res.json(template);
+      } catch (error) {
+        console.error('Error updating required template:', error);
+        res.status(500).json({ error: 'Failed to update required template' });
+      }
+    }
+  );
+
+  /**
+   * DELETE /api/admin/docuseal-required-templates/:id
+   * Delete required template (admin only)
+   */
+  app.delete('/api/admin/docuseal-required-templates/:id',
+    requireAuth,
+    requireRole(['admin']),
+    validateId,
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const id = parseInt(req.params.id);
+        await storage.deleteDocusealRequiredTemplate(id);
+        await logAudit(req, 3, null, { templateDeleted: id });
+        res.json({ message: 'Template deleted successfully' });
+      } catch (error) {
+        console.error('Error deleting required template:', error);
+        res.status(500).json({ error: 'Failed to delete required template' });
+      }
+    }
+  );
+
+  /**
+   * Onboarding Form Routes
+   */
+
+  /**
+   * GET /api/onboarding/required-forms
+   * Get required forms for onboarding (no auth required for onboarding process)
+   */
+  app.get('/api/onboarding/required-forms',
+    async (req: Request, res: Response) => {
+      try {
+        const templates = await storage.getDocusealRequiredTemplates();
+        res.json(templates.filter(t => t.isRequired));
+      } catch (error) {
+        console.error('Error fetching required forms:', error);
+        res.status(500).json({ error: 'Failed to fetch required forms' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/onboarding/:onboardingId/form-submissions
+   * Get form submissions status for an onboarding process
+   */
+  app.get('/api/onboarding/:onboardingId/form-submissions',
+    requireAuth,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const onboardingId = parseInt(req.params.onboardingId);
+        if (isNaN(onboardingId)) {
+          return res.status(400).json({ error: 'Invalid onboarding ID' });
+        }
+        const submissions = await storage.getOnboardingFormSubmissions(onboardingId);
+        res.json(submissions);
+      } catch (error) {
+        console.error('Error fetching form submissions:', error);
+        res.status(500).json({ error: 'Failed to fetch form submissions' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/onboarding/:onboardingId/send-form
+   * Send form to prospective employee
+   */
+  app.post('/api/onboarding/:onboardingId/send-form',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    body('templateId').notEmpty().withMessage('Template ID is required'),
+    body('signerEmail').isEmail().withMessage('Valid email is required'),
+    body('employeeId').optional().isInt(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const onboardingId = parseInt(req.params.onboardingId);
+        if (isNaN(onboardingId)) {
+          return res.status(400).json({ error: 'Invalid onboarding ID' });
+        }
+
+        // Generate a submission ID (in a real implementation, this would come from DocuSeal API)
+        const submissionId = `sub_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+        const submission = await storage.createOnboardingFormSubmission({
+          onboardingId,
+          templateId: req.body.templateId,
+          submissionId,
+          signerEmail: req.body.signerEmail,
+          employeeId: req.body.employeeId || null,
+          status: 'sent'
+        });
+
+        await logAudit(req, 1, null, { formSent: submissionId, onboardingId });
+        res.json(submission);
+      } catch (error) {
+        console.error('Error sending form:', error);
+        res.status(500).json({ error: 'Failed to send form' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/onboarding/:onboardingId/form-status/:templateId
+   * Check signing status for a specific template in an onboarding process
+   */
+  app.get('/api/onboarding/:onboardingId/form-status/:templateId',
+    requireAuth,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const onboardingId = parseInt(req.params.onboardingId);
+        const { templateId } = req.params;
+        
+        if (isNaN(onboardingId)) {
+          return res.status(400).json({ error: 'Invalid onboarding ID' });
+        }
+
+        const submissions = await storage.getOnboardingFormSubmissions(onboardingId);
+        const submission = submissions.find(s => s.templateId === templateId);
+
+        if (!submission) {
+          return res.status(404).json({ error: 'Form submission not found' });
+        }
+
+        res.json({ status: submission.status, signedAt: submission.signedAt });
+      } catch (error) {
+        console.error('Error checking form status:', error);
+        res.status(500).json({ error: 'Failed to check form status' });
+      }
+    }
+  );
+
+  /**
    * Form Submission Routes
    */
 
