@@ -425,6 +425,7 @@ export default function OnboardingPage() {
         <EmployeeForms
           data={formData}
           onChange={updateFormData}
+          onboardingId={existingOnboarding?.id}
           data-testid="step-forms"
         />
       )
