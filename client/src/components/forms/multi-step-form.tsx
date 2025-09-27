@@ -2,9 +2,15 @@ import { ReactNode, useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { 
+  Tooltip, 
+  TooltipContent, 
+  TooltipProvider, 
+  TooltipTrigger 
+} from "@/components/ui/tooltip";
 
 interface Step {
   title: string;
@@ -19,6 +25,8 @@ interface MultiStepFormProps {
   onSubmit: () => void;
   isSubmitting: boolean;
   canNext: boolean;
+  canProceed?: boolean;
+  proceedBlockedMessage?: string;
 }
 
 export function MultiStepForm({
@@ -28,13 +36,19 @@ export function MultiStepForm({
   onPrevious,
   onSubmit,
   isSubmitting,
-  canNext
+  canNext,
+  canProceed,
+  proceedBlockedMessage
 }: MultiStepFormProps) {
   const progressPercentage = (currentStep / steps.length) * 100;
   const isLastStep = currentStep === steps.length;
   const isFirstStep = currentStep === 1;
   const [isMobile, setIsMobile] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  
+  // Determine if the Next button should be disabled
+  const isNextDisabled = canProceed !== undefined ? !canProceed : !canNext;
+  const nextButtonTooltip = proceedBlockedMessage || "Please complete all required fields before proceeding";
   
   useEffect(() => {
     const checkScreenSize = () => {
@@ -227,15 +241,28 @@ export function MultiStepForm({
               <span className="text-sm text-muted-foreground px-2">
                 {currentStep} / {steps.length}
               </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onNext}
-                disabled={isLastStep || !canNext}
-                className="h-8 px-2"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span tabIndex={0}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={onNext}
+                        disabled={isLastStep || isNextDisabled}
+                        className="h-8 px-2"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {isNextDisabled && !isLastStep && (
+                    <TooltipContent>
+                      <p>{nextButtonTooltip}</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </div>
         </CardHeader>
@@ -269,32 +296,67 @@ export function MultiStepForm({
                     >
                       Review
                     </Button>
-                    <Button
-                      onClick={onSubmit}
-                      disabled={isSubmitting}
-                      data-testid="button-submit"
-                      className="flex-1 sm:flex-initial bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-md"
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                          Submitting...
-                        </>
-                      ) : (
-                        "Complete & Submit"
-                      )}
-                    </Button>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span tabIndex={0}>
+                            <Button
+                              onClick={onSubmit}
+                              disabled={isSubmitting || isNextDisabled}
+                              data-testid="button-submit"
+                              className="flex-1 sm:flex-initial bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-md"
+                            >
+                              {isSubmitting ? (
+                                <>
+                                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                                  Submitting...
+                                </>
+                              ) : (
+                                "Complete & Submit"
+                              )}
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        {isNextDisabled && !isSubmitting && (
+                          <TooltipContent>
+                            <p>{nextButtonTooltip}</p>
+                          </TooltipContent>
+                        )}
+                      </Tooltip>
+                    </TooltipProvider>
                   </>
                 ) : (
-                  <Button
-                    onClick={onNext}
-                    disabled={!canNext}
-                    data-testid="button-next"
-                    className="flex-1 sm:flex-initial"
-                  >
-                    Next Step
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span tabIndex={0}>
+                          <Button
+                            onClick={onNext}
+                            disabled={isNextDisabled}
+                            data-testid="button-next"
+                            className={cn(
+                              "flex-1 sm:flex-initial",
+                              isNextDisabled && proceedBlockedMessage && "relative"
+                            )}
+                          >
+                            {isNextDisabled && proceedBlockedMessage && (
+                              <AlertCircle className="w-4 h-4 mr-2" />
+                            )}
+                            Next Step
+                            <ArrowRight className="w-4 h-4 ml-2" />
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      {isNextDisabled && (
+                        <TooltipContent className="max-w-xs">
+                          <div className="flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                            <p className="text-sm">{nextButtonTooltip}</p>
+                          </div>
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
                 )}
               </div>
             </div>

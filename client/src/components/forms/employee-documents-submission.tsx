@@ -27,7 +27,9 @@ import {
   X,
   AlertTriangle,
   CheckCircle,
-  Clock
+  Clock,
+  AlertCircle,
+  RefreshCw
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -138,9 +140,26 @@ export function EmployeeDocumentsSubmission({
     }
   }, [existingUploads, employeeId]);
 
+  // Calculate validation state for required documents
+  const requiredDocumentsCount = requiredDocumentTypes.filter((dt: RequiredDocumentType) => dt.isRequired).length;
+  const uploadedRequiredCount = requiredDocumentTypes
+    .filter((dt: RequiredDocumentType) => dt.isRequired)
+    .filter((dt: RequiredDocumentType) => 
+      documentUploads.some(u => u.documentTypeId === dt.id && u.status === "uploaded")
+    ).length;
+  
+  const allRequiredDocumentsUploaded = requiredDocumentsCount > 0 && uploadedRequiredCount === requiredDocumentsCount;
+  const documentsUploadProgress = requiredDocumentsCount > 0 ? (uploadedRequiredCount / requiredDocumentsCount) * 100 : 0;
+
   useEffect(() => {
-    onChange({ ...data, documentUploads });
-  }, [documentUploads]);
+    onChange({ 
+      ...data, 
+      documentUploads,
+      allRequiredDocumentsUploaded,
+      uploadedRequiredCount,
+      requiredDocumentsCount
+    });
+  }, [documentUploads, allRequiredDocumentsUploaded, uploadedRequiredCount, requiredDocumentsCount]);
 
   // Merge required documents with uploads
   const documentsTableData = requiredDocumentTypes.map((docType: RequiredDocumentType) => {
@@ -175,7 +194,7 @@ export function EmployeeDocumentsSubmission({
     return <File className="h-4 w-4" />;
   };
 
-  const getStatusBadge = (status: string, documentTypeId?: number) => {
+  const getStatusBadge = (status: string, isRequired: boolean, documentTypeId?: number) => {
     if (status === 'uploaded') {
       return (
         <Badge 
@@ -187,13 +206,26 @@ export function EmployeeDocumentsSubmission({
         </Badge>
       );
     }
+    
+    if (isRequired) {
+      return (
+        <Badge 
+          className="bg-amber-100 text-amber-800"
+          data-testid={documentTypeId ? `status-${documentTypeId}` : undefined}
+        >
+          <AlertCircle className="h-3 w-3 mr-1" />
+          Required
+        </Badge>
+      );
+    }
+    
     return (
       <Badge 
-        className="bg-yellow-100 text-yellow-800"
+        className="bg-gray-100 text-gray-600"
         data-testid={documentTypeId ? `status-${documentTypeId}` : undefined}
       >
         <Clock className="h-3 w-3 mr-1" />
-        Pending
+        Optional
       </Badge>
     );
   };
@@ -266,10 +298,10 @@ export function EmployeeDocumentsSubmission({
 
     try {
       // Simulate upload progress
-      const progressInterval = setInterval(() => {
+      let progressInterval: NodeJS.Timeout | undefined = setInterval(() => {
         setUploadProgress(prev => {
           if (prev >= 90) {
-            clearInterval(progressInterval);
+            if (progressInterval) clearInterval(progressInterval);
             return 90;
           }
           return prev + 10;
@@ -284,7 +316,7 @@ export function EmployeeDocumentsSubmission({
         formData
       );
 
-      clearInterval(progressInterval);
+      if (progressInterval) clearInterval(progressInterval);
       setUploadProgress(100);
 
       if (!response.ok) {
@@ -302,7 +334,7 @@ export function EmployeeDocumentsSubmission({
         uploadDate: new Date().toISOString(),
         status: "uploaded",
         fileUrl: result.fileUrl,
-        isRequired: true
+        isRequired: selectedDocumentType.isRequired
       };
 
       setDocumentUploads(prev => {
@@ -329,7 +361,7 @@ export function EmployeeDocumentsSubmission({
     } catch (error) {
       toast({
         title: "Upload failed",
-        description: error instanceof Error ? error.message : "Failed to upload document",
+        description: error instanceof Error ? error.message : "Failed to upload document. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -366,10 +398,10 @@ export function EmployeeDocumentsSubmission({
 
     try {
       // Simulate upload progress
-      const progressInterval = setInterval(() => {
+      let progressInterval: NodeJS.Timeout | undefined = setInterval(() => {
         setUploadProgress(prev => {
           if (prev >= 90) {
-            clearInterval(progressInterval);
+            if (progressInterval) clearInterval(progressInterval);
             return 90;
           }
           return prev + 10;
@@ -384,7 +416,7 @@ export function EmployeeDocumentsSubmission({
         uploadFormData
       );
 
-      clearInterval(progressInterval);
+      if (progressInterval) clearInterval(progressInterval);
       setUploadProgress(100);
 
       if (!response.ok) {
@@ -428,7 +460,7 @@ export function EmployeeDocumentsSubmission({
     } catch (error) {
       toast({
         title: "Upload failed",
-        description: error instanceof Error ? error.message : "Failed to upload document",
+        description: error instanceof Error ? error.message : "Failed to upload document. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -453,12 +485,12 @@ export function EmployeeDocumentsSubmission({
     handleOpenUploadDialog(documentType);
   };
 
-  // Check if all required documents are uploaded
-  const allRequiredUploaded = requiredDocumentTypes
-    .filter((dt: RequiredDocumentType) => dt.isRequired)
-    .every((dt: RequiredDocumentType) => 
-      documentUploads.some(u => u.documentTypeId === dt.id && u.status === "uploaded")
-    );
+  // Handle retry upload for failed documents
+  const handleRetryUpload = (documentType: RequiredDocumentType) => {
+    setSelectedDocumentType(documentType);
+    setSelectedFile(null);
+    setIsUploadDialogOpen(true);
+  };
 
   return (
     <div className="space-y-6">
@@ -475,11 +507,52 @@ export function EmployeeDocumentsSubmission({
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          {!allRequiredUploaded && (
-            <Alert className="border-yellow-200 bg-yellow-50">
-              <AlertTriangle className="h-4 w-4 text-yellow-600" />
-              <AlertDescription className="text-yellow-800">
-                Please upload all required documents marked with a red asterisk (*) before submitting the form.
+          {/* Progress Summary Card */}
+          {requiredDocumentsCount > 0 && (
+            <Card className={cn(
+              "border-2",
+              allRequiredDocumentsUploaded ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50"
+            )}>
+              <CardContent className="pt-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {allRequiredDocumentsUploaded ? (
+                        <CheckCircle className="h-6 w-6 text-green-600" />
+                      ) : (
+                        <AlertCircle className="h-6 w-6 text-amber-600" />
+                      )}
+                      <div>
+                        <p className="font-medium text-lg">
+                          {uploadedRequiredCount} of {requiredDocumentsCount} required documents uploaded
+                        </p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {allRequiredDocumentsUploaded 
+                            ? "All required documents have been uploaded"
+                            : `Please upload ${requiredDocumentsCount - uploadedRequiredCount} more required document${requiredDocumentsCount - uploadedRequiredCount > 1 ? 's' : ''}`
+                          }
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-2xl font-bold">
+                      {Math.round(documentsUploadProgress)}%
+                    </div>
+                  </div>
+                  <Progress 
+                    value={documentsUploadProgress} 
+                    className="h-3"
+                    data-testid="documents-upload-progress"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {!allRequiredDocumentsUploaded && requiredDocumentsCount > 0 && (
+            <Alert className="border-amber-200 bg-amber-50">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-amber-800 font-medium">
+                You must upload all required documents before proceeding to the next step. Required documents are marked with an asterisk (*) and highlighted below.
               </AlertDescription>
             </Alert>
           )}
@@ -507,13 +580,37 @@ export function EmployeeDocumentsSubmission({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {allDocuments.map((doc: any, index) => (
-                      <TableRow key={doc.id || `doc-${index}`}>
+                    {allDocuments.map((doc: any, index) => {
+                      const isRequired = doc.isRequired;
+                      const isUploaded = doc.status === "uploaded";
+                      const needsUpload = isRequired && !isUploaded;
+                      
+                      return (
+                      <TableRow 
+                        key={doc.id || `doc-${index}`}
+                        className={cn(
+                          needsUpload && "bg-red-50 hover:bg-red-100",
+                          isUploaded && isRequired && "bg-green-50 hover:bg-green-100"
+                        )}
+                        data-testid={`document-row-${doc.id || index}`}
+                      >
                         <TableCell>
-                          <div className="flex items-center gap-1">
-                            <span>{doc.documentTypeName || doc.name}</span>
+                          <div className="flex items-center gap-2">
+                            {doc.status === "uploaded" ? (
+                              <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                            ) : doc.isRequired ? (
+                              <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+                            ) : (
+                              <Clock className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                            )}
+                            <span className={cn(
+                              "font-medium",
+                              needsUpload && "text-red-700"
+                            )}>
+                              {doc.documentTypeName || doc.name}
+                            </span>
                             {doc.isRequired && (
-                              <span className="text-red-500">*</span>
+                              <span className="text-red-500 font-bold">*</span>
                             )}
                           </div>
                         </TableCell>
@@ -546,7 +643,7 @@ export function EmployeeDocumentsSubmission({
                           }
                         </TableCell>
                         <TableCell>
-                          {getStatusBadge(doc.status, doc.id)}
+                          {getStatusBadge(doc.status, doc.isRequired, doc.id)}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
@@ -575,20 +672,24 @@ export function EmployeeDocumentsSubmission({
                               </>
                             ) : (
                               <Button
-                                variant="outline"
+                                variant={needsUpload ? "default" : "outline"}
                                 size="sm"
                                 onClick={() => handleOpenUploadDialog(doc)}
                                 data-testid={`button-upload-${doc.id}`}
-                                className="h-8"
+                                className={cn(
+                                  "h-8",
+                                  needsUpload && "bg-amber-600 hover:bg-amber-700"
+                                )}
                               >
                                 <Upload className="h-4 w-4 mr-1" />
-                                Upload
+                                {needsUpload ? "Upload Required" : "Upload"}
                               </Button>
                             )}
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>

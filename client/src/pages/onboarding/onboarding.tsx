@@ -85,6 +85,12 @@ interface OnboardingFormData {
   taxForms?: any[];
   trainings?: any[];
   payerEnrollments?: any[];
+  
+  // Document submission validation
+  documentUploads?: any[];
+  allRequiredDocumentsUploaded?: boolean;
+  uploadedRequiredCount?: number;
+  requiredDocumentsCount?: number;
 }
 
 /**
@@ -272,6 +278,20 @@ export default function OnboardingPage() {
    * Validates current step before advancing
    */
   const handleNext = () => {
+    // Check if Documents Submission step (step 9) has validation requirement
+    if (currentStep === 9) {
+      if (!formData.allRequiredDocumentsUploaded) {
+        const missingCount = (formData.requiredDocumentsCount || 0) - (formData.uploadedRequiredCount || 0);
+        toast({
+          title: "Cannot Proceed",
+          description: `Please upload all required documents before continuing. You have ${missingCount} required document${missingCount > 1 ? 's' : ''} remaining.`,
+          variant: "destructive",
+          duration: 5000
+        });
+        return;
+      }
+    }
+    
     if (currentStep < 12) {
       setCurrentStep(currentStep + 1);
       // Auto-save draft on step change
@@ -516,6 +536,12 @@ export default function OnboardingPage() {
           onSubmit={handleSubmit}
           isSubmitting={submitOnboardingMutation.isPending}
           canNext={true}
+          canProceed={currentStep === 9 ? formData.allRequiredDocumentsUploaded : undefined}
+          proceedBlockedMessage={
+            currentStep === 9 && !formData.allRequiredDocumentsUploaded
+              ? `Please upload all ${(formData.requiredDocumentsCount || 0) - (formData.uploadedRequiredCount || 0)} remaining required documents before proceeding`
+              : undefined
+          }
         />
 
         {/* Additional Help Section */}
