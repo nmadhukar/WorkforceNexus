@@ -780,7 +780,7 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
                     </div>
                   ) : (
                     templates.filter(t => t.enabled).map((template) => (
-                      <SelectItem key={template.id} value={template.templateId}>
+                      <SelectItem key={template.id} value={template.id.toString()}>
                         <div className="flex items-center gap-2">
                           <FileSignature className="h-4 w-4" />
                           <div>
