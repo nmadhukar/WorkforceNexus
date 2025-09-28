@@ -9,10 +9,13 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -119,6 +122,9 @@ export function EmployeeForms({
   const [submissionModalOpen, setSubmissionModalOpen] = useState(false);
   const [sendingForm, setSendingForm] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("sign");
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [emailDialogData, setEmailDialogData] = useState<{templateId: string; signer: TemplateSigner} | null>(null);
+  const [emailInput, setEmailInput] = useState("");
 
   // Only show forms when we have either an employee ID or an onboarding ID
   const canShowForms = !!(employeeId || onboardingId);
@@ -322,6 +328,50 @@ export function EmployeeForms({
 
     setSendingForm(templateId);
     await sendFormMutation.mutateAsync({ templateId, email });
+  };
+
+  // New function to send form to individual signer
+  const handleSendToSigner = async (templateId: string, signer: TemplateSigner, email: string) => {
+    if (!email) {
+      toast({
+        title: "Email Required",
+        description: `Please provide an email address for ${signer.name || signer.role}.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSendingForm(`${templateId}-${signer.id}`);
+    try {
+      await sendFormMutation.mutateAsync({ templateId, email });
+    } finally {
+      setSendingForm(null);
+    }
+  };
+
+  // Function to prompt for signer email
+  const promptForSignerEmail = (templateId: string, signer: TemplateSigner) => {
+    setEmailDialogData({ templateId, signer });
+    setEmailInput("");
+    setEmailDialogOpen(true);
+  };
+
+  // Handle email submission from dialog
+  const handleEmailSubmit = async () => {
+    if (!emailDialogData) return;
+    
+    if (!emailInput || !emailInput.includes('@')) {
+      toast({
+        title: "Invalid Email",
+        description: "Please enter a valid email address.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setEmailDialogOpen(false);
+    await handleSendToSigner(emailDialogData.templateId, emailDialogData.signer, emailInput);
+    setEmailDialogData(null);
   };
 
   const handleSignNow = (submission: FormSubmission, signerEmail?: string) => {
@@ -574,12 +624,12 @@ export function EmployeeForms({
                                     ) : (
                                       <Button
                                         size="sm"
-                                        variant="outline"
-                                        disabled
+                                        variant="secondary"
+                                        onClick={() => setActiveTab("send")}
                                         data-testid={`button-sign-${template.templateId}-${templateSigner.id}`}
                                       >
-                                        <Clock className="h-4 w-4 mr-2" />
-                                        Not Sent
+                                        <SendHorizonal className="h-4 w-4 mr-2" />
+                                        Go to Send Tab
                                       </Button>
                                     )}
                                   </div>
@@ -721,23 +771,43 @@ export function EmployeeForms({
                                           )}
                                         </div>
                                       )
-                                    ) : (
-                                      onboardingId && (
+                                    ) : (() => {
+                                      const isSendingCurrent = sendingForm === `${template.templateId}-${templateSigner.id}`;
+                                      return (onboardingId || employeeId) && (
                                         <Button
                                           size="sm"
-                                          onClick={() => handleSendForm(template.templateId)}
-                                          disabled={isSending || sendFormMutation.isPending}
+                                          onClick={() => {
+                                            // If signer doesn't have email and isn't employee, prompt for email
+                                            if (!signerEmail && templateSigner.role !== 'employee') {
+                                              promptForSignerEmail(template.templateId, templateSigner);
+                                            } else if (signerEmail) {
+                                              handleSendToSigner(template.templateId, templateSigner, signerEmail);
+                                            } else {
+                                              // For employee role, use the employee's email
+                                              const employeeEmail = data?.workEmail || data?.email || "";
+                                              if (employeeEmail) {
+                                                handleSendToSigner(template.templateId, templateSigner, employeeEmail);
+                                              } else {
+                                                toast({
+                                                  title: "Email Required",
+                                                  description: "Please provide an employee email address before sending forms.",
+                                                  variant: "destructive",
+                                                });
+                                              }
+                                            }
+                                          }}
+                                          disabled={isSendingCurrent || sendFormMutation.isPending}
                                           data-testid={`button-send-${template.templateId}-${templateSigner.id}`}
                                         >
-                                          {isSending ? (
+                                          {isSendingCurrent ? (
                                             <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                                           ) : (
                                             <Send className="h-4 w-4 mr-2" />
                                           )}
                                           Send Form
                                         </Button>
-                                      )
-                                    )}
+                                      );
+                                    })()}
                                   </div>
                                 </div>
                               );
@@ -753,6 +823,58 @@ export function EmployeeForms({
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* Email Input Dialog */}
+      <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Enter Signer Email</DialogTitle>
+            <DialogDescription>
+              Please provide the email address for {emailDialogData?.signer.name || emailDialogData?.signer.role}.
+              The form will be sent to this email for signing.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="signer-email">Email Address</Label>
+              <Input
+                id="signer-email"
+                type="email"
+                placeholder="signer@example.com"
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleEmailSubmit();
+                  }
+                }}
+                data-testid="input-signer-email"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEmailDialogOpen(false);
+                setEmailDialogData(null);
+                setEmailInput("");
+              }}
+              data-testid="button-cancel-email"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleEmailSubmit}
+              disabled={!emailInput || !emailInput.includes('@')}
+              data-testid="button-submit-email"
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Send Form
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
