@@ -3573,6 +3573,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   /**
+   * Forms and DocuSeal Template Routes
+   */
+
+  /**
+   * GET /api/forms/templates
+   * Get all available DocuSeal templates for display
+   */
+  app.get('/api/forms/templates',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        // Fetch all enabled templates from docusealTemplates table
+        const templates = await storage.getDocusealTemplates(true);
+        
+        // Return templates in the expected format
+        const formattedTemplates = templates.map(t => ({
+          id: t.id,
+          templateId: t.templateId,
+          name: t.name,
+          description: t.description,
+          requiredForOnboarding: t.requiredForOnboarding,
+          enabled: t.enabled,
+          sortOrder: t.sortOrder
+        }));
+        
+        console.log(`[API] /api/forms/templates: Fetched ${formattedTemplates.length} enabled templates`);
+        res.json(formattedTemplates);
+      } catch (error) {
+        console.error('[API] Error fetching DocuSeal templates:', error);
+        res.status(500).json({ error: 'Failed to fetch templates' });
+      }
+    }
+  );
+
+  /**
    * Onboarding Form Routes
    */
 
@@ -3594,9 +3630,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             description: t.description,
             isRequired: true  // For backward compatibility
           }));
+        
+        console.log(`[API] /api/onboarding/required-forms: Found ${requiredTemplates.length} required templates out of ${templates.length} total templates`);
         res.json(requiredTemplates);
       } catch (error) {
-        console.error('Error fetching required forms:', error);
+        console.error('[API] Error fetching required forms:', error);
         res.status(500).json({ error: 'Failed to fetch required forms' });
       }
     }
