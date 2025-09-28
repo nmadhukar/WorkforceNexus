@@ -177,6 +177,11 @@ export function EmployeeForms({
   // Send form mutation
   const sendFormMutation = useMutation({
     mutationFn: async ({ templateId, email }: { templateId: string; email: string }) => {
+      // Validate that email is not a signer ID
+      if (email && !email.includes('@')) {
+        throw new Error(`Invalid email format: "${email}" appears to be an ID, not an email address`);
+      }
+      
       // Use the appropriate endpoint based on context
       const endpoint = onboardingId 
         ? `/api/onboarding/${onboardingId}/send-form`
@@ -335,10 +340,21 @@ export function EmployeeForms({
 
   // New function to send form to individual signer
   const handleSendToSigner = async (templateId: string, signer: TemplateSigner, email: string) => {
+    // Validate email is provided and is not a signer ID
     if (!email) {
       toast({
         title: "Email Required",
         description: `Please provide an email address for ${signer.name || signer.role}.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Additional validation: ensure email is actually an email, not an ID
+    if (!email.includes('@')) {
+      toast({
+        title: "Invalid Email",
+        description: `The provided value "${email}" is not a valid email address. Please enter a valid email.`,
         variant: "destructive",
       });
       return;
@@ -372,8 +388,12 @@ export function EmployeeForms({
       return;
     }
 
+    // Close dialog and send form with the entered email
     setEmailDialogOpen(false);
-    await handleSendToSigner(emailDialogData.templateId, emailDialogData.signer, emailInput);
+    
+    // Explicitly pass the email from the input field
+    const emailToSend = emailInput.trim();
+    await handleSendToSigner(emailDialogData.templateId, emailDialogData.signer, emailToSend);
     setEmailDialogData(null);
   };
 
