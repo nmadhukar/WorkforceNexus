@@ -1459,8 +1459,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             passwordHash: hashedPassword,
             role: 'employee', // Set directly to 'employee' since they're being approved
             status: 'active',
-            email: employee.workEmail || employee.personalEmail || null,
-            requirePasswordChange: true // Force password change on first login
+            email: employee.workEmail || employee.personalEmail || null
+            // Note: requirePasswordChange would need to be added to the user schema if needed
           });
           
           userId = newUser.id;
@@ -3617,19 +3617,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Get required forms for onboarding (no auth required for onboarding process)
    */
   app.get('/api/onboarding/required-forms',
-    async (req: Request, res: Response) => {
+    async (req: Express.Request, res: Response) => {
       try {
         // Fetch templates from docusealTemplates where requiredForOnboarding = true and enabled = true
         const templates = await storage.getDocusealTemplates();
         const requiredTemplates = templates
           .filter(t => t.requiredForOnboarding && t.enabled)
-          .map(t => ({
-            id: t.id,
-            templateId: t.templateId,
-            name: t.name,
-            description: t.description,
-            isRequired: true  // For backward compatibility
-          }));
+          .map(t => {
+            // Parse signer roles if available
+            let signers: Array<{id: string, name: string, role: string, required: boolean}> = [];
+            if (t.signerRoles) {
+              try {
+                const signerData = typeof t.signerRoles === 'string' ? JSON.parse(t.signerRoles) : t.signerRoles;
+                if (Array.isArray(signerData)) {
+                  signers = signerData.map((signer: any, index: number) => ({
+                    id: signer.id || `signer_${index}`,
+                    name: signer.name || `Signer ${index + 1}`,
+                    role: signer.role || (index === 0 ? 'employee' : 'hr'),
+                    required: signer.required !== false
+                  }));
+                }
+              } catch (e) {
+                console.warn(`Failed to parse signer roles for template ${t.templateId}:`, e);
+                // Default to single employee signer
+                signers = [{
+                  id: 'signer_0',
+                  name: 'Employee',
+                  role: 'employee',
+                  required: true
+                }];
+              }
+            } else {
+              // Default signer configuration if not specified
+              signers = [{
+                id: 'signer_0',
+                name: 'Employee',
+                role: 'employee',
+                required: true
+              }];
+            }
+            
+            return {
+              id: t.id,
+              templateId: t.templateId,
+              name: t.name,
+              description: t.description,
+              isRequired: true,  // For backward compatibility
+              signers: signers   // Include signer configuration
+            };
+          });
         
         console.log(`[API] /api/onboarding/required-forms: Found ${requiredTemplates.length} required templates out of ${templates.length} total templates`);
         res.json(requiredTemplates);
@@ -3642,7 +3678,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   /**
    * GET /api/onboarding/:onboardingId/form-submissions
-   * Get form submissions status for an onboarding process
+   * Get form submissions status for an onboarding process with detailed signer information
    */
   app.get('/api/onboarding/:onboardingId/form-submissions',
     requireAuth,
@@ -3653,7 +3689,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ error: 'Invalid onboarding ID' });
         }
         const submissions = await storage.getOnboardingFormSubmissions(onboardingId);
-        res.json(submissions);
+        
+        // Enhance submissions with detailed signer information if available
+        const enhancedSubmissions = await Promise.all(submissions.map(async (submission) => {
+          // Try to get detailed submission info from DocuSeal if we have a submissionId
+          let signers: Array<{id: string, email: string, name: string, role: string, status: string, sentAt?: string, openedAt?: string, completedAt?: string}> = [];
+          if (submission.submissionId) {
+            try {
+              const { docuSealService } = await import('./services/docusealService');
+              const serviceInitialized = await docuSealService.initialize();
+              
+              if (serviceInitialized) {
+                const apiSubmission = await docuSealService.getSubmission(submission.submissionId);
+                if (apiSubmission && apiSubmission.submitters) {
+                  signers = apiSubmission.submitters.map((submitter: any, index: number) => ({
+                    id: submitter.id,
+                    email: submitter.email,
+                    name: submitter.name || `Signer ${index + 1}`,
+                    role: submitter.role || (index === 0 ? 'employee' : 'hr'),
+                    status: submitter.status || 'pending',
+                    sentAt: submitter.sent_at,
+                    openedAt: submitter.opened_at,
+                    completedAt: submitter.completed_at
+                  }));
+                }
+              }
+            } catch (error) {
+              console.warn(`Failed to fetch detailed submission info for ${submission.submissionId}:`, error);
+            }
+          }
+          
+          // If we couldn't get signer info from API, use default based on submission status
+          if (signers.length === 0) {
+            // Get template to understand expected signers
+            const template = await storage.getDocusealTemplate(Number(submission.templateId));
+            if (template && template.signerRoles) {
+              try {
+                const signerData = typeof template.signerRoles === 'string' ? 
+                  JSON.parse(template.signerRoles) : template.signerRoles;
+                if (Array.isArray(signerData)) {
+                  signers = signerData.map((signer: any, index: number) => ({
+                    id: `signer_${index}`,
+                    email: index === 0 ? submission.signerEmail : '',
+                    name: signer.name || `Signer ${index + 1}`,
+                    role: signer.role || (index === 0 ? 'employee' : 'hr'),
+                    status: submission.status,
+                    sentAt: submission.createdAt?.toISOString(),
+                    openedAt: submission.createdAt?.toISOString(),
+                    completedAt: submission.signedAt?.toISOString()
+                  }));
+                }
+              } catch (e) {
+                console.warn('Failed to parse template signer roles:', e);
+              }
+            }
+            
+            // Fallback to single signer if still no signer info
+            if (signers.length === 0) {
+              signers = [{
+                id: 'primary',
+                email: submission.signerEmail || '',
+                name: 'Employee',
+                role: 'employee',
+                status: submission.status,
+                sentAt: submission.createdAt?.toISOString(),
+                openedAt: submission.createdAt?.toISOString(),
+                completedAt: submission.signedAt?.toISOString()
+              }];
+            }
+          }
+          
+          return {
+            ...submission,
+            signers: signers
+          };
+        }));
+        
+        res.json(enhancedSubmissions);
       } catch (error) {
         console.error('Error fetching form submissions:', error);
         res.status(500).json({ error: 'Failed to fetch form submissions' });
@@ -4229,7 +4341,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Base response
             const queueItem: any = {
               submissionId: submission.submissionId,
-              templateName: template?.name || submission.templateName || 'Unknown Form',
+              templateName: template?.name || (submission as any).templateName || 'Unknown Form',
               createdAt: submission.createdAt,
               status: submission.status as 'pending' | 'completed',
             };
@@ -4859,16 +4971,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Get related entities
         const [educations, employments, stateLicenses, deaLicenses, boardCertifications, 
                peerReferences, emergencyContacts, taxForms, trainings, payerEnrollments] = await Promise.all([
-          storage.getEducationsByEmployeeId(employee.id!),
-          storage.getEmploymentsByEmployeeId(employee.id!),
-          storage.getStateLicensesByEmployeeId(employee.id!),
-          storage.getDeaLicensesByEmployeeId(employee.id!),
-          storage.getBoardCertificationsByEmployeeId(employee.id!),
-          storage.getPeerReferencesByEmployeeId(employee.id!),
-          storage.getEmergencyContactsByEmployeeId(employee.id!),
-          storage.getTaxFormsByEmployeeId(employee.id!),
-          storage.getTrainingsByEmployeeId(employee.id!),
-          storage.getPayerEnrollmentsByEmployeeId(employee.id!)
+          storage.getEmployeeEducations(employee.id!),
+          storage.getEmployeeEmployments(employee.id!),
+          storage.getEmployeeStateLicenses(employee.id!),
+          storage.getEmployeeDeaLicenses(employee.id!),
+          storage.getEmployeeBoardCertifications(employee.id!),
+          storage.getEmployeePeerReferences(employee.id!),
+          storage.getEmployeeEmergencyContacts(employee.id!),
+          storage.getEmployeeTaxForms(employee.id!),
+          storage.getEmployeeTrainings(employee.id!),
+          storage.getEmployeePayerEnrollments(employee.id!)
         ]);
         
         res.json({
@@ -7215,7 +7327,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/onboarding/required-documents - Get required documents for onboarding (public for onboarding users)
   app.get('/api/onboarding/required-documents',
     // No requireAuth here - available for onboarding users
-    async (req: Request, res: Response) => {
+    async (req: Express.Request, res: Response) => {
       try {
         const documentTypes = await storage.getRequiredDocumentTypesForOnboarding();
         res.json(documentTypes);
@@ -7230,7 +7342,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/onboarding/document-uploads',
     requireAuth,
     requireRole(['prospective_employee']),
-    async (req: Request & { user?: any }, res: Response) => {
+    async (req: AuditRequest, res: Response) => {
       try {
         // For onboarding, we store the upload info temporarily
         // These will be linked to the employee record when onboarding is complete
@@ -7246,7 +7358,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const result = {
           id: Date.now(),
           ...uploadData,
-          fileUrl: `/uploads/temp/${uploadData.fileName}` // Mock URL
+          fileName: uploadData.fileName || uploadData.name || 'unknown',
+          fileUrl: `/uploads/temp/${uploadData.fileName || uploadData.name || 'unknown'}` // Mock URL
         };
         
         res.status(201).json(result);
@@ -7481,7 +7594,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req: any, res: Response) => {
       try {
         const employeeId = req.employee.id;
-        const documents = await storage.getDocumentsByEmployee(employeeId);
+        const documents = await storage.getEmployeeDocuments(employeeId);
         
         res.json(documents);
       } catch (error) {
@@ -7515,7 +7628,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let s3Key = null;
         let storageType = 'local';
         
-        if (s3Config?.isActive) {
+        if (s3Config?.enabled) {
           s3Key = generateDocumentKey(
             employeeId.toString(),
             documentType || 'general',
@@ -7539,16 +7652,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const document = await storage.createDocument({
           employeeId,
           documentType: documentType || 'other',
-          documentNumber,
+          documentName: documentNumber || req.file.originalname,
           fileName: req.file.originalname,
-          fileType: req.file.mimetype,
           fileSize: req.file.size,
           filePath: storageType === 's3' ? s3Key : req.file.path,
           storageType,
           storageKey: s3Key,
-          uploadedBy: req.user?.username || 'employee',
           expirationDate: expirationDate || null,
-          description: description || null
+          notes: description || null
         });
         
         await logAudit(req as AuditRequest, document.id, null, document);
@@ -7571,7 +7682,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req: any, res: Response) => {
       try {
         const employeeId = req.employee.id;
-        const contacts = await storage.getEmergencyContactsByEmployee(employeeId);
+        const contacts = await storage.getEmployeeEmergencyContacts(employeeId);
         
         res.json(contacts);
       } catch (error) {
@@ -7595,7 +7706,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const contacts = req.body.contacts || [];
         
         // Delete existing contacts
-        const existingContacts = await storage.getEmergencyContactsByEmployee(employeeId);
+        const existingContacts = await storage.getEmployeeEmergencyContacts(employeeId);
         for (const contact of existingContacts) {
           await storage.deleteEmergencyContact(contact.id);
         }
@@ -7630,9 +7741,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const employeeId = req.employee.id;
         
         const [stateLicenses, deaLicenses, boardCertifications] = await Promise.all([
-          storage.getStateLicensesByEmployee(employeeId),
-          storage.getDeaLicensesByEmployee(employeeId),
-          storage.getBoardCertificationsByEmployee(employeeId)
+          storage.getEmployeeStateLicenses(employeeId),
+          storage.getEmployeeDeaLicenses(employeeId),
+          storage.getEmployeeBoardCertifications(employeeId)
         ]);
         
         res.json({
@@ -7657,7 +7768,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req: any, res: Response) => {
       try {
         const employeeId = req.employee.id;
-        const trainings = await storage.getTrainingsByEmployee(employeeId);
+        const trainings = await storage.getEmployeeTrainings(employeeId);
         
         res.json(trainings);
       } catch (error) {
@@ -7677,7 +7788,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req: any, res: Response) => {
       try {
         const employeeId = req.employee.id;
-        const educations = await storage.getEducationsByEmployee(employeeId);
+        const educations = await storage.getEmployeeEducations(employeeId);
         
         res.json(educations);
       } catch (error) {
@@ -7697,7 +7808,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req: any, res: Response) => {
       try {
         const employeeId = req.employee.id;
-        const employments = await storage.getEmploymentsByEmployee(employeeId);
+        const employments = await storage.getEmployeeEmployments(employeeId);
         
         res.json(employments);
       } catch (error) {

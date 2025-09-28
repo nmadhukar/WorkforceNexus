@@ -544,8 +544,7 @@ export class DocuSealService {
 
       // Check if template requires multi-party signing
       // This can be configured in template metadata or determined by template name/category
-      const requiresHrSignature = tmpl.metadata?.requiresHrSignature || 
-                                 tmpl.category === 'employment_agreement' ||
+      const requiresHrSignature = tmpl.category === 'employment_agreement' ||
                                  tmpl.name?.toLowerCase().includes('agreement') ||
                                  tmpl.name?.toLowerCase().includes('contract');
 
@@ -622,21 +621,17 @@ export class DocuSealService {
       }
 
       const dbSubmission = await db.insert(formSubmissions).values({
-        submissionId: apiSubmission.id,
         employeeId: employeeId,
-        templateId: templateId,
-        templateName: tmpl.name,
+        templateId: tmpl.id,
+        submissionId: apiSubmission.id,
         recipientEmail: emp.workEmail,
         recipientName: `${emp.firstName} ${emp.lastName}`,
-        recipientPhone: emp.cellPhone,
+        recipientPhone: emp.cellPhone || null,
         status: 'sent',
         sentAt: new Date(),
         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-        isOnboardingRequirement: isOnboarding,
-        invitationId: invitationId,
-        createdBy: createdBy,
-        submissionUrl,
-        metadata
+        documentsUrl: submissionUrl,
+        submissionData: metadata
       }).returning();
 
       return dbSubmission[0];
