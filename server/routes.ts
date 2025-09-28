@@ -3573,96 +3573,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   /**
-   * DocuSeal Required Templates Routes
-   */
-
-  /**
-   * GET /api/admin/docuseal-required-templates
-   * Get all required templates (admin only)
-   */
-  app.get('/api/admin/docuseal-required-templates',
-    requireAuth,
-    requireRole(['admin']),
-    async (req: AuditRequest, res: Response) => {
-      try {
-        const templates = await storage.getDocusealRequiredTemplates();
-        res.json(templates);
-      } catch (error) {
-        console.error('Error fetching required templates:', error);
-        res.status(500).json({ error: 'Failed to fetch required templates' });
-      }
-    }
-  );
-
-  /**
-   * POST /api/admin/docuseal-required-templates
-   * Add required template (admin only)
-   */
-  app.post('/api/admin/docuseal-required-templates',
-    requireAuth,
-    requireRole(['admin']),
-    body('templateId').notEmpty().withMessage('Template ID is required'),
-    body('templateName').notEmpty().withMessage('Template name is required'),
-    body('isRequired').optional().isBoolean(),
-    body('sortOrder').optional().isInt(),
-    handleValidationErrors,
-    async (req: AuditRequest, res: Response) => {
-      try {
-        const template = await storage.createDocusealRequiredTemplate(req.body);
-        await logAudit(req, 1, null, { templateCreated: template.id });
-        res.json(template);
-      } catch (error) {
-        console.error('Error creating required template:', error);
-        res.status(500).json({ error: 'Failed to create required template' });
-      }
-    }
-  );
-
-  /**
-   * PUT /api/admin/docuseal-required-templates/:id
-   * Update required template (admin only)
-   */
-  app.put('/api/admin/docuseal-required-templates/:id',
-    requireAuth,
-    requireRole(['admin']),
-    validateId,
-    handleValidationErrors,
-    async (req: AuditRequest, res: Response) => {
-      try {
-        const id = parseInt(req.params.id);
-        const template = await storage.updateDocusealRequiredTemplate(id, req.body);
-        await logAudit(req, 2, null, { templateUpdated: id });
-        res.json(template);
-      } catch (error) {
-        console.error('Error updating required template:', error);
-        res.status(500).json({ error: 'Failed to update required template' });
-      }
-    }
-  );
-
-  /**
-   * DELETE /api/admin/docuseal-required-templates/:id
-   * Delete required template (admin only)
-   */
-  app.delete('/api/admin/docuseal-required-templates/:id',
-    requireAuth,
-    requireRole(['admin']),
-    validateId,
-    handleValidationErrors,
-    async (req: AuditRequest, res: Response) => {
-      try {
-        const id = parseInt(req.params.id);
-        await storage.deleteDocusealRequiredTemplate(id);
-        await logAudit(req, 3, null, { templateDeleted: id });
-        res.json({ message: 'Template deleted successfully' });
-      } catch (error) {
-        console.error('Error deleting required template:', error);
-        res.status(500).json({ error: 'Failed to delete required template' });
-      }
-    }
-  );
-
-  /**
    * Onboarding Form Routes
    */
 
@@ -3673,8 +3583,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/onboarding/required-forms',
     async (req: Request, res: Response) => {
       try {
-        const templates = await storage.getDocusealRequiredTemplates();
-        res.json(templates.filter(t => t.isRequired));
+        // Fetch templates from docusealTemplates where requiredForOnboarding = true and enabled = true
+        const templates = await storage.getDocusealTemplates();
+        const requiredTemplates = templates
+          .filter(t => t.requiredForOnboarding && t.enabled)
+          .map(t => ({
+            id: t.id,
+            templateId: t.templateId,
+            name: t.name,
+            description: t.description,
+            isRequired: true  // For backward compatibility
+          }));
+        res.json(requiredTemplates);
       } catch (error) {
         console.error('Error fetching required forms:', error);
         res.status(500).json({ error: 'Failed to fetch required forms' });

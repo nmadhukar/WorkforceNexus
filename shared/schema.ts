@@ -552,27 +552,6 @@ export const formSubmissions = pgTable("form_submissions", {
 }));
 
 /**
- * DOCUSEAL REQUIRED TEMPLATES TABLE
- * 
- * Defines DocuSeal templates that are required for employee onboarding.
- * Manages the ordering and requirement settings for each template.
- * Used to ensure all necessary forms are completed during onboarding.
- */
-export const docusealRequiredTemplates = pgTable("docuseal_required_templates", {
-  id: serial("id").primaryKey(), // Auto-incrementing primary key
-  templateId: varchar("template_id", { length: 255 }).notNull(), // DocuSeal template ID
-  templateName: varchar("template_name", { length: 255 }).notNull(), // Template display name
-  description: text("description"), // Optional description of the template
-  isRequired: boolean("is_required").default(true).notNull(), // Whether template is mandatory for onboarding
-  sortOrder: integer("sort_order").default(0).notNull(), // Display order for templates
-  createdAt: timestamp("created_at").defaultNow().notNull(), // Record creation timestamp
-  updatedAt: timestamp("updated_at").defaultNow().notNull() // Last modification timestamp
-}, (table) => ({
-  templateIdIdx: index("idx_docuseal_required_template_id").on(table.templateId),
-  sortOrderIdx: index("idx_docuseal_required_sort_order").on(table.sortOrder)
-}));
-
-/**
  * ONBOARDING FORM SUBMISSIONS TABLE
  * 
  * Tracks DocuSeal form submissions specifically for the onboarding process.
@@ -1401,12 +1380,6 @@ export const insertFormSubmissionSchema = createInsertSchema(formSubmissions).om
 });
 
 // Insert schemas for new DocuSeal tables
-export const insertDocusealRequiredTemplateSchema = createInsertSchema(docusealRequiredTemplates).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
-});
-
 export const insertOnboardingFormSubmissionSchema = createInsertSchema(onboardingFormSubmissions).omit({
   id: true,
   createdAt: true,
@@ -1420,8 +1393,6 @@ export type DocusealTemplate = typeof docusealTemplates.$inferSelect;
 export type InsertDocusealTemplate = z.infer<typeof insertDocusealTemplateSchema>;
 export type FormSubmission = typeof formSubmissions.$inferSelect;
 export type InsertFormSubmission = z.infer<typeof insertFormSubmissionSchema>;
-export type DocusealRequiredTemplate = typeof docusealRequiredTemplates.$inferSelect;
-export type InsertDocusealRequiredTemplate = z.infer<typeof insertDocusealRequiredTemplateSchema>;
 export type OnboardingFormSubmission = typeof onboardingFormSubmissions.$inferSelect;
 export type InsertOnboardingFormSubmission = z.infer<typeof insertOnboardingFormSubmissionSchema>;
 

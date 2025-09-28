@@ -42,7 +42,6 @@ import {
   docusealConfigurations,
   docusealTemplates,
   formSubmissions,
-  docusealRequiredTemplates,
   onboardingFormSubmissions,
   type User, 
   type InsertUser,
@@ -92,8 +91,6 @@ import {
   type InsertDocusealTemplate,
   type FormSubmission,
   type InsertFormSubmission,
-  type DocusealRequiredTemplate,
-  type InsertDocusealRequiredTemplate,
   type OnboardingFormSubmission,
   type InsertOnboardingFormSubmission,
   type ComplianceDocument,
@@ -984,12 +981,6 @@ export interface IStorage {
   deleteFormSubmission(id: number): Promise<void>;
   getFormSubmissionsByInvitation(invitationId: number): Promise<FormSubmission[]>;
   getPendingFormSubmissions(): Promise<FormSubmission[]>;
-  
-  // DocuSeal Required Templates operations
-  getDocusealRequiredTemplates(): Promise<DocusealRequiredTemplate[]>;
-  createDocusealRequiredTemplate(template: InsertDocusealRequiredTemplate): Promise<DocusealRequiredTemplate>;
-  updateDocusealRequiredTemplate(id: number, template: Partial<InsertDocusealRequiredTemplate>): Promise<DocusealRequiredTemplate>;
-  deleteDocusealRequiredTemplate(id: number): Promise<void>;
   
   // Onboarding Form Submissions operations
   getOnboardingFormSubmissions(onboardingId: number): Promise<OnboardingFormSubmission[]>;
@@ -2812,36 +2803,6 @@ export class DatabaseStorage implements IStorage {
         lte(formSubmissions.expiresAt, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)) // Within 7 days of expiry
       ))
       .orderBy(formSubmissions.expiresAt);
-  }
-
-  /**
-   * DocuSeal Required Templates Operations
-   */
-  
-  async getDocusealRequiredTemplates(): Promise<DocusealRequiredTemplate[]> {
-    return await db.select()
-      .from(docusealRequiredTemplates)
-      .orderBy(docusealRequiredTemplates.sortOrder, docusealRequiredTemplates.templateName);
-  }
-
-  async createDocusealRequiredTemplate(template: InsertDocusealRequiredTemplate): Promise<DocusealRequiredTemplate> {
-    const [newTemplate] = await db.insert(docusealRequiredTemplates)
-      .values(template)
-      .returning();
-    return newTemplate;
-  }
-
-  async updateDocusealRequiredTemplate(id: number, template: Partial<InsertDocusealRequiredTemplate>): Promise<DocusealRequiredTemplate> {
-    const [updated] = await db.update(docusealRequiredTemplates)
-      .set({ ...template, updatedAt: new Date() })
-      .where(eq(docusealRequiredTemplates.id, id))
-      .returning();
-    return updated;
-  }
-
-  async deleteDocusealRequiredTemplate(id: number): Promise<void> {
-    await db.delete(docusealRequiredTemplates)
-      .where(eq(docusealRequiredTemplates.id, id));
   }
 
   /**
