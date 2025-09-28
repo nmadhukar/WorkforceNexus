@@ -968,6 +968,7 @@ export interface IStorage {
   // DocuSeal Template operations
   getDocusealTemplates(enabled?: boolean): Promise<DocusealTemplate[]>;
   getDocusealTemplate(id: number): Promise<DocusealTemplate | undefined>;
+  getDocusealTemplateByTemplateId(templateId: string): Promise<DocusealTemplate | undefined>;
   createDocusealTemplate(template: InsertDocusealTemplate): Promise<DocusealTemplate>;
   updateDocusealTemplate(id: number, template: Partial<InsertDocusealTemplate>): Promise<DocusealTemplate>;
   deleteDocusealTemplate(id: number): Promise<void>;
@@ -2717,6 +2718,13 @@ export class DatabaseStorage implements IStorage {
     const [template] = await db.select()
       .from(docusealTemplates)
       .where(eq(docusealTemplates.id, id));
+    return template;
+  }
+
+  async getDocusealTemplateByTemplateId(templateId: string): Promise<DocusealTemplate | undefined> {
+    const [template] = await db.select()
+      .from(docusealTemplates)
+      .where(eq(docusealTemplates.templateId, templateId));
     return template;
   }
 

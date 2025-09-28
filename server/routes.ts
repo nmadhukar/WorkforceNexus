@@ -3813,6 +3813,114 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   /**
+   * POST /api/employees/:employeeId/send-form
+   * Send form to an employee (outside of onboarding context)
+   */
+  app.post('/api/employees/:employeeId/send-form',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    body('templateId').notEmpty().withMessage('Template ID is required'),
+    body('signerEmail').isEmail().withMessage('Valid email is required'),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.employeeId);
+        if (isNaN(employeeId)) {
+          return res.status(400).json({ error: 'Invalid employee ID' });
+        }
+
+        // Verify employee exists
+        const employee = await storage.getEmployee(employeeId);
+        if (!employee) {
+          return res.status(404).json({ error: 'Employee not found' });
+        }
+
+        // Look up the template to get its numeric ID
+        const template = await storage.getDocusealTemplateByTemplateId(req.body.templateId);
+        if (!template) {
+          return res.status(404).json({ error: 'Template not found' });
+        }
+
+        // Generate a submission ID (in a real implementation, this would come from DocuSeal API)
+        const submissionId = `sub_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+        // Create form submission for employee (not linked to onboarding)
+        const submission = await storage.createFormSubmission({
+          employeeId,
+          templateId: template.id,  // Use numeric ID from docuseal_templates table
+          submissionId,
+          recipientEmail: req.body.signerEmail,
+          status: 'sent',
+          createdBy: req.user!.id
+        });
+
+        await logAudit(req, 1, null, { 
+          formSent: submissionId, 
+          employeeId,
+          templateId: req.body.templateId
+        });
+        
+        res.json(submission);
+      } catch (error) {
+        console.error('Failed to send form to employee:', error);
+        res.status(500).json({ 
+          error: 'Failed to send form', 
+          details: error instanceof Error ? error.message : 'Unknown error' 
+        });
+      }
+    }
+  );
+
+  /**
+   * GET /api/employees/:employeeId/form-submissions
+   * Get form submissions for an employee (outside of onboarding context)
+   */
+  app.get('/api/employees/:employeeId/form-submissions',
+    requireAuth,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.employeeId);
+        if (isNaN(employeeId)) {
+          return res.status(400).json({ error: 'Invalid employee ID' });
+        }
+
+        // Verify employee exists
+        const employee = await storage.getEmployee(employeeId);
+        if (!employee) {
+          return res.status(404).json({ error: 'Employee not found' });
+        }
+
+        // Get form submissions for this employee
+        const submissions = await storage.getFormSubmissions(employeeId);
+        
+        // Format submissions to match the expected frontend structure
+        const formattedSubmissions = submissions.map(submission => ({
+          id: submission.id,
+          templateId: submission.templateId,
+          submissionId: submission.submissionId,
+          status: submission.status,
+          signerEmail: submission.recipientEmail,
+          employeeId: submission.employeeId,
+          sentAt: submission.sentAt,
+          openedAt: submission.openedAt,
+          completedAt: submission.completedAt,
+          createdAt: submission.createdAt,
+          // Add empty signers array for compatibility with frontend
+          signers: []
+        }));
+
+        res.json(formattedSubmissions);
+      } catch (error) {
+        console.error('Failed to get employee form submissions:', error);
+        res.status(500).json({ 
+          error: 'Failed to get form submissions', 
+          details: error instanceof Error ? error.message : 'Unknown error' 
+        });
+      }
+    }
+  );
+
+  /**
    * GET /api/onboarding/:onboardingId/form-status/:templateId
    * Check signing status for a specific template in an onboarding process
    */

@@ -136,14 +136,16 @@ export function EmployeeForms({
     retry: 2,
   });
 
-  // Fetch form submissions for onboarding
+  // Fetch form submissions for onboarding or employee
   const { 
     data: submissions = [], 
     isLoading: submissionsLoading,
     refetch: refetchSubmissions 
   } = useQuery<FormSubmission[]>({
-    queryKey: [`/api/onboarding/${onboardingId}/form-submissions`],
-    enabled: !!onboardingId,
+    queryKey: onboardingId 
+      ? [`/api/onboarding/${onboardingId}/form-submissions`]
+      : [`/api/employees/${employeeId}/form-submissions`],
+    enabled: !!(onboardingId || employeeId),
     refetchInterval: 15000, // Poll every 15 seconds
     retry: false,
   });
@@ -175,11 +177,12 @@ export function EmployeeForms({
   // Send form mutation
   const sendFormMutation = useMutation({
     mutationFn: async ({ templateId, email }: { templateId: string; email: string }) => {
-      if (!onboardingId) {
-        throw new Error("Onboarding ID is required");
-      }
+      // Use the appropriate endpoint based on context
+      const endpoint = onboardingId 
+        ? `/api/onboarding/${onboardingId}/send-form`
+        : `/api/employees/${employeeId}/send-form`;
       
-      return await apiRequest("POST", `/api/onboarding/${onboardingId}/send-form`, {
+      return await apiRequest("POST", endpoint, {
         templateId,
         signerEmail: email,
         employeeId: employeeId || null
