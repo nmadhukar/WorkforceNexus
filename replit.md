@@ -57,6 +57,12 @@ Preferred communication style: Simple, everyday language.
 - **Responsible Persons**: Assignment with notification preferences
 - **Extensibility**: JSONB fields for custom license data
 
+### Testing & Development Features
+- **Test Invitation Generator**: Admin-only feature to generate test invitations for onboarding flow testing
+- **Test Mode UI**: "Generate Test Invitation" button in Employee Management → Invitations tab (admin-only)
+- **Quick Registration Testing**: Generates unique test emails and registration links without sending actual emails
+- **Onboarding Flow Testing**: Easy way to test the complete prospective employee onboarding process
+
 ## External Dependencies
 
 ### Database Services
