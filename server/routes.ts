@@ -5002,6 +5002,106 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   /**
+   * POST /api/invitations/test-generate
+   * Generate a test invitation for onboarding testing
+   * Admin-only endpoint that creates a test invitation without sending emails
+   */
+  app.post('/api/invitations/test-generate',
+    requireAuth, // Simple session auth check
+    requireRole(['admin']), // Admin only
+    async (req: AuditRequest, res: Response) => {
+      try {
+        // Generate unique test email with timestamp
+        const timestamp = Date.now();
+        const testEmail = `test_${timestamp}@example.com`;
+        
+        // Generate test user details
+        const firstName = 'Test';
+        const lastName = `User_${timestamp}`;
+        const cellPhone = '555-0100';
+        
+        // Check if an invitation already exists for this test email (unlikely but safe)
+        const existingInvitation = await storage.getInvitationByEmail(testEmail);
+        if (existingInvitation && existingInvitation.status !== 'expired') {
+          // This should never happen with timestamp-based emails, but just in case
+          return res.status(400).json({ 
+            error: 'Test invitation generation collision. Please try again.' 
+          });
+        }
+        
+        // Generate secure invitation token
+        const { key: invitationToken } = await generateApiKey('test');
+        
+        // Calculate expiration (7 days from now)
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7);
+        
+        // Calculate first reminder (24 hours from now) - though we won't send it
+        const nextReminderAt = new Date();
+        nextReminderAt.setHours(nextReminderAt.getHours() + 24);
+        
+        // Create invitation record with prospective_employee role
+        const invitation = await storage.createInvitation({
+          firstName,
+          lastName,
+          email: testEmail,
+          cellPhone,
+          invitationToken,
+          invitedBy: req.user!.id,
+          expiresAt,
+          nextReminderAt,
+          intendedRole: 'prospective_employee' // Always use prospective_employee for test invitations
+        });
+        
+        // Generate invitation link using proper domain detection
+        const baseUrl = getBaseUrl(req);
+        const registrationLink = `${baseUrl}/onboarding/register?token=${invitationToken}`;
+        
+        console.log('Test invitation generated:', {
+          id: invitation.id,
+          email: testEmail,
+          token: invitationToken,
+          link: registrationLink
+        });
+        
+        // Log audit for test invitation creation
+        await logAudit(req, invitation.id, null, { 
+          action: 'test_invitation_generated',
+          email: testEmail, 
+          firstName, 
+          lastName 
+        });
+        
+        // Return comprehensive test invitation details
+        res.status(201).json({
+          message: 'Test invitation generated successfully. Use the registration link to test the onboarding flow.',
+          usage: 'Open the registration link in a browser to start the onboarding process. No email will be sent.',
+          invitation: {
+            id: invitation.id,
+            firstName: invitation.firstName,
+            lastName: invitation.lastName,
+            email: invitation.email,
+            token: invitationToken,
+            status: invitation.status,
+            expiresAt: invitation.expiresAt,
+            intendedRole: 'prospective_employee'
+          },
+          registrationLink,
+          testCredentials: {
+            note: 'Use these details when registering:',
+            email: testEmail,
+            suggestedUsername: `testuser_${timestamp}`,
+            suggestedPassword: 'TestPassword123!' // Just a suggestion, user can choose their own
+          }
+        });
+      } catch (error) {
+        console.error('Error generating test invitation:', error);
+        res.status(500).json({ error: 'Failed to generate test invitation' });
+      }
+    }
+  );
+
+  /**
    * GET /api/invitations/:id/form-status
    * Get form submission status for a specific invitation
    */
