@@ -200,32 +200,41 @@ export function setupAuth(app: Express) {
    * 
    * @route POST /api/register
    * @group Authentication - User authentication operations
-   * @param {string} body.username.required - Unique username
-   * @param {string} body.password.required - Password (min 8 characters recommended)
-   * @param {string} body.role - User role: 'admin', 'hr', or 'viewer' (default: 'hr')
-   * @param {string} body.invitationToken - Invitation token for employee onboarding
+   * @description Register a new user through invitation-based onboarding.
+   * Creates user account with associated employee record for prospective employees.
    * 
-   * @returns {object} 201 - Created user object with onboarding info
-   * @returns {string} 400 - Username already exists or invalid invitation
+   * @param {string} body.username.required - Unique username for the account
+   * @param {string} body.password.required - Password meeting security requirements (min 8 chars)
+   * @param {string} body.invitationToken.required - Valid invitation token (required for all registrations)
+   * 
+   * @returns {object} 201 - User created with onboarding details including employeeId
+   * @returns {object} 400 - Invalid request (username taken, invalid/expired token)
+   * @returns {object} 500 - Server error during registration process
    * 
    * @example request
    * {
    *   "username": "john.doe",
    *   "password": "SecurePass123!",
-   *   "role": "hr",
-   *   "invitationToken": "abc123..."
+   *   "invitationToken": "abc123def456..."
    * }
    * 
-   * @example response - 201
+   * @example response - 201 Success
    * {
-   *   "id": 1,
+   *   "id": 35,
    *   "username": "john.doe",
-   *   "role": "hr",
-   *   "createdAt": "2024-01-20T10:00:00Z",
+   *   "role": "prospective_employee",
+   *   "createdAt": "2025-01-20T10:00:00Z",
    *   "isOnboarding": true,
-   *   "formsSent": 3,
-   *   "message": "Account created successfully. Onboarding forms have been sent to your email."
+   *   "employeeId": 16,
+   *   "formsSent": 0,
+   *   "message": "Account created successfully. You can now complete your employee profile."
    * }
+   * 
+   * @security
+   * - Passwords hashed using scrypt algorithm
+   * - Invitation tokens are single-use and expire after 7 days
+   * - Failed registrations clean up partial data for consistency
+   * - Email from invitation is stored in user record for identification
    */
   app.post("/api/register", async (req, res, next) => {
     const { username, password, invitationToken } = req.body;
@@ -266,6 +275,7 @@ export function setupAuth(app: Express) {
     isOnboarding = true;
 
     // Create user account with the role and email from the invitation
+    // IMPORTANT: Email must be set from invitation to ensure proper user identification
     const user = await storage.createUser({
       username: username,
       passwordHash: await hashPassword(password),
@@ -284,9 +294,10 @@ export function setupAuth(app: Express) {
         
         if (existingEmployee) {
           // Employee already exists - link user account to existing employee
+          // This handles pre-created employee records from HR
           console.log(`Found existing employee with email ${invitation.email} (ID: ${existingEmployee.id})`);
           
-          // Check if employee already has a user linked
+          // Check if employee already has a user linked to prevent duplicates
           if (existingEmployee.userId) {
             throw new Error(`Employee ${existingEmployee.id} already has a linked user account (User ID: ${existingEmployee.userId})`);
           }
@@ -301,6 +312,7 @@ export function setupAuth(app: Express) {
           console.log(`Successfully linked user ${user.id} to existing employee ${existingEmployee.id}: ${existingEmployee.firstName} ${existingEmployee.lastName}`);
         } else {
           // No existing employee - create new employee record
+          // Critical for prospective_employee users to access /onboarding page
           console.log(`Creating new employee record for ${invitation.firstName} ${invitation.lastName} (${invitation.email})`);
           
           employee = await storage.createEmployee({
@@ -366,6 +378,7 @@ export function setupAuth(app: Express) {
         }
       } catch (error) {
         // If employee linking/creation fails, clean up user and return error
+        // This maintains data consistency by preventing orphaned user accounts
         const err = error instanceof Error ? error : new Error(String(error));
         console.error(`Failed to complete employee onboarding for user ${user.id} (${username}):`, err.message);
         console.error('Full error:', error);
