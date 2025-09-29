@@ -139,11 +139,19 @@ export function setupAuth(app: Express) {
    * - Sessions expire after browser close (no maxAge set)
    * - Secure cookies in production (trust proxy enabled)
    */
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.REPLIT_DOMAINS;
+  
   const sessionSettings: session.SessionOptions = {
     secret: process.env.SESSION_SECRET!,
     resave: false,
     saveUninitialized: false,
     store: storage.sessionStore,
+    cookie: {
+      httpOnly: true, // Prevent XSS attacks
+      secure: isProduction, // Use secure cookies in production (HTTPS)
+      sameSite: 'lax', // CSRF protection - use 'lax' for both dev and production
+      maxAge: undefined // Session cookie (expires on browser close)
+    }
   };
 
   app.set("trust proxy", 1);
