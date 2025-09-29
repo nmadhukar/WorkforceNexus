@@ -16,7 +16,7 @@ import { SearchFilters } from "@/components/search-filters";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { Plus, Search, UserPlus, Mail, Clock, RefreshCw, CheckCircle, XCircle } from "lucide-react";
+import { Plus, Search, UserPlus, Mail, Clock, RefreshCw, CheckCircle, XCircle, TestTube, Copy } from "lucide-react";
 import { Employee } from "@/lib/types";
 
 /**
@@ -53,6 +53,15 @@ interface EmployeeInvitation {
 }
 
 /**
+ * Test invitation response from API
+ */
+interface TestInvitationResponse {
+  email: string;
+  registrationUrl: string;
+  invitation: EmployeeInvitation;
+}
+
+/**
  * Employee list management page with invitation system and dual-tab interface
  * @component
  * @returns {JSX.Element} Employee list interface with active employees and invitations tabs
@@ -86,6 +95,8 @@ export default function EmployeesList() {
   
   // Invitation-related state
   const [invitationDialogOpen, setInvitationDialogOpen] = useState(false);
+  const [testInvitationDialogOpen, setTestInvitationDialogOpen] = useState(false);
+  const [testInvitationData, setTestInvitationData] = useState<TestInvitationResponse | null>(null);
   const [resendInvitationId, setResendInvitationId] = useState<number | null>(null);
   const [approveInvitationId, setApproveInvitationId] = useState<number | null>(null);
   const [rejectInvitationId, setRejectInvitationId] = useState<number | null>(null);
@@ -257,6 +268,27 @@ export default function EmployeesList() {
     }
   });
 
+  // Generate Test Invitation Mutation
+  const generateTestInvitationMutation = useMutation({
+    mutationFn: () => 
+      apiRequest("POST", "/api/invitations/test-generate", {}),
+    onSuccess: (data: TestInvitationResponse) => {
+      toast({
+        title: "Success",
+        description: "Test invitation generated successfully"
+      });
+      setTestInvitationData(data);
+      queryClient.invalidateQueries({ queryKey: ["/api/invitations"] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate test invitation",
+        variant: "destructive"
+      });
+    }
+  });
+
   // Resend Invitation Mutation
   const resendInvitationMutation = useMutation({
     mutationFn: (invitationId: number) => 
@@ -329,6 +361,27 @@ export default function EmployeesList() {
    */
   const handleSendInvitation = () => {
     sendInvitationMutation.mutate(newInvitation);
+  };
+
+  /**
+   * Handles copying text to clipboard
+   * @param {string} text - Text to copy
+   * @param {string} label - Label for toast notification
+   */
+  const handleCopyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({
+        title: "Copied",
+        description: `${label} copied to clipboard`
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to copy to clipboard",
+        variant: "destructive"
+      });
+    }
   };
 
   /**
@@ -576,14 +629,118 @@ export default function EmployeesList() {
           {(user?.role === 'admin' || user?.role === 'hr') && (
             <TabsContent value="invitations" className="mt-6">
               <div className="space-y-4">
-                <div className="p-4 bg-muted/50 rounded-lg">
-                  <h3 className="font-medium mb-2 flex items-center">
-                    <Mail className="w-4 h-4 mr-2" />
-                    Pending Employee Invitations
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    Track and manage employee invitations sent via email. Invitations expire after 7 days.
-                  </p>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 p-4 bg-muted/50 rounded-lg mr-4">
+                    <h3 className="font-medium mb-2 flex items-center">
+                      <Mail className="w-4 h-4 mr-2" />
+                      Pending Employee Invitations
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      Track and manage employee invitations sent via email. Invitations expire after 7 days.
+                    </p>
+                  </div>
+                  
+                  {/* Test Invitation Button - Only for Admin users */}
+                  {user?.role === 'admin' && (
+                    <Dialog open={testInvitationDialogOpen} onOpenChange={(open) => {
+                      setTestInvitationDialogOpen(open);
+                      if (!open) {
+                        setTestInvitationData(null);
+                      }
+                    }}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" data-testid="button-generate-test-invitation">
+                          <TestTube className="w-4 h-4 mr-2" />
+                          Generate Test Invitation
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-[525px]">
+                        <DialogHeader>
+                          <DialogTitle>Generate Test Invitation</DialogTitle>
+                          <p className="text-sm text-muted-foreground mt-2">
+                            Create a test invitation for testing the onboarding flow. No email will be sent.
+                          </p>
+                        </DialogHeader>
+                        
+                        {!testInvitationData ? (
+                          <div className="space-y-4">
+                            <Button 
+                              onClick={() => generateTestInvitationMutation.mutate()}
+                              disabled={generateTestInvitationMutation.isPending}
+                              className="w-full"
+                              data-testid="button-submit-test-invitation"
+                            >
+                              <TestTube className="w-4 h-4 mr-2" />
+                              {generateTestInvitationMutation.isPending ? "Generating..." : "Generate Test Invitation"}
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            <div className="bg-green-50 dark:bg-green-950/20 p-4 rounded-lg">
+                              <h4 className="font-medium text-green-900 dark:text-green-400 mb-2">
+                                Test Invitation Generated Successfully!
+                              </h4>
+                              <p className="text-sm text-green-700 dark:text-green-500">
+                                Use this link to test the onboarding process. You can open it in a private/incognito browser window.
+                              </p>
+                            </div>
+                            
+                            <div className="space-y-3">
+                              <div>
+                                <Label htmlFor="test-email" className="text-sm font-medium">Test Email Address</Label>
+                                <div className="flex items-center mt-1">
+                                  <Input 
+                                    id="test-email" 
+                                    value={testInvitationData.email} 
+                                    readOnly 
+                                    className="flex-1"
+                                    data-testid="input-test-email"
+                                  />
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="ml-2"
+                                    onClick={() => handleCopyToClipboard(testInvitationData.email, "Email")}
+                                    data-testid="button-copy-test-email"
+                                  >
+                                    <Copy className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                              
+                              <div>
+                                <Label htmlFor="test-link" className="text-sm font-medium">Registration Link</Label>
+                                <div className="flex items-center mt-1">
+                                  <Input 
+                                    id="test-link" 
+                                    value={testInvitationData.registrationUrl} 
+                                    readOnly 
+                                    className="flex-1 text-xs"
+                                    data-testid="input-test-link"
+                                  />
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="ml-2"
+                                    onClick={() => handleCopyToClipboard(testInvitationData.registrationUrl, "Registration link")}
+                                    data-testid="button-copy-test-link"
+                                  >
+                                    <Copy className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg">
+                              <p className="text-sm text-blue-700 dark:text-blue-400">
+                                <strong>Instructions:</strong> Use this link to test the onboarding process. You can open it in a private/incognito browser window.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      </DialogContent>
+                    </Dialog>
+                  )}
                 </div>
                 
                 {invitationsLoading ? (
