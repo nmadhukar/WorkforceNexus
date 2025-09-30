@@ -139,7 +139,9 @@ export function setupAuth(app: Express) {
    * - Sessions expire after browser close (no maxAge set)
    * - Secure cookies in production (trust proxy enabled)
    */
-  const isProduction = process.env.NODE_ENV === 'production' || process.env.REPLIT_DOMAINS;
+  // Only use secure cookies if explicitly in production mode
+  // For local development (even on Replit), don't require HTTPS
+  const isProduction = process.env.NODE_ENV === 'production';
   
   const sessionSettings: session.SessionOptions = {
     secret: process.env.SESSION_SECRET!,
