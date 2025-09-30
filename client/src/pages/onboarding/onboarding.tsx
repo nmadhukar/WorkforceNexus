@@ -142,17 +142,29 @@ export default function OnboardingPage() {
   }, [user, navigate, toast]);
 
   // Check if onboarding already exists for this user
-  const { data: existingOnboarding, isLoading: loadingOnboarding } = useQuery({
+  const { data: existingOnboarding, isLoading: loadingOnboarding, error: onboardingError } = useQuery({
     queryKey: ["/api/onboarding/my-onboarding"],
     queryFn: async () => {
       const res = await fetch("/api/onboarding/my-onboarding", { credentials: "include" });
       if (!res.ok) {
         if (res.status === 404) {
+          // 404 is normal for new users - they haven't started onboarding yet
           return null;
         }
-        throw new Error('Failed to fetch onboarding data');
+        // For actual errors (500, network issues, etc.), throw to trigger error state
+        const errorData = await res.json().catch(() => ({ error: 'Failed to fetch onboarding data' }));
+        throw new Error(errorData.error || `Server error: ${res.status}`);
       }
       return res.json();
+    },
+    retry: (failureCount, error) => {
+      // Don't retry on 404s (normal state) or 401s (auth issues)
+      if (error instanceof Error && 
+          (error.message.includes('404') || error.message.includes('401'))) {
+        return false;
+      }
+      // Retry other errors up to 2 times
+      return failureCount < 2;
     }
   });
 
@@ -547,6 +559,7 @@ export default function OnboardingPage() {
     }
   ];
 
+  // Handle loading state
   if (loadingOnboarding) {
     return (
       <MainLayout>
@@ -555,6 +568,48 @@ export default function OnboardingPage() {
             <ClipboardList className="w-12 h-12 text-primary mx-auto mb-4 animate-pulse" />
             <p className="text-muted-foreground">Loading your onboarding information...</p>
           </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // Handle error state (but not 404 which is normal for new users)
+  if (onboardingError) {
+    return (
+      <MainLayout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <Card className="max-w-md w-full">
+            <CardHeader>
+              <CardTitle className="text-destructive flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5" />
+                Error Loading Onboarding
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground mb-4">
+                {onboardingError instanceof Error 
+                  ? onboardingError.message 
+                  : 'Failed to load your onboarding information. Please try again or contact HR for assistance.'}
+              </p>
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => window.location.reload()} 
+                  variant="default"
+                  data-testid="button-reload-page"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Reload Page
+                </Button>
+                <Button 
+                  onClick={() => navigate("/")} 
+                  variant="outline"
+                  data-testid="button-back-dashboard"
+                >
+                  Back to Dashboard
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </MainLayout>
     );
