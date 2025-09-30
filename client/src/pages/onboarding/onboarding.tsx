@@ -144,18 +144,25 @@ export default function OnboardingPage() {
   // Check if onboarding already exists for this user
   const { data: existingOnboarding, isLoading: loadingOnboarding, error: onboardingError } = useQuery({
     queryKey: ["/api/onboarding/my-onboarding"],
+    enabled: !!user && user.role === "prospective_employee", // Only run if user is loaded and has correct role
     queryFn: async () => {
+      console.log('[Onboarding] Fetching onboarding data...');
       const res = await fetch("/api/onboarding/my-onboarding", { credentials: "include" });
+      console.log('[Onboarding] Response status:', res.status);
       if (!res.ok) {
         if (res.status === 404) {
           // 404 is normal for new users - they haven't started onboarding yet
+          console.log('[Onboarding] No existing data (404) - starting fresh');
           return null;
         }
         // For actual errors (500, network issues, etc.), throw to trigger error state
         const errorData = await res.json().catch(() => ({ error: 'Failed to fetch onboarding data' }));
+        console.error('[Onboarding] Error fetching data:', errorData);
         throw new Error(errorData.error || `Server error: ${res.status}`);
       }
-      return res.json();
+      const data = await res.json();
+      console.log('[Onboarding] Data loaded successfully');
+      return data;
     },
     retry: (failureCount, error) => {
       // Don't retry on 404s (normal state) or 401s (auth issues)
