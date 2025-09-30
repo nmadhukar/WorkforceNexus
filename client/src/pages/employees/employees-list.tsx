@@ -532,14 +532,14 @@ export default function EmployeesList() {
                           <SelectValue placeholder="Select a role" />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="prospective_employee">Prospective Employee (Onboarding)</SelectItem>
                           {user?.role === "admin" && (
                             <>
                               <SelectItem value="admin">Admin</SelectItem>
                               <SelectItem value="hr">HR</SelectItem>
+                              <SelectItem value="viewer">Viewer</SelectItem>
                             </>
                           )}
-                          <SelectItem value="viewer">Viewer</SelectItem>
-                          <SelectItem value="prospective_employee">Prospective Employee</SelectItem>
                         </SelectContent>
                       </Select>
                       {(user?.role === "hr" || user?.role === "admin") && (
