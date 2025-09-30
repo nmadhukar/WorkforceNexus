@@ -317,9 +317,10 @@ export function setupAuth(app: Express) {
           // Critical for prospective_employee users to access /onboarding page
           console.log(`Creating new employee record for ${invitation.firstName} ${invitation.lastName} (${invitation.email})`);
           
-          employee = await storage.createEmployee({
-            firstName: invitation.firstName,
-            lastName: invitation.lastName,
+          // Ensure we have required fields - use defaults if missing
+          const employeeData = {
+            firstName: invitation.firstName || 'Prospective',
+            lastName: invitation.lastName || 'Employee',
             personalEmail: invitation.email,
             workEmail: invitation.email,
             cellPhone: invitation.cellPhone || '',
@@ -327,7 +328,10 @@ export function setupAuth(app: Express) {
             onboardingStatus: 'registered',
             invitationId: invitation.id,
             userId: user.id
-          });
+          };
+          
+          console.log('Creating employee with data:', employeeData);
+          employee = await storage.createEmployee(employeeData);
           
           console.log(`Successfully created employee record ${employee.id} for user ${user.id}: ${employee.firstName} ${employee.lastName}`);
         }
@@ -433,6 +437,17 @@ export function setupAuth(app: Express) {
       }
     }
 
+    // CRITICAL: Verify employee was created for prospective_employee users
+    if (user.role === 'prospective_employee' && !employee) {
+      console.error('CRITICAL ERROR: prospective_employee user created without employee record!');
+      console.error('User ID:', user.id, 'Username:', user.username);
+      
+      // This should never happen but if it does, fail the registration
+      return res.status(500).json({
+        error: "Registration failed: Employee profile could not be created. Please contact support."
+      });
+    }
+    
     // Log the user in
     req.login(user, (err) => {
       if (err) return next(err);
