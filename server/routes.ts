@@ -5594,32 +5594,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Step 4: Extract employee and related entity data
         const {
-          educations,
-          employments,
-          stateLicenses,
-          deaLicenses,
-          boardCertifications,
-          peerReferences,
-          emergencyContacts,
-          taxForms,
-          trainings,
-          payerEnrollments,
+          educations: educationsData,
+          employments: employmentsData,
+          stateLicenses: stateLicensesData,
+          deaLicenses: deaLicensesData,
+          boardCertifications: boardCertificationsData,
+          peerReferences: peerReferencesData,
+          emergencyContacts: emergencyContactsData,
+          taxForms: taxFormsData,
+          trainings: trainingsData,
+          payerEnrollments: payerEnrollmentsData,
           ...employeeData
         } = data;
         
         console.log('[save-draft] Extracted data structure');
         console.log('[save-draft] Employee fields present:', employeeData ? Object.keys(employeeData).length : 0);
         console.log('[save-draft] Related entities:', {
-          educations: educations?.length || 0,
-          employments: employments?.length || 0,
-          stateLicenses: stateLicenses?.length || 0,
-          deaLicenses: deaLicenses?.length || 0,
-          boardCertifications: boardCertifications?.length || 0,
-          peerReferences: peerReferences?.length || 0,
-          emergencyContacts: emergencyContacts?.length || 0,
-          taxForms: taxForms?.length || 0,
-          trainings: trainings?.length || 0,
-          payerEnrollments: payerEnrollments?.length || 0
+          educations: educationsData?.length || 0,
+          employments: employmentsData?.length || 0,
+          stateLicenses: stateLicensesData?.length || 0,
+          deaLicenses: deaLicensesData?.length || 0,
+          boardCertifications: boardCertificationsData?.length || 0,
+          peerReferences: peerReferencesData?.length || 0,
+          emergencyContacts: emergencyContactsData?.length || 0,
+          taxForms: taxFormsData?.length || 0,
+          trainings: trainingsData?.length || 0,
+          payerEnrollments: payerEnrollmentsData?.length || 0
         });
         
         // Step 5 & 6: ATOMIC TRANSACTION - Wrap all operations to prevent partial writes
@@ -5700,9 +5700,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           try {
           // Handle educations using tx
-          if (educations && Array.isArray(educations)) {
-            console.log('[save-draft] Processing', educations.length, 'educations');
-            for (const education of educations) {
+          if (educationsData && Array.isArray(educationsData)) {
+            console.log('[save-draft] Processing', educationsData.length, 'educations');
+            for (const education of educationsData) {
               const sanitizedEducation = sanitizeDateFields(education);
               if (sanitizedEducation.id) {
                 // SECURITY: Verify ownership before update
@@ -5730,9 +5730,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           // Handle employments using tx
-          if (employments && Array.isArray(employments)) {
-            console.log('[save-draft] Processing', employments.length, 'employments');
-            for (const employment of employments) {
+          if (employmentsData && Array.isArray(employmentsData)) {
+            console.log('[save-draft] Processing', employmentsData.length, 'employments');
+            for (const employment of employmentsData) {
               const sanitizedEmployment = sanitizeDateFields(employment);
               if (sanitizedEmployment.id) {
                 // SECURITY: Verify ownership before update
@@ -5760,9 +5760,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           // Handle state licenses using tx
-          if (stateLicenses && Array.isArray(stateLicenses)) {
-            console.log('[save-draft] Processing', stateLicenses.length, 'state licenses');
-            for (const license of stateLicenses) {
+          if (stateLicensesData && Array.isArray(stateLicensesData)) {
+            console.log('[save-draft] Processing', stateLicensesData.length, 'state licenses');
+            for (const license of stateLicensesData) {
               const sanitizedLicense = sanitizeDateFields(license);
               if (sanitizedLicense.id) {
                 // SECURITY: Verify ownership before update
@@ -5790,9 +5790,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           // Handle DEA licenses using tx
-          if (deaLicenses && Array.isArray(deaLicenses)) {
-            console.log('[save-draft] Processing', deaLicenses.length, 'DEA licenses');
-            for (const license of deaLicenses) {
+          if (deaLicensesData && Array.isArray(deaLicensesData)) {
+            console.log('[save-draft] Processing', deaLicensesData.length, 'DEA licenses');
+            for (const license of deaLicensesData) {
               const sanitizedLicense = sanitizeDateFields(license);
               if (sanitizedLicense.id) {
                 // SECURITY: Verify ownership before update
@@ -5820,9 +5820,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           // Handle board certifications using tx
-          if (boardCertifications && Array.isArray(boardCertifications)) {
-            console.log('[save-draft] Processing', boardCertifications.length, 'board certifications');
-            for (const cert of boardCertifications) {
+          if (boardCertificationsData && Array.isArray(boardCertificationsData)) {
+            console.log('[save-draft] Processing', boardCertificationsData.length, 'board certifications');
+            for (const cert of boardCertificationsData) {
               const sanitizedCert = sanitizeDateFields(cert);
               if (sanitizedCert.id) {
                 // SECURITY: Verify ownership before update
@@ -5850,9 +5850,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           // Handle peer references using tx
-          if (peerReferences && Array.isArray(peerReferences)) {
-            console.log('[save-draft] Processing', peerReferences.length, 'peer references');
-            for (const reference of peerReferences) {
+          if (peerReferencesData && Array.isArray(peerReferencesData)) {
+            console.log('[save-draft] Processing', peerReferencesData.length, 'peer references');
+            for (const reference of peerReferencesData) {
               if (reference.id) {
                 // SECURITY: Verify ownership before update
                 const existing = existingPeerReferences.find(e => e.id === reference.id);
@@ -5879,9 +5879,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           // Handle emergency contacts using tx
-          if (emergencyContacts && Array.isArray(emergencyContacts)) {
-            console.log('[save-draft] Processing', emergencyContacts.length, 'emergency contacts');
-            for (const contact of emergencyContacts) {
+          if (emergencyContactsData && Array.isArray(emergencyContactsData)) {
+            console.log('[save-draft] Processing', emergencyContactsData.length, 'emergency contacts');
+            for (const contact of emergencyContactsData) {
               if (contact.id) {
                 // SECURITY: Verify ownership before update
                 const existing = existingEmergencyContacts.find(e => e.id === contact.id);
@@ -5908,9 +5908,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           // Handle tax forms using tx
-          if (taxForms && Array.isArray(taxForms)) {
-            console.log('[save-draft] Processing', taxForms.length, 'tax forms');
-            for (const form of taxForms) {
+          if (taxFormsData && Array.isArray(taxFormsData)) {
+            console.log('[save-draft] Processing', taxFormsData.length, 'tax forms');
+            for (const form of taxFormsData) {
               const sanitizedForm = sanitizeDateFields(form);
               if (sanitizedForm.id) {
                 // SECURITY: Verify ownership before update
@@ -5938,9 +5938,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           // Handle trainings using tx
-          if (trainings && Array.isArray(trainings)) {
-            console.log('[save-draft] Processing', trainings.length, 'trainings');
-            for (const training of trainings) {
+          if (trainingsData && Array.isArray(trainingsData)) {
+            console.log('[save-draft] Processing', trainingsData.length, 'trainings');
+            for (const training of trainingsData) {
               const sanitizedTraining = sanitizeDateFields(training);
               if (sanitizedTraining.id) {
                 // SECURITY: Verify ownership before update
@@ -5968,9 +5968,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           // Handle payer enrollments using tx
-          if (payerEnrollments && Array.isArray(payerEnrollments)) {
-            console.log('[save-draft] Processing', payerEnrollments.length, 'payer enrollments');
-            for (const enrollment of payerEnrollments) {
+          if (payerEnrollmentsData && Array.isArray(payerEnrollmentsData)) {
+            console.log('[save-draft] Processing', payerEnrollmentsData.length, 'payer enrollments');
+            for (const enrollment of payerEnrollmentsData) {
               const sanitizedEnrollment = sanitizeDateFields(enrollment);
               if (sanitizedEnrollment.id) {
                 // SECURITY: Verify ownership before update
