@@ -593,6 +593,8 @@ export default function OnboardingPage() {
   }
 
   console.log('[Onboarding] Rendering main form...');
+  console.log('[Onboarding] existingOnboarding:', existingOnboarding);
+  console.log('[Onboarding] formData:', formData);
 
   // Handle error state (but not 404 which is normal for new users)
   if (onboardingError) {
