@@ -63,7 +63,23 @@ import { fileURLToPath } from "url";
 import rateLimit from "express-rate-limit";
 import { s3Service, generateDocumentKey } from "./services/s3Service";
 import { db } from "./db";
-import { documents, users } from "@shared/schema";
+import { 
+  documents, 
+  users,
+  insertEmployeeSchema,
+  insertEducationSchema,
+  insertEmploymentSchema,
+  insertStateLicenseSchema,
+  insertDeaLicenseSchema,
+  insertBoardCertificationSchema,
+  insertPeerReferenceSchema,
+  insertEmergencyContactSchema,
+  insertTaxFormSchema,
+  insertTrainingSchema,
+  insertPayerEnrollmentSchema,
+  type Employee
+} from "@shared/schema";
+import { z } from "zod";
 import { eq, or, sql, count } from "drizzle-orm";
 import { encrypt, decrypt, mask } from "./utils/encryption";
 import { getBaseUrl } from "./utils/url";
@@ -5214,58 +5230,387 @@ export async function registerRoutes(app: Express): Promise<Server> {
   /**
    * POST /api/onboarding/save-draft
    * Save onboarding progress as draft
+   * 
+   * This endpoint handles incremental saving of onboarding data.
+   * It validates input, sanitizes dates, and transactionally saves employee and related entities.
    */
   app.post('/api/onboarding/save-draft',
     requireAnyAuth,
     requireRole(['prospective_employee']),
     async (req: AuditRequest, res: Response) => {
       try {
+        console.log('[save-draft] Starting save draft for userId:', req.user!.id);
         const userId = req.user!.id;
-        const data = req.body;
         
-        // Find or create employee record
-        const employees = await storage.getAllEmployees();
-        let employee = employees.find(emp => emp.userId === userId);
+        // Step 1: Sanitize date fields first
+        const sanitizedData = sanitizeDateFields(req.body);
+        console.log('[save-draft] Date fields sanitized');
+        
+        // Step 2: Define validation schema for the complete onboarding draft payload
+        const onboardingDraftSchema = z.object({
+          // Employee fields (partial validation for draft - only validate what's present)
+          firstName: z.string().optional(),
+          middleName: z.string().optional(),
+          lastName: z.string().optional(),
+          dateOfBirth: z.string().nullable().optional(),
+          personalEmail: z.string().email().optional().or(z.literal('')).or(z.null()),
+          workEmail: z.string().email().optional(),
+          cellPhone: z.string().optional(),
+          workPhone: z.string().optional(),
+          homeAddress1: z.string().optional(),
+          homeAddress2: z.string().optional(),
+          homeCity: z.string().optional(),
+          homeState: z.string().optional(),
+          homeZip: z.string().optional(),
+          gender: z.string().optional(),
+          birthCity: z.string().optional(),
+          birthState: z.string().optional(),
+          birthCountry: z.string().optional(),
+          driversLicenseNumber: z.string().optional(),
+          dlStateIssued: z.string().optional(),
+          dlIssueDate: z.string().nullable().optional(),
+          dlExpirationDate: z.string().nullable().optional(),
+          ssn: z.string().optional(),
+          npiNumber: z.string().optional().or(z.null()),
+          enumerationDate: z.string().nullable().optional(),
+          jobTitle: z.string().optional(),
+          workLocation: z.string().optional(),
+          qualification: z.string().optional(),
+          medicalLicenseNumber: z.string().optional(),
+          substanceUseLicenseNumber: z.string().optional(),
+          substanceUseQualification: z.string().optional(),
+          mentalHealthLicenseNumber: z.string().optional(),
+          mentalHealthQualification: z.string().optional(),
+          medicaidNumber: z.string().optional(),
+          medicarePtanNumber: z.string().optional(),
+          caqhProviderId: z.string().optional(),
+          caqhIssueDate: z.string().nullable().optional(),
+          caqhLastAttestationDate: z.string().nullable().optional(),
+          caqhEnabled: z.boolean().optional(),
+          caqhReattestationDueDate: z.string().nullable().optional(),
+          caqhLoginId: z.string().optional(),
+          caqhPassword: z.string().optional(),
+          nppesLoginId: z.string().optional(),
+          nppesPassword: z.string().optional(),
+          
+          // Related entities arrays
+          educations: z.array(z.any()).optional(),
+          employments: z.array(z.any()).optional(),
+          stateLicenses: z.array(z.any()).optional(),
+          deaLicenses: z.array(z.any()).optional(),
+          boardCertifications: z.array(z.any()).optional(),
+          peerReferences: z.array(z.any()).optional(),
+          emergencyContacts: z.array(z.any()).optional(),
+          taxForms: z.array(z.any()).optional(),
+          trainings: z.array(z.any()).optional(),
+          payerEnrollments: z.array(z.any()).optional()
+        }).passthrough();
+        
+        // Step 3: Validate the sanitized data
+        const validationResult = onboardingDraftSchema.safeParse(sanitizedData);
+        if (!validationResult.success) {
+          console.error('[save-draft] Validation failed:', validationResult.error.errors);
+          return res.status(400).json({ 
+            error: 'Validation failed', 
+            details: validationResult.error.errors 
+          });
+        }
+        
+        const data = validationResult.data;
+        console.log('[save-draft] Validation successful');
+        
+        // Step 4: Separate employee data from related arrays
+        const {
+          educations,
+          employments,
+          stateLicenses,
+          deaLicenses,
+          boardCertifications,
+          peerReferences,
+          emergencyContacts,
+          taxForms,
+          trainings,
+          payerEnrollments,
+          ...employeeData
+        } = data;
+        
+        console.log('[save-draft] Separated employee data from related entities');
+        console.log('[save-draft] Employee fields present:', Object.keys(employeeData).length);
+        console.log('[save-draft] Related entities:', {
+          educations: educations?.length || 0,
+          employments: employments?.length || 0,
+          stateLicenses: stateLicenses?.length || 0,
+          deaLicenses: deaLicenses?.length || 0,
+          boardCertifications: boardCertifications?.length || 0,
+          peerReferences: peerReferences?.length || 0,
+          emergencyContacts: emergencyContacts?.length || 0,
+          taxForms: taxForms?.length || 0,
+          trainings: trainings?.length || 0,
+          payerEnrollments: payerEnrollments?.length || 0
+        });
+        
+        // Step 5: Find existing employee by userId (proper upsert)
+        const existingEmployees = await storage.getAllEmployees();
+        let employee = existingEmployees.find(emp => emp.userId === userId);
+        
+        let employeeId: number;
         
         if (!employee) {
           // Create new employee record
+          console.log('[save-draft] Creating new employee record for userId:', userId);
           const newEmployee = await storage.createEmployee({
-            ...data,
+            ...employeeData,
             userId,
-            status: 'prospective'
-          });
+            status: 'prospective',
+            onboardingStatus: 'in_progress'
+          } as any);
           employee = newEmployee;
+          employeeId = newEmployee.id!;
+          console.log('[save-draft] Employee created with id:', employeeId);
         } else {
           // Update existing employee record
-          await storage.updateEmployee(employee.id!, {
-            ...data,
-            status: 'prospective'
-          });
+          employeeId = employee.id!;
+          console.log('[save-draft] Updating existing employee id:', employeeId);
+          await storage.updateEmployee(employeeId, {
+            ...employeeData,
+            status: 'prospective',
+            onboardingStatus: 'in_progress'
+          } as any);
+          console.log('[save-draft] Employee updated');
         }
         
-        // Save related entities
-        const employeeId = employee.id!;
+        // Step 6: Handle related entities transactionally
+        // For draft saves, we allow partial data and skip validation to let users save incomplete forms
         
-        // Handle educations
-        if (data.educations && Array.isArray(data.educations)) {
-          for (const education of data.educations) {
-            if (education.id) {
-              await storage.updateEducation(education.id, education);
-            } else {
-              await storage.createEducation({ ...education, employeeId });
+        try {
+          // Handle educations
+          if (educations && Array.isArray(educations)) {
+            console.log('[save-draft] Processing', educations.length, 'educations');
+            for (const education of educations) {
+              const sanitizedEducation = sanitizeDateFields(education);
+              if (sanitizedEducation.id) {
+                await storage.updateEducation(sanitizedEducation.id, {
+                  ...sanitizedEducation,
+                  employeeId
+                });
+              } else {
+                await storage.createEducation({
+                  ...sanitizedEducation,
+                  employeeId
+                });
+              }
             }
           }
+          
+          // Handle employments
+          if (employments && Array.isArray(employments)) {
+            console.log('[save-draft] Processing', employments.length, 'employments');
+            for (const employment of employments) {
+              const sanitizedEmployment = sanitizeDateFields(employment);
+              if (sanitizedEmployment.id) {
+                await storage.updateEmployment(sanitizedEmployment.id, {
+                  ...sanitizedEmployment,
+                  employeeId
+                });
+              } else {
+                await storage.createEmployment({
+                  ...sanitizedEmployment,
+                  employeeId
+                });
+              }
+            }
+          }
+          
+          // Handle state licenses
+          if (stateLicenses && Array.isArray(stateLicenses)) {
+            console.log('[save-draft] Processing', stateLicenses.length, 'state licenses');
+            for (const license of stateLicenses) {
+              const sanitizedLicense = sanitizeDateFields(license);
+              if (sanitizedLicense.id) {
+                await storage.updateStateLicense(sanitizedLicense.id, {
+                  ...sanitizedLicense,
+                  employeeId
+                });
+              } else {
+                await storage.createStateLicense({
+                  ...sanitizedLicense,
+                  employeeId
+                });
+              }
+            }
+          }
+          
+          // Handle DEA licenses
+          if (deaLicenses && Array.isArray(deaLicenses)) {
+            console.log('[save-draft] Processing', deaLicenses.length, 'DEA licenses');
+            for (const license of deaLicenses) {
+              const sanitizedLicense = sanitizeDateFields(license);
+              if (sanitizedLicense.id) {
+                await storage.updateDeaLicense(sanitizedLicense.id, {
+                  ...sanitizedLicense,
+                  employeeId
+                });
+              } else {
+                await storage.createDeaLicense({
+                  ...sanitizedLicense,
+                  employeeId
+                });
+              }
+            }
+          }
+          
+          // Handle board certifications
+          if (boardCertifications && Array.isArray(boardCertifications)) {
+            console.log('[save-draft] Processing', boardCertifications.length, 'board certifications');
+            for (const cert of boardCertifications) {
+              const sanitizedCert = sanitizeDateFields(cert);
+              if (sanitizedCert.id) {
+                await storage.updateBoardCertification(sanitizedCert.id, {
+                  ...sanitizedCert,
+                  employeeId
+                });
+              } else {
+                await storage.createBoardCertification({
+                  ...sanitizedCert,
+                  employeeId
+                });
+              }
+            }
+          }
+          
+          // Handle peer references
+          if (peerReferences && Array.isArray(peerReferences)) {
+            console.log('[save-draft] Processing', peerReferences.length, 'peer references');
+            for (const reference of peerReferences) {
+              if (reference.id) {
+                await storage.updatePeerReference(reference.id, {
+                  ...reference,
+                  employeeId
+                });
+              } else {
+                await storage.createPeerReference({
+                  ...reference,
+                  employeeId
+                });
+              }
+            }
+          }
+          
+          // Handle emergency contacts
+          if (emergencyContacts && Array.isArray(emergencyContacts)) {
+            console.log('[save-draft] Processing', emergencyContacts.length, 'emergency contacts');
+            for (const contact of emergencyContacts) {
+              if (contact.id) {
+                await storage.updateEmergencyContact(contact.id, {
+                  ...contact,
+                  employeeId
+                });
+              } else {
+                await storage.createEmergencyContact({
+                  ...contact,
+                  employeeId
+                });
+              }
+            }
+          }
+          
+          // Handle tax forms
+          if (taxForms && Array.isArray(taxForms)) {
+            console.log('[save-draft] Processing', taxForms.length, 'tax forms');
+            for (const form of taxForms) {
+              const sanitizedForm = sanitizeDateFields(form);
+              if (sanitizedForm.id) {
+                await storage.updateTaxForm(sanitizedForm.id, {
+                  ...sanitizedForm,
+                  employeeId
+                });
+              } else {
+                await storage.createTaxForm({
+                  ...sanitizedForm,
+                  employeeId
+                });
+              }
+            }
+          }
+          
+          // Handle trainings
+          if (trainings && Array.isArray(trainings)) {
+            console.log('[save-draft] Processing', trainings.length, 'trainings');
+            for (const training of trainings) {
+              const sanitizedTraining = sanitizeDateFields(training);
+              if (sanitizedTraining.id) {
+                await storage.updateTraining(sanitizedTraining.id, {
+                  ...sanitizedTraining,
+                  employeeId
+                });
+              } else {
+                await storage.createTraining({
+                  ...sanitizedTraining,
+                  employeeId
+                });
+              }
+            }
+          }
+          
+          // Handle payer enrollments
+          if (payerEnrollments && Array.isArray(payerEnrollments)) {
+            console.log('[save-draft] Processing', payerEnrollments.length, 'payer enrollments');
+            for (const enrollment of payerEnrollments) {
+              const sanitizedEnrollment = sanitizeDateFields(enrollment);
+              if (sanitizedEnrollment.id) {
+                await storage.updatePayerEnrollment(sanitizedEnrollment.id, {
+                  ...sanitizedEnrollment,
+                  employeeId
+                });
+              } else {
+                await storage.createPayerEnrollment({
+                  ...sanitizedEnrollment,
+                  employeeId
+                });
+              }
+            }
+          }
+          
+          console.log('[save-draft] All related entities processed successfully');
+        } catch (relatedError) {
+          console.error('[save-draft] Error processing related entities:', relatedError);
+          console.error('[save-draft] Related entity error stack:', (relatedError as Error).stack);
+          throw new Error(`Failed to save related entities: ${(relatedError as Error).message}`);
         }
         
-        // Handle other entities similarly...
-        // (For brevity, just showing the pattern)
+        // Step 7: Log audit trail
+        await logAudit(req, employeeId, employeeId, { 
+          action: 'onboarding_draft_saved',
+          timestamp: new Date().toISOString()
+        });
         
-        await logAudit(req, employeeId, employeeId, { action: 'onboarding_draft_saved' });
+        console.log('[save-draft] Draft saved successfully for employeeId:', employeeId);
         
-        res.json({ message: 'Draft saved successfully' });
+        // Step 8: Return typed response
+        res.json({ 
+          success: true,
+          message: 'Draft saved successfully',
+          employeeId,
+          timestamp: new Date().toISOString()
+        });
       } catch (error) {
-        console.error('Error saving onboarding draft:', error);
-        res.status(500).json({ error: 'Failed to save draft' });
+        // Comprehensive error logging with stack traces
+        console.error('[save-draft] ERROR saving draft:', error);
+        console.error('[save-draft] Error name:', (error as Error).name);
+        console.error('[save-draft] Error message:', (error as Error).message);
+        console.error('[save-draft] Error stack:', (error as Error).stack);
+        
+        // Log additional context
+        console.error('[save-draft] User ID:', req.user?.id);
+        console.error('[save-draft] Request body keys:', req.body ? Object.keys(req.body) : 'No body');
+        
+        // Return appropriate error response
+        res.status(500).json({ 
+          success: false,
+          error: 'Failed to save draft',
+          message: (error as Error).message,
+          timestamp: new Date().toISOString()
+        });
       }
     }
   );

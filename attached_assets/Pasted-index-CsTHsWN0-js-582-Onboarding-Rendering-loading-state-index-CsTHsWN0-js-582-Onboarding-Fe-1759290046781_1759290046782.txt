@@ -1,0 +1,102 @@
+index-CsTHsWN0.js:582 [Onboarding] Rendering loading state...
+index-CsTHsWN0.js:582 [Onboarding] Fetching onboarding data...
+index-CsTHsWN0.js:582 [Onboarding] Query state: {loadingOnboarding: true, hasData: false, hasError: false, userLoaded: true, userRole: 'prospective_employee'}
+index-CsTHsWN0.js:582 [Onboarding] useEffect triggered, existingOnboarding: undefined
+index-CsTHsWN0.js:582 [Onboarding] No existingOnboarding data, keeping default formData
+index-CsTHsWN0.js:582 [Onboarding] Response status: 200
+index-CsTHsWN0.js:582 [Onboarding] Data loaded successfully
+index-CsTHsWN0.js:582 [Onboarding] Rendering main form...
+index-CsTHsWN0.js:582 [Onboarding] existingOnboarding: {id: 6, firstName: 'madhukar', middleName: null, lastName: '17', dateOfBirth: null, …}
+index-CsTHsWN0.js:582 [Onboarding] formData: {firstName: '', lastName: '', workEmail: 'maddy17', status: 'prospective', educations: Array(0), …}
+index-CsTHsWN0.js:582 [Onboarding] formData.firstName: 
+index-CsTHsWN0.js:582 [Onboarding] formData.lastName: 
+index-CsTHsWN0.js:582 [Onboarding] Waiting for formData to be populated from existingOnboarding...
+index-CsTHsWN0.js:582 [Onboarding] Query state: {loadingOnboarding: false, hasData: true, hasError: false, userLoaded: true, userRole: 'prospective_employee'}
+index-CsTHsWN0.js:582 [Onboarding] useEffect triggered, existingOnboarding: {id: 6, firstName: 'madhukar', middleName: null, lastName: '17', dateOfBirth: null, …}
+index-CsTHsWN0.js:582 [Onboarding] Setting formData from existingOnboarding...
+index-CsTHsWN0.js:582 [Onboarding] About to call setFormData with: {id: 6, firstName: 'madhukar', middleName: null, lastName: '17', dateOfBirth: undefined, …}
+index-CsTHsWN0.js:582 [Onboarding] setFormData called successfully
+index-CsTHsWN0.js:582 [Onboarding] Rendering main form...
+index-CsTHsWN0.js:582 [Onboarding] existingOnboarding: {id: 6, firstName: 'madhukar', middleName: null, lastName: '17', dateOfBirth: null, …}
+index-CsTHsWN0.js:582 [Onboarding] formData: {id: 6, firstName: 'madhukar', middleName: null, lastName: '17', dateOfBirth: undefined, …}
+index-CsTHsWN0.js:582 [Onboarding] formData.firstName: madhukar
+index-CsTHsWN0.js:582 [Onboarding] formData.lastName: 17
+index-CsTHsWN0.js:582 [Onboarding] Rendering main form...
+index-CsTHsWN0.js:582 [Onboarding] existingOnboarding: {id: 6, firstName: 'madhukar', middleName: null, lastName: '17', dateOfBirth: null, …}
+index-CsTHsWN0.js:582 [Onboarding] formData: {id: 6, firstName: 'madhukar', middleName: null, lastName: '17', dateOfBirth: undefined, …}
+index-CsTHsWN0.js:582 [Onboarding] formData.firstName: madhukar
+index-CsTHsWN0.js:582 [Onboarding] formData.lastName: 17
+index-CsTHsWN0.js:48   POST https://workforce-nexus-sureshginkala.replit.app/api/onboarding/save-draft 500 (Internal Server Error)
+de @ index-CsTHsWN0.js:48
+mutationFn @ index-CsTHsWN0.js:582
+fn @ index-CsTHsWN0.js:48
+w @ index-CsTHsWN0.js:48
+start @ index-CsTHsWN0.js:48
+execute @ index-CsTHsWN0.js:48
+await in execute
+mutate @ index-CsTHsWN0.js:48
+(anonymous) @ index-CsTHsWN0.js:48
+w @ index-CsTHsWN0.js:582
+nR @ index-CsTHsWN0.js:37
+iR @ index-CsTHsWN0.js:37
+aR @ index-CsTHsWN0.js:37
+Pv @ index-CsTHsWN0.js:37
+VS @ index-CsTHsWN0.js:37
+(anonymous) @ index-CsTHsWN0.js:37
+ug @ index-CsTHsWN0.js:40
+hS @ index-CsTHsWN0.js:37
+rf @ index-CsTHsWN0.js:37
+$x @ index-CsTHsWN0.js:37
+NR @ index-CsTHsWN0.js:37
+[NEW] Explain Console errors by using Copilot in Edge: click
+         
+         to explain an error. 
+        Learn more
+        Don't show again
+index-CsTHsWN0.js:582 [Onboarding] Rendering main form...
+index-CsTHsWN0.js:582 [Onboarding] existingOnboarding: {id: 6, firstName: 'madhukar', middleName: null, lastName: '17', dateOfBirth: null, …}
+index-CsTHsWN0.js:582 [Onboarding] formData: {id: 6, firstName: 'madhukar', middleName: null, lastName: '17', dateOfBirth: undefined, …}
+index-CsTHsWN0.js:582 [Onboarding] formData.firstName: madhukar
+index-CsTHsWN0.js:582 [Onboarding] formData.lastName: 17
+index-CsTHsWN0.js:582 [Onboarding] Rendering main form...
+index-CsTHsWN0.js:582 [Onboarding] existingOnboarding: {id: 6, firstName: 'madhukar', middleName: null, lastName: '17', dateOfBirth: null, …}
+index-CsTHsWN0.js:582 [Onboarding] formData: {id: 6, firstName: 'madhukar', middleName: null, lastName: '17', dateOfBirth: undefined, …}
+index-CsTHsWN0.js:582 [Onboarding] formData.firstName: madhukar
+index-CsTHsWN0.js:582 [Onboarding] formData.lastName: 17
+index-CsTHsWN0.js:582 [Onboarding] Rendering main form...
+index-CsTHsWN0.js:582 [Onboarding] existingOnboarding: {id: 6, firstName: 'madhukar', middleName: null, lastName: '17', dateOfBirth: null, …}
+index-CsTHsWN0.js:582 [Onboarding] formData: {id: 6, firstName: 'madhukar', middleName: null, lastName: '17', dateOfBirth: undefined, …}
+index-CsTHsWN0.js:582 [Onboarding] formData.firstName: madhukar
+index-CsTHsWN0.js:582 [Onboarding] formData.lastName: 17
+index-CsTHsWN0.js:48   POST https://workforce-nexus-sureshginkala.replit.app/api/onboarding/save-draft 500 (Internal Server Error)
+de @ index-CsTHsWN0.js:48
+mutationFn @ index-CsTHsWN0.js:582
+fn @ index-CsTHsWN0.js:48
+w @ index-CsTHsWN0.js:48
+start @ index-CsTHsWN0.js:48
+execute @ index-CsTHsWN0.js:48
+await in execute
+mutate @ index-CsTHsWN0.js:48
+(anonymous) @ index-CsTHsWN0.js:48
+w @ index-CsTHsWN0.js:582
+nR @ index-CsTHsWN0.js:37
+iR @ index-CsTHsWN0.js:37
+aR @ index-CsTHsWN0.js:37
+Pv @ index-CsTHsWN0.js:37
+VS @ index-CsTHsWN0.js:37
+(anonymous) @ index-CsTHsWN0.js:37
+ug @ index-CsTHsWN0.js:40
+hS @ index-CsTHsWN0.js:37
+rf @ index-CsTHsWN0.js:37
+$x @ index-CsTHsWN0.js:37
+NR @ index-CsTHsWN0.js:37
+index-CsTHsWN0.js:582 [Onboarding] Rendering main form...
+index-CsTHsWN0.js:582 [Onboarding] existingOnboarding: {id: 6, firstName: 'madhukar', middleName: null, lastName: '17', dateOfBirth: null, …}
+index-CsTHsWN0.js:582 [Onboarding] formData: {id: 6, firstName: 'madhukar', middleName: null, lastName: '17', dateOfBirth: undefined, …}
+index-CsTHsWN0.js:582 [Onboarding] formData.firstName: madhukar
+index-CsTHsWN0.js:582 [Onboarding] formData.lastName: 17
+index-CsTHsWN0.js:582 [Onboarding] Rendering main form...
+index-CsTHsWN0.js:582 [Onboarding] existingOnboarding: {id: 6, firstName: 'madhukar', middleName: null, lastName: '17', dateOfBirth: null, …}
+index-CsTHsWN0.js:582 [Onboarding] formData: {id: 6, firstName: 'madhukar', middleName: null, lastName: '17', dateOfBirth: undefined, …}
+index-CsTHsWN0.js:582 [Onboarding] formData.firstName: madhukar
+index-CsTHsWN0.js:582 [Onboarding] formData.lastName: 17
