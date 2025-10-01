@@ -1,4 +1,4 @@
-import { useState, useEffect, Component, ErrorInfo, ReactNode } from "react";
+import { useState, useEffect, useRef, Component, ErrorInfo, ReactNode } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm, FormProvider, useFormContext, useFieldArray } from "react-hook-form";
@@ -549,7 +549,7 @@ function StepRenderer({ stepNumber, updateFormData, formData, onboardingId }: St
               <FormItem>
                 <FormLabel>Job Title <span className="text-red-500">*</span></FormLabel>
                 <FormControl>
-                  <Input {...field} placeholder="Enter job title" data-testid="input-job-title" />
+                  <Input {...field} placeholder="Enter job title" data-testid="input-job-title" autoComplete="off" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -610,7 +610,7 @@ function StepRenderer({ stepNumber, updateFormData, formData, onboardingId }: St
               <FormItem>
                 <FormLabel>NPI Number (Optional)</FormLabel>
                 <FormControl>
-                  <Input {...field} placeholder="Optional - 10 digit NPI number" maxLength={10} data-testid="input-npi-number" />
+                  <Input {...field} placeholder="Optional - 10 digit NPI number" maxLength={10} data-testid="input-npi-number" autoComplete="off" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -2261,6 +2261,71 @@ export default function OnboardingPage() {
     mode: "onChange",
   });
 
+  // Track if form has been initialized to prevent overwrites on refetch
+  const hasInitialized = useRef(false);
+  
+  // Reset form when onboarding data loads
+  useEffect(() => {
+    if (existingOnboarding && !loadingOnboarding && !hasInitialized.current) {
+      hasInitialized.current = true;
+      
+      const values: FormData = {
+        firstName: existingOnboarding.firstName || "",
+        lastName: existingOnboarding.lastName || "",
+        middleName: existingOnboarding.middleName || "",
+        dateOfBirth: existingOnboarding.dateOfBirth ? existingOnboarding.dateOfBirth.split('T')[0] : "",
+        gender: existingOnboarding.gender || "",
+        ssn: existingOnboarding.ssn || "",
+        personalEmail: existingOnboarding.personalEmail || "",
+        workEmail: existingOnboarding.workEmail || user?.username || "",
+        cellPhone: existingOnboarding.cellPhone || "",
+        workPhone: existingOnboarding.workPhone || "",
+        homeAddress1: existingOnboarding.homeAddress1 || "",
+        homeAddress2: existingOnboarding.homeAddress2 || "",
+        homeCity: existingOnboarding.homeCity || "",
+        homeState: existingOnboarding.homeState || "",
+        homeZip: existingOnboarding.homeZip || "",
+        jobTitle: existingOnboarding.jobTitle || "",
+        workLocation: existingOnboarding.workLocation || "",
+        status: existingOnboarding.status || "active",
+        npiNumber: existingOnboarding.npiNumber || "",
+        enumerationDate: existingOnboarding.enumerationDate ? existingOnboarding.enumerationDate.split('T')[0] : "",
+        qualification: existingOnboarding.qualification || "",
+        medicalLicenseNumber: existingOnboarding.medicalLicenseNumber || "",
+        substanceUseLicenseNumber: existingOnboarding.substanceUseLicenseNumber || "",
+        mentalHealthLicenseNumber: existingOnboarding.mentalHealthLicenseNumber || "",
+        substanceUseQualification: existingOnboarding.substanceUseQualification || "",
+        mentalHealthQualification: existingOnboarding.mentalHealthQualification || "",
+        medicaidNumber: existingOnboarding.medicaidNumber || "",
+        medicarePtanNumber: existingOnboarding.medicarePtanNumber || "",
+        caqhProviderId: existingOnboarding.caqhProviderId || "",
+        caqhIssueDate: existingOnboarding.caqhIssueDate ? existingOnboarding.caqhIssueDate.split('T')[0] : "",
+        caqhLastAttestationDate: existingOnboarding.caqhLastAttestationDate ? existingOnboarding.caqhLastAttestationDate.split('T')[0] : "",
+        caqhReattestationDueDate: existingOnboarding.caqhReattestationDueDate ? existingOnboarding.caqhReattestationDueDate.split('T')[0] : "",
+        caqhEnabled: existingOnboarding.caqhEnabled || false,
+        educations: existingOnboarding.educations || [],
+        employments: existingOnboarding.employments || [],
+        stateLicenses: existingOnboarding.stateLicenses || [],
+        deaLicenses: existingOnboarding.deaLicenses || [],
+        boardCertifications: existingOnboarding.boardCertifications || [],
+        peerReferences: existingOnboarding.peerReferences || [],
+        emergencyContacts: existingOnboarding.emergencyContacts || [],
+        trainings: existingOnboarding.trainings || [],
+        payerEnrollments: existingOnboarding.payerEnrollments || [],
+        documentUploads: existingOnboarding.documentUploads || [],
+        allRequiredDocumentsUploaded: existingOnboarding.allRequiredDocumentsUploaded || false,
+        uploadedRequiredCount: existingOnboarding.uploadedRequiredCount || 0,
+        requiredDocumentsCount: existingOnboarding.requiredDocumentsCount || 0,
+        allFormsCompleted: existingOnboarding.allFormsCompleted || false,
+        completedForms: existingOnboarding.completedForms || 0,
+        totalRequiredForms: existingOnboarding.totalRequiredForms || 0,
+        submissions: existingOnboarding.submissions || [],
+      };
+      
+      form.reset(values, { keepDefaultValues: false });
+    }
+  }, [existingOnboarding, loadingOnboarding, user, form]);
+
   // Update form data callback for child components (steps 9, 11, 12)
   const updateFormData = (data: Partial<FormData>) => {
     Object.keys(data).forEach((key) => {
@@ -2579,6 +2644,7 @@ export default function OnboardingPage() {
               <Card>
                 <CardContent className="pt-6">
                   <StepRenderer 
+                    key={currentStep}
                     stepNumber={currentStep} 
                     updateFormData={updateFormData}
                     formData={formData}
