@@ -5240,12 +5240,119 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   /**
    * POST /api/onboarding/save-draft
-   * Save onboarding progress as draft
    * 
-   * This endpoint handles incremental saving of onboarding data.
-   * SECURITY: Always uses req.user.id as source of truth, ignores userId/employeeId/status from request body
-   * VALIDATION: Uses insert schemas with .partial() and .strict() for type safety
-   * ATOMICITY: Verifies entity ownership before updates to prevent cross-employee tampering
+   * @route POST /api/onboarding/save-draft
+   * @group Onboarding - Employee onboarding operations
+   * @security Session - Requires prospective_employee role
+   * 
+   * @description
+   * Save onboarding progress as draft without requiring complete validation.
+   * This endpoint enables incremental, auto-save functionality during the 12-step onboarding wizard,
+   * allowing prospective employees to save partial data and resume later.
+   * 
+   * **Key Features:**
+   * 
+   * 1. **Transaction Atomicity**
+   *    - All operations (employee + 9 nested entities) wrapped in single database transaction
+   *    - Automatic rollback on any error prevents partial data corruption
+   *    - WHY: Critical to maintain referential integrity across 10+ tables during draft saves
+   * 
+   * 2. **Validation Strategy**
+   *    - Uses Zod insert schemas from @shared/schema.ts for type safety
+   *    - `.omit()` - Removes sensitive/controlled fields (userId, status, approvedAt, etc.)
+   *    - `.partial()` - Makes all fields optional (draft allows incomplete data)
+   *    - `.strict()` - Rejects unknown fields for security
+   *    - WHY: Balances flexibility (partial saves) with security (field whitelisting)
+   * 
+   * 3. **Entity Ownership Security**
+   *    - ALWAYS uses req.user.id as source of truth (never from request body)
+   *    - Verifies ownership before updating nested entities (educations, licenses, etc.)
+   *    - Prevents cross-employee data tampering by checking entity.employeeId matches
+   *    - WHY: Prevents malicious users from updating other employees' data via manipulated IDs
+   * 
+   * 4. **Array Length Limits**
+   *    - Maximum 50 items per nested entity array (educations, employments, etc.)
+   *    - WHY: Prevents DoS attacks via extremely large payloads
+   * 
+   * 5. **Date Field Sanitization**
+   *    - Converts empty strings to null for proper database insertion
+   *    - WHY: PostgreSQL rejects empty strings for date columns
+   * 
+   * **Request Flow:**
+   * ```
+   * Step 1: Extract userId from req.user.id (SECURITY: never trust request body)
+   * Step 2: Sanitize date fields (empty string -> null)
+   * Step 3: Validate with Zod schemas (.omit + .partial + .strict)
+   * Step 4: Extract employee data + 9 nested entity arrays
+   * Step 5-6: START TRANSACTION
+   *   - Upsert employee record (create or update)
+   *   - Fetch existing nested entities for ownership verification
+   *   - For each nested entity with ID:
+   *     * Verify it belongs to this employee (SECURITY CHECK)
+   *     * Update if valid, throw error if ownership mismatch
+   *   - For each nested entity without ID:
+   *     * Insert new record with correct employeeId
+   * Step 7: COMMIT TRANSACTION (or rollback on any error)
+   * Step 8: Log audit trail
+   * Step 9: Return success response
+   * ```
+   * 
+   * @param {object} req.body - Onboarding draft data
+   * @param {string} req.body.firstName - Employee first name (optional in draft)
+   * @param {string} req.body.lastName - Employee last name (optional in draft)
+   * @param {Array} req.body.educations - Education records (optional, max 50)
+   * @param {Array} req.body.employments - Employment history (optional, max 50)
+   * @param {Array} req.body.stateLicenses - State licenses (optional, max 50)
+   * @param {Array} req.body.deaLicenses - DEA licenses (optional, max 50)
+   * @param {Array} req.body.boardCertifications - Board certifications (optional, max 50)
+   * @param {Array} req.body.peerReferences - Professional references (optional, max 50)
+   * @param {Array} req.body.emergencyContacts - Emergency contacts (optional, max 50)
+   * @param {Array} req.body.taxForms - Tax forms (optional, max 50)
+   * @param {Array} req.body.trainings - Training records (optional, max 50)
+   * @param {Array} req.body.payerEnrollments - Payer enrollments (optional, max 50)
+   * 
+   * @returns {object} 200 - Draft saved successfully
+   * @returns {object} 400 - Validation failed
+   * @returns {Error} 401 - Authentication required
+   * @returns {Error} 403 - Must be prospective_employee role
+   * @returns {Error} 500 - Transaction failed (all changes rolled back)
+   * 
+   * @example request - Save partial personal information
+   * POST /api/onboarding/save-draft
+   * {
+   *   "firstName": "John",
+   *   "lastName": "Doe",
+   *   "personalEmail": "john@example.com"
+   * }
+   * 
+   * @example request - Save with nested entities
+   * POST /api/onboarding/save-draft
+   * {
+   *   "firstName": "John",
+   *   "educations": [
+   *     {
+   *       "educationType": "Medical School",
+   *       "schoolInstitution": "Harvard Medical School",
+   *       "degree": "MD"
+   *     }
+   *   ],
+   *   "stateLicenses": [
+   *     {
+   *       "id": 123,
+   *       "licenseNumber": "CA12345",
+   *       "state": "California",
+   *       "expirationDate": "2025-12-31"
+   *     }
+   *   ]
+   * }
+   * 
+   * @example response - 200 - Success
+   * {
+   *   "success": true,
+   *   "message": "Draft saved successfully",
+   *   "employeeId": 456,
+   *   "timestamp": "2025-10-01T12:00:00Z"
+   * }
    */
   app.post('/api/onboarding/save-draft',
     requireAnyAuth,

@@ -24,10 +24,50 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 
 /**
- * Step-level Zod validation schemas
+ * @fileoverview Employee Onboarding Wizard Component
+ * 
+ * A comprehensive 12-step onboarding form for prospective healthcare employees.
+ * Implements a config-driven wizard with step-level validation, auto-save drafts,
+ * and atomic submission with nested entity management.
+ * 
+ * **Architecture:**
+ * - Config-driven: Steps defined in configuration array with titles and icons
+ * - Step-level validation: Each step has its own Zod schema for granular validation
+ * - Dual validation strategy: Strict validation for navigation, relaxed for draft saves
+ * - FormProvider: React Hook Form context for managing complex nested forms
+ * - Auto-save: Automatic draft saves on step navigation
+ * - Transaction atomicity: All related entities saved in single backend transaction
+ * 
+ * @module OnboardingPage
+ * @requires react-hook-form
+ * @requires zod
+ * @requires @tanstack/react-query
+ */
+
+/**
+ * Step-level Zod Validation Schemas
+ * 
+ * WHY STEP-LEVEL SCHEMAS?
+ * - Allows users to navigate to any step and save progress
+ * - Provides immediate, focused feedback on current step only
+ * - Prevents "validation fatigue" from showing errors on incomplete steps
+ * - Enables conditional validation based on context (draft vs. submission)
+ * 
+ * VALIDATION STRATEGY:
+ * - Navigation: Validates current step only (blocks if invalid)
+ * - Draft Save: Bypasses validation (allows partial/incomplete data)
+ * - Final Submit: Validates all required fields across all steps
+ * 
+ * Each schema uses:
+ * - `.min(1)` for required fields
+ * - `.optional()` for optional fields
+ * - `.refine()` for custom validation logic
+ * - Clear error messages for user guidance
  */
 
 // Step 1: Personal Information
+// Required fields: firstName, lastName, dateOfBirth, ssn, personalEmail, cellPhone
+// WHY: These are the minimum fields needed to create an employee record
 const step1Schema = z.object({
   firstName: z.string().min(1, "First name is required"),
   middleName: z.string().optional(),
@@ -204,6 +244,30 @@ type FormData = z.infer<typeof completeFormSchema>;
 
 /**
  * ErrorBoundary Component
+ * 
+ * @component
+ * @description
+ * React Error Boundary for graceful error handling in the onboarding wizard.
+ * Catches JavaScript errors in child component tree and displays fallback UI.
+ * 
+ * **Purpose:**
+ * - Prevents full application crash from rendering errors
+ * - Provides user-friendly error message with recovery option
+ * - Logs detailed error information for debugging
+ * 
+ * **Error Handling Strategy:**
+ * - `getDerivedStateFromError`: Updates state to trigger fallback UI
+ * - `componentDidCatch`: Logs error details and invokes callback
+ * - Fallback UI: Displays error card with reload button
+ * 
+ * WHY: The onboarding form is complex with many nested components and dynamic rendering.
+ * Errors in one step shouldn't crash the entire onboarding experience. The ErrorBoundary
+ * provides a safety net while preserving error information for debugging.
+ * 
+ * @example
+ * <ErrorBoundary onError={(error) => console.error(error)}>
+ *   <ComplexFormStep />
+ * </ErrorBoundary>
  */
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -264,7 +328,47 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 /**
- * Step Component Renderer
+ * StepRenderer Component
+ * 
+ * @component
+ * @description
+ * Dynamically renders the appropriate form step based on step number.
+ * Manages 12 different step configurations with varying complexity.
+ * 
+ * **Step Types:**
+ * 
+ * 1. **Simple Form Steps (1-3):**
+ *    - Steps 1-3: Personal info, professional details, address
+ *    - Use FormField components with Input/Select/Textarea
+ *    - Direct validation via Zod schemas
+ * 
+ * 2. **Array-Based Steps (4-8, 10):**
+ *    - Steps 4-8, 10: Education, employment, licenses, certifications, training
+ *    - Use useFieldArray for dynamic add/remove functionality
+ *    - Nested validation for each array item
+ *    - WHY: Healthcare employees have multiple credentials that must be tracked separately
+ * 
+ * 3. **Child Component Steps (9, 11, 12):**
+ *    - Step 9: EmployeeDocumentsSubmission (document uploads)
+ *    - Step 11: EmployeeForms (DocuSeal form signing)
+ *    - Step 12: EmployeeReview (final review before submission)
+ *    - WHY: These steps have complex logic better encapsulated in separate components
+ * 
+ * **Data Flow:**
+ * - Reads form data via useFormContext (from FormProvider)
+ * - Updates are automatically synced to parent via React Hook Form
+ * - Child components use updateFormData callback for non-standard fields
+ * 
+ * **Field Arrays (useFieldArray):**
+ * - Manages dynamic lists (educations, employments, licenses, etc.)
+ * - Provides add/remove functionality with proper React key tracking
+ * - Each item tracks its ID for backend updates vs. inserts
+ * - WHY: Allows users to add unlimited credentials during onboarding
+ * 
+ * @param {number} stepNumber - Current step number (1-12)
+ * @param {Function} updateFormData - Callback to update form data for child components
+ * @param {FormData} formData - Current form data state
+ * @param {number} [onboardingId] - Employee ID for existing onboarding records
  */
 interface StepRendererProps {
   stepNumber: number;
@@ -1982,7 +2086,66 @@ function StepRenderer({ stepNumber, updateFormData, formData, onboardingId }: St
 }
 
 /**
- * Main Onboarding Page Component
+ * OnboardingPage - Main Onboarding Wizard Component
+ * 
+ * @component
+ * @description
+ * 12-step onboarding wizard for prospective healthcare employees.
+ * Implements a sophisticated form management system with step-level validation,
+ * auto-save drafts, transaction atomicity, and comprehensive error handling.
+ * 
+ * **Key Features:**
+ * 
+ * 1. **FormProvider Context (React Hook Form)**
+ *    - Provides form state to all child components via context
+ *    - Manages 50+ form fields + 9 nested entity arrays
+ *    - Dynamic resolver: Changes validation schema based on current step
+ *    - WHY: Centralizes form state management and enables step-level validation
+ * 
+ * 2. **Dual Validation Strategy**
+ *    - **Save Draft**: Bypasses validation, allows incomplete data
+ *      - Uses form.getValues() to get raw data without validation
+ *      - WHY: Users should save progress anytime without field requirements
+ *    - **Navigation**: Validates current step only before moving forward
+ *      - Uses form.trigger() to validate specific step schema
+ *      - Blocks navigation if validation fails
+ *      - WHY: Prevents users from skipping required fields in completed steps
+ *    - **Final Submit**: Requires all documents + forms complete
+ *      - Checks allRequiredDocumentsUploaded flag
+ *      - Checks allFormsCompleted flag
+ *      - WHY: Ensures onboarding is fully complete before submission
+ * 
+ * 3. **Auto-Save on Navigation**
+ *    - Automatically saves draft when user moves to next step
+ *    - Only triggers if user has started filling data
+ *    - WHY: Prevents data loss if user closes browser or loses connection
+ * 
+ * 4. **Step Configuration Array**
+ *    - Defines all 12 steps with titles and progress indicators
+ *    - Dynamic titles show completion status (e.g., "Documents ✓")
+ *    - WHY: Makes it easy to add/remove/reorder steps in the future
+ * 
+ * 5. **Error Handling**
+ *    - ErrorBoundary wraps entire component tree
+ *    - Query error states for loading failures
+ *    - Mutation error handling for save/submit failures
+ *    - WHY: Provides graceful degradation and clear error messages
+ * 
+ * **Data Flow:**
+ * ```
+ * 1. User fills form fields → React Hook Form state
+ * 2. User clicks Next → Validate current step schema
+ * 3. If valid → Auto-save draft → Move to next step
+ * 4. User clicks Save Draft → Bypass validation → Save to backend
+ * 5. User clicks Submit → Validate completion → Submit for HR review
+ * ```
+ * 
+ * **Transaction Atomicity:**
+ * Backend save-draft endpoint wraps all operations in single transaction.
+ * If any nested entity fails to save, entire operation rolls back.
+ * WHY: Prevents partial data corruption across 10+ database tables.
+ * 
+ * @returns {JSX.Element} The complete onboarding wizard UI
  */
 export default function OnboardingPage() {
   const [, navigate] = useLocation();
