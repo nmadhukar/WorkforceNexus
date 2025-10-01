@@ -187,15 +187,22 @@ export default function OnboardingPage() {
   }, [loadingOnboarding, existingOnboarding, onboardingError, user]);
 
   useEffect(() => {
+    console.log('[Onboarding] useEffect triggered, existingOnboarding:', existingOnboarding);
     if (existingOnboarding) {
-      setFormData({
+      console.log('[Onboarding] Setting formData from existingOnboarding...');
+      const updatedFormData = {
         ...existingOnboarding,
         dateOfBirth: existingOnboarding.dateOfBirth ? existingOnboarding.dateOfBirth.split('T')[0] : undefined,
         enumerationDate: existingOnboarding.enumerationDate ? existingOnboarding.enumerationDate.split('T')[0] : undefined,
         caqhIssueDate: existingOnboarding.caqhIssueDate ? existingOnboarding.caqhIssueDate.split('T')[0] : undefined,
         caqhLastAttestationDate: existingOnboarding.caqhLastAttestationDate ? existingOnboarding.caqhLastAttestationDate.split('T')[0] : undefined,
         caqhReattestationDueDate: existingOnboarding.caqhReattestationDueDate ? existingOnboarding.caqhReattestationDueDate.split('T')[0] : undefined
-      });
+      };
+      console.log('[Onboarding] About to call setFormData with:', updatedFormData);
+      setFormData(updatedFormData);
+      console.log('[Onboarding] setFormData called successfully');
+    } else {
+      console.log('[Onboarding] No existingOnboarding data, keeping default formData');
     }
   }, [existingOnboarding]);
 
