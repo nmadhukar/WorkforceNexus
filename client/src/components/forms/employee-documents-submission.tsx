@@ -654,6 +654,7 @@ export function EmployeeDocumentsSubmission({
                             {doc.status === "uploaded" ? (
                               <>
                                 <Button
+                                  type="button"
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => handleViewDocument(doc.fileUrl)}
@@ -664,6 +665,7 @@ export function EmployeeDocumentsSubmission({
                                 </Button>
                                 {doc.id && (
                                   <Button
+                                    type="button"
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => handleReplaceDocument(doc)}
@@ -676,6 +678,7 @@ export function EmployeeDocumentsSubmission({
                               </>
                             ) : (
                               <Button
+                                type="button"
                                 variant={needsUpload ? "default" : "outline"}
                                 size="sm"
                                 onClick={() => handleOpenUploadDialog(doc)}
@@ -700,6 +703,7 @@ export function EmployeeDocumentsSubmission({
 
               <div className="flex justify-start pt-4">
                 <Button
+                  type="button"
                   onClick={() => {
                     setSelectedFile(null);
                     additionalDocForm.reset();
@@ -756,6 +760,7 @@ export function EmployeeDocumentsSubmission({
                     {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
                   </p>
                   <Button
+                    type="button"
                     variant="outline"
                     size="sm"
                     onClick={(e) => {
@@ -790,6 +795,7 @@ export function EmployeeDocumentsSubmission({
 
             <div className="flex justify-end gap-2">
               <Button
+                type="button"
                 variant="outline"
                 onClick={() => {
                   setIsUploadDialogOpen(false);
@@ -800,6 +806,7 @@ export function EmployeeDocumentsSubmission({
                 Cancel
               </Button>
               <Button
+                type="button"
                 onClick={handleUploadForRequired}
                 disabled={!selectedFile || isUploading}
               >

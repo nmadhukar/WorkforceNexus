@@ -5,6 +5,26 @@ This HR management system is designed for healthcare organizations to manage med
 
 ## Recent Changes
 
+### Onboarding Form Button Type Fix (October 1, 2025)
+**Fixed "Add Document" button causing form to reset to Step 1.**
+
+**Problem:**
+Clicking "Add Document" in Step 9 (Documents Submission) triggered form submission, causing navigation reset to Step 1 and screen to disappear.
+
+**Root Cause:**
+- Entire onboarding wizard is wrapped in a `<form>` element
+- Buttons without explicit `type` attribute default to `type="submit"`
+- Clicking "Add Document" submitted the form instead of opening the dialog
+
+**Fix:**
+Added `type="button"` to all buttons in EmployeeDocumentsSubmission component:
+- View, Replace, Upload buttons in document table
+- Add Document button
+- Remove file, Cancel, Upload buttons in dialogs
+
+**Files Modified:**
+- `client/src/components/forms/employee-documents-submission.tsx`: Lines 660, 671, 684, 706, 766, 801, 812
+
 ### Onboarding Draft Validation Schema Fix (October 1, 2025)
 **Fixed validation errors when saving onboarding drafts with state licenses and other nested entities.**
 
