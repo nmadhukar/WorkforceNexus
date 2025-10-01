@@ -1,4 +1,4 @@
-lo/**
+/**
  * @fileoverview Database Configuration and Connection Module
  * 
  * This module configures the PostgreSQL database connection using Neon's
