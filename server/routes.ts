@@ -5449,6 +5449,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Manual schemas for related entities to avoid .shape issues
         const educationDraftSchema = z.object({
           id: z.number().optional(),  // For tracking existing records during updates
+          employeeId: z.number().optional(),  // Allow employeeId from existing records
           educationType: z.string().max(50).nullable().optional(),
           schoolInstitution: z.string().max(100).nullable().optional(),
           degree: z.string().max(50).nullable().optional(),
@@ -5459,6 +5460,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         const employmentDraftSchema = z.object({
           id: z.number().optional(),
+          employeeId: z.number().optional(),  // Allow employeeId from existing records
           employer: z.string().max(100).nullable().optional(),
           position: z.string().max(100).nullable().optional(),
           startDate: z.coerce.date().nullable().optional(),
@@ -5468,22 +5470,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         const stateLicenseDraftSchema = z.object({
           id: z.number().optional(),
+          employeeId: z.number().optional(),  // Allow employeeId from existing records
           licenseNumber: z.string().max(50),
           state: z.string().max(50),
           licenseType: z.string().max(50).nullable().optional(),
           issueDate: z.coerce.date().nullable().optional(),
-          expirationDate: z.coerce.date().nullable().optional()
+          expirationDate: z.coerce.date().nullable().optional(),
+          status: z.string().max(50).nullable().optional()
         }).partial().strict();
         
         const deaLicenseDraftSchema = z.object({
           id: z.number().optional(),
+          employeeId: z.number().optional(),  // Allow employeeId from existing records
           deaNumber: z.string().max(50),
           issueDate: z.coerce.date().nullable().optional(),
-          expirationDate: z.coerce.date().nullable().optional()
+          expirationDate: z.coerce.date().nullable().optional(),
+          status: z.string().max(50).nullable().optional()
         }).partial().strict();
         
         const boardCertificationDraftSchema = z.object({
           id: z.number().optional(),
+          employeeId: z.number().optional(),  // Allow employeeId from existing records
           certificationName: z.string().max(100),
           issuingBoard: z.string().max(100).nullable().optional(),
           certificationNumber: z.string().max(50).nullable().optional(),
@@ -5493,6 +5500,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         const peerReferenceDraftSchema = z.object({
           id: z.number().optional(),
+          employeeId: z.number().optional(),  // Allow employeeId from existing records
           referenceName: z.string().max(100).nullable().optional(),
           contactInfo: z.string().max(100).nullable().optional(),
           relationship: z.string().max(100).nullable().optional(),
@@ -5501,6 +5509,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         const emergencyContactDraftSchema = z.object({
           id: z.number().optional(),
+          employeeId: z.number().optional(),  // Allow employeeId from existing records
           contactName: z.string().max(100).nullable().optional(),
           relationship: z.string().max(50).nullable().optional(),
           phoneNumber: z.string().max(20).nullable().optional(),
@@ -5509,6 +5518,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         const taxFormDraftSchema = z.object({
           id: z.number().optional(),
+          employeeId: z.number().optional(),  // Allow employeeId from existing records
           formType: z.string().max(50).nullable().optional(),
           w9Completed: z.boolean().nullable().optional(),
           signedDate: z.coerce.date().nullable().optional()
@@ -5516,6 +5526,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         const trainingDraftSchema = z.object({
           id: z.number().optional(),
+          employeeId: z.number().optional(),  // Allow employeeId from existing records
           trainingName: z.string().max(100).nullable().optional(),
           provider: z.string().max(100).nullable().optional(),
           completionDate: z.coerce.date().nullable().optional(),
@@ -5525,6 +5536,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         const payerEnrollmentDraftSchema = z.object({
           id: z.number().optional(),
+          employeeId: z.number().optional(),  // Allow employeeId from existing records
           payerName: z.string().max(100).nullable().optional(),
           enrollmentId: z.string().max(50).nullable().optional(),
           effectiveDate: z.coerce.date().nullable().optional(),

@@ -3,6 +3,24 @@
 ## Overview
 This HR management system is designed for healthcare organizations to manage medical staff records, credentials, licenses, and compliance. It's a full-stack web application focused on healthcare-specific needs like medical and DEA licenses, board certifications, CAQH management, and regulatory compliance tracking. The project aims to provide a user-friendly interface to streamline complex HR processes in the medical field, addressing specific challenges such as managing 50+ data fields, documents, and forms required for healthcare onboarding.
 
+## Recent Changes
+
+### Onboarding Draft Validation Schema Fix (October 1, 2025)
+**Fixed validation errors when saving onboarding drafts with state licenses and other nested entities.**
+
+**Problems:**
+1. Draft schemas were missing `status` field (stateLicenses, deaLicenses)
+2. Draft schemas were missing `employeeId` field (all 10 nested entity types)
+3. `.strict()` validation rejected legitimate database fields
+
+**Fix:**
+- Added `status` field to stateLicenses and deaLicenses draft schemas
+- Added `employeeId` field to all nested entity draft schemas
+- Ensures form can save and reload existing data without validation errors
+
+**Files Modified:**
+- `server/routes.ts`: Lines 5453-5548 (added missing fields to draft schemas)
+
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
