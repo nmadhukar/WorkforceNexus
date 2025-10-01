@@ -579,6 +579,7 @@ export default function OnboardingPage() {
 
   // Handle loading state
   if (loadingOnboarding) {
+    console.log('[Onboarding] Rendering loading state...');
     return (
       <MainLayout>
         <div className="flex items-center justify-center min-h-[400px]">
@@ -590,6 +591,8 @@ export default function OnboardingPage() {
       </MainLayout>
     );
   }
+
+  console.log('[Onboarding] Rendering main form...');
 
   // Handle error state (but not 404 which is normal for new users)
   if (onboardingError) {
