@@ -602,6 +602,23 @@ export default function OnboardingPage() {
   console.log('[Onboarding] Rendering main form...');
   console.log('[Onboarding] existingOnboarding:', existingOnboarding);
   console.log('[Onboarding] formData:', formData);
+  console.log('[Onboarding] formData.firstName:', formData.firstName);
+  console.log('[Onboarding] formData.lastName:', formData.lastName);
+
+  // If formData hasn't been populated yet, wait for it
+  if (existingOnboarding && !formData.firstName) {
+    console.log('[Onboarding] Waiting for formData to be populated from existingOnboarding...');
+    return (
+      <MainLayout>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <ClipboardList className="w-12 h-12 text-primary mx-auto mb-4 animate-pulse" />
+            <p className="text-muted-foreground">Preparing your onboarding form...</p>
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
 
   // Handle error state (but not 404 which is normal for new users)
   if (onboardingError) {
