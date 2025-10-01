@@ -662,6 +662,9 @@ export default function OnboardingPage() {
     );
   }
 
+  console.log('[Onboarding] About to render main JSX...');
+  console.log('[Onboarding] Creating JSX return statement...');
+  
   return (
     <MainLayout>
       <div className="max-w-7xl mx-auto space-y-6">
