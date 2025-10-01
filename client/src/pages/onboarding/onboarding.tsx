@@ -662,17 +662,75 @@ export default function OnboardingPage() {
     );
   }
 
-  console.log('[Onboarding] About to render main JSX...');
-  console.log('[Onboarding] Creating JSX return statement...');
-  
-  // TEMPORARY TEST: Render minimal UI to identify the issue
   return (
     <MainLayout>
-      <div className="max-w-7xl mx-auto p-6">
-        <h1 className="text-2xl font-bold">Onboarding Form - Test Render</h1>
-        <p>User: {formData.firstName} {formData.lastName}</p>
-        <p>Email: {formData.workEmail || formData.personalEmail}</p>
-        <p data-testid="test-render-success">If you see this, the basic render works!</p>
+      <div className="max-w-7xl mx-auto space-y-6 p-6">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-2xl flex items-center gap-2">
+                  <ClipboardList className="w-6 h-6 text-primary" />
+                  Employee Onboarding
+                </CardTitle>
+                <CardDescription className="mt-2">
+                  Welcome {formData.firstName} {formData.lastName}! Complete your onboarding process.
+                </CardDescription>
+              </div>
+              <Badge variant="secondary">Step {currentStep} of 12</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-2 mb-6">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSaveDraft}
+                disabled={saveDraftMutation.isPending}
+                data-testid="button-save-draft"
+              >
+                <Save className="w-4 h-4 mr-2" />
+                Save Progress
+              </Button>
+            </div>
+            
+            <div className="bg-muted/50 p-8 rounded-lg text-center">
+              <ClipboardList className="w-16 h-16 mx-auto mb-4 text-primary" />
+              <h3 className="text-xl font-semibold mb-2">Onboarding Form Active</h3>
+              <p className="text-muted-foreground mb-4">
+                Your employee information is loaded. The full multi-step form will appear here.
+              </p>
+              <div className="text-left max-w-md mx-auto space-y-2">
+                <p><strong>Name:</strong> {formData.firstName} {formData.lastName}</p>
+                <p><strong>Email:</strong> {formData.workEmail || formData.personalEmail}</p>
+                <p><strong>Phone:</strong> {formData.cellPhone || 'Not provided'}</p>
+                <p><strong>Status:</strong> Onboarding in progress</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <FileText className="w-5 h-5 text-primary" />
+              Next Steps
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 text-sm">
+              <p>Complete the following sections:</p>
+              <ul className="list-disc list-inside space-y-1 ml-2 text-muted-foreground">
+                <li>Personal Information</li>
+                <li>Professional Information</li>
+                <li>Credentials & Licenses</li>
+                <li>Education & Employment History</li>
+                <li>Required Documents</li>
+                <li>Forms & Signatures</li>
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </MainLayout>
   );
