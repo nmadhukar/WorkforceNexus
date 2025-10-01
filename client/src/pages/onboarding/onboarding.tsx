@@ -175,6 +175,17 @@ export default function OnboardingPage() {
     }
   });
 
+  // Debug: Log query state changes
+  useEffect(() => {
+    console.log('[Onboarding] Query state:', {
+      loadingOnboarding,
+      hasData: !!existingOnboarding,
+      hasError: !!onboardingError,
+      userLoaded: !!user,
+      userRole: user?.role
+    });
+  }, [loadingOnboarding, existingOnboarding, onboardingError, user]);
+
   useEffect(() => {
     if (existingOnboarding) {
       setFormData({
