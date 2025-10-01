@@ -66,6 +66,17 @@ import { db } from "./db";
 import { 
   documents, 
   users,
+  employees,
+  educations,
+  employments,
+  stateLicenses,
+  deaLicenses,
+  boardCertifications,
+  peerReferences,
+  emergencyContacts,
+  taxForms,
+  trainings,
+  payerEnrollments,
   insertEmployeeSchema,
   insertEducationSchema,
   insertEmploymentSchema,
@@ -5369,46 +5380,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Step 5 & 6: ATOMIC TRANSACTION - Wrap all operations to prevent partial writes
         // All employee + nested entity upserts are now atomic with rollback-on-error
+        // Using tx parameter directly ensures all operations are truly transactional
         const result = await db.transaction(async (tx) => {
           console.log('[save-draft] Starting database transaction');
           
-          // Find existing employee by userId (proper upsert)
-          const existingEmployees = await storage.getAllEmployees();
-          let employee = existingEmployees.find(emp => emp.userId === userId);
+          // Find existing employee by userId using tx (proper upsert)
+          const existingEmployeeRows = await tx
+            .select()
+            .from(employees)
+            .where(eq(employees.userId, userId));
+          const employee = existingEmployeeRows[0];
           
           let employeeId: number;
           
           if (!employee) {
-            // Create new employee record
+            // Create new employee record using tx
             console.log('[save-draft] Creating new employee record for userId:', userId);
             // SECURITY: Enforce userId from req.user, status from server
-            const newEmployee = await storage.createEmployee({
-              ...employeeData,
-              userId,                           // SECURITY: Always from req.user.id
-              status: 'prospective',            // SECURITY: Server-controlled
-              onboardingStatus: 'in_progress'   // SECURITY: Server-controlled
-            } as any);
-            employee = newEmployee;
+            const [newEmployee] = await tx
+              .insert(employees)
+              .values({
+                ...employeeData,
+                userId,                           // SECURITY: Always from req.user.id
+                status: 'prospective',            // SECURITY: Server-controlled
+                onboardingStatus: 'in_progress'   // SECURITY: Server-controlled
+              } as any)
+              .returning();
             employeeId = newEmployee.id!;
             console.log('[save-draft] Employee created with id:', employeeId);
           } else {
-            // Update existing employee record
+            // Update existing employee record using tx
             employeeId = employee.id!;
             console.log('[save-draft] Updating existing employee id:', employeeId);
             // SECURITY: Never update userId, status, or onboardingStatus from request body
-            await storage.updateEmployee(employeeId, {
-              ...employeeData,
-              // SECURITY: Preserve server-controlled fields
-              userId: employee.userId,           // Never allow changing userId
-              status: employee.status,           // Never allow changing status
-              onboardingStatus: 'in_progress'    // Server-controlled
-            } as any);
+            await tx
+              .update(employees)
+              .set({
+                ...employeeData,
+                // SECURITY: Preserve server-controlled fields
+                userId: employee.userId,           // Never allow changing userId
+                status: employee.status,           // Never allow changing status
+                onboardingStatus: 'in_progress',   // Server-controlled
+                updatedAt: new Date()
+              } as any)
+              .where(eq(employees.id, employeeId));
             console.log('[save-draft] Employee updated');
           }
           
-          // Handle related entities with ownership verification
+          // Handle related entities with ownership verification using tx
           // SECURITY: Verify entity ownership before updates to prevent cross-employee tampering
-          // First fetch all existing entities for this employee to verify ownership
+          // First fetch all existing entities for this employee to verify ownership using tx
           const [
             existingEducations,
             existingEmployments,
@@ -5421,20 +5442,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             existingTrainings,
             existingPayerEnrollments
           ] = await Promise.all([
-            storage.getEmployeeEducations(employeeId),
-            storage.getEmployeeEmployments(employeeId),
-            storage.getEmployeeStateLicenses(employeeId),
-            storage.getEmployeeDeaLicenses(employeeId),
-            storage.getEmployeeBoardCertifications(employeeId),
-            storage.getEmployeePeerReferences(employeeId),
-            storage.getEmployeeEmergencyContacts(employeeId),
-            storage.getEmployeeTaxForms(employeeId),
-            storage.getEmployeeTrainings(employeeId),
-            storage.getEmployeePayerEnrollments(employeeId)
+            tx.select().from(educations).where(eq(educations.employeeId, employeeId)),
+            tx.select().from(employments).where(eq(employments.employeeId, employeeId)),
+            tx.select().from(stateLicenses).where(eq(stateLicenses.employeeId, employeeId)),
+            tx.select().from(deaLicenses).where(eq(deaLicenses.employeeId, employeeId)),
+            tx.select().from(boardCertifications).where(eq(boardCertifications.employeeId, employeeId)),
+            tx.select().from(peerReferences).where(eq(peerReferences.employeeId, employeeId)),
+            tx.select().from(emergencyContacts).where(eq(emergencyContacts.employeeId, employeeId)),
+            tx.select().from(taxForms).where(eq(taxForms.employeeId, employeeId)),
+            tx.select().from(trainings).where(eq(trainings.employeeId, employeeId)),
+            tx.select().from(payerEnrollments).where(eq(payerEnrollments.employeeId, employeeId))
           ]);
           
           try {
-          // Handle educations
+          // Handle educations using tx
           if (educations && Array.isArray(educations)) {
             console.log('[save-draft] Processing', educations.length, 'educations');
             for (const education of educations) {
@@ -5446,20 +5467,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.error('[save-draft] SECURITY: Attempted to update education not owned by employee');
                   throw new Error('Cannot update education record not owned by this employee');
                 }
-                await storage.updateEducation(sanitizedEducation.id, {
-                  ...sanitizedEducation,
-                  employeeId  // SECURITY: Enforce correct employeeId
-                });
+                await tx
+                  .update(educations)
+                  .set({
+                    ...sanitizedEducation,
+                    employeeId  // SECURITY: Enforce correct employeeId
+                  } as any)
+                  .where(eq(educations.id, sanitizedEducation.id));
               } else {
-                await storage.createEducation({
-                  ...sanitizedEducation,
-                  employeeId  // SECURITY: Always use verified employeeId
-                });
+                await tx
+                  .insert(educations)
+                  .values({
+                    ...sanitizedEducation,
+                    employeeId  // SECURITY: Always use verified employeeId
+                  } as any);
               }
             }
           }
           
-          // Handle employments
+          // Handle employments using tx
           if (employments && Array.isArray(employments)) {
             console.log('[save-draft] Processing', employments.length, 'employments');
             for (const employment of employments) {
@@ -5471,20 +5497,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.error('[save-draft] SECURITY: Attempted to update employment not owned by employee');
                   throw new Error('Cannot update employment record not owned by this employee');
                 }
-                await storage.updateEmployment(sanitizedEmployment.id, {
-                  ...sanitizedEmployment,
-                  employeeId
-                });
+                await tx
+                  .update(employments)
+                  .set({
+                    ...sanitizedEmployment,
+                    employeeId
+                  } as any)
+                  .where(eq(employments.id, sanitizedEmployment.id));
               } else {
-                await storage.createEmployment({
-                  ...sanitizedEmployment,
-                  employeeId
-                });
+                await tx
+                  .insert(employments)
+                  .values({
+                    ...sanitizedEmployment,
+                    employeeId
+                  } as any);
               }
             }
           }
           
-          // Handle state licenses
+          // Handle state licenses using tx
           if (stateLicenses && Array.isArray(stateLicenses)) {
             console.log('[save-draft] Processing', stateLicenses.length, 'state licenses');
             for (const license of stateLicenses) {
@@ -5496,20 +5527,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.error('[save-draft] SECURITY: Attempted to update state license not owned by employee');
                   throw new Error('Cannot update state license not owned by this employee');
                 }
-                await storage.updateStateLicense(sanitizedLicense.id, {
-                  ...sanitizedLicense,
-                  employeeId
-                });
+                await tx
+                  .update(stateLicenses)
+                  .set({
+                    ...sanitizedLicense,
+                    employeeId
+                  } as any)
+                  .where(eq(stateLicenses.id, sanitizedLicense.id));
               } else {
-                await storage.createStateLicense({
-                  ...sanitizedLicense,
-                  employeeId
-                });
+                await tx
+                  .insert(stateLicenses)
+                  .values({
+                    ...sanitizedLicense,
+                    employeeId
+                  } as any);
               }
             }
           }
           
-          // Handle DEA licenses
+          // Handle DEA licenses using tx
           if (deaLicenses && Array.isArray(deaLicenses)) {
             console.log('[save-draft] Processing', deaLicenses.length, 'DEA licenses');
             for (const license of deaLicenses) {
@@ -5521,20 +5557,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.error('[save-draft] SECURITY: Attempted to update DEA license not owned by employee');
                   throw new Error('Cannot update DEA license not owned by this employee');
                 }
-                await storage.updateDeaLicense(sanitizedLicense.id, {
-                  ...sanitizedLicense,
-                  employeeId
-                });
+                await tx
+                  .update(deaLicenses)
+                  .set({
+                    ...sanitizedLicense,
+                    employeeId
+                  } as any)
+                  .where(eq(deaLicenses.id, sanitizedLicense.id));
               } else {
-                await storage.createDeaLicense({
-                  ...sanitizedLicense,
-                  employeeId
-                });
+                await tx
+                  .insert(deaLicenses)
+                  .values({
+                    ...sanitizedLicense,
+                    employeeId
+                  } as any);
               }
             }
           }
           
-          // Handle board certifications
+          // Handle board certifications using tx
           if (boardCertifications && Array.isArray(boardCertifications)) {
             console.log('[save-draft] Processing', boardCertifications.length, 'board certifications');
             for (const cert of boardCertifications) {
@@ -5546,20 +5587,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.error('[save-draft] SECURITY: Attempted to update board certification not owned by employee');
                   throw new Error('Cannot update board certification not owned by this employee');
                 }
-                await storage.updateBoardCertification(sanitizedCert.id, {
-                  ...sanitizedCert,
-                  employeeId
-                });
+                await tx
+                  .update(boardCertifications)
+                  .set({
+                    ...sanitizedCert,
+                    employeeId
+                  } as any)
+                  .where(eq(boardCertifications.id, sanitizedCert.id));
               } else {
-                await storage.createBoardCertification({
-                  ...sanitizedCert,
-                  employeeId
-                });
+                await tx
+                  .insert(boardCertifications)
+                  .values({
+                    ...sanitizedCert,
+                    employeeId
+                  } as any);
               }
             }
           }
           
-          // Handle peer references
+          // Handle peer references using tx
           if (peerReferences && Array.isArray(peerReferences)) {
             console.log('[save-draft] Processing', peerReferences.length, 'peer references');
             for (const reference of peerReferences) {
@@ -5570,20 +5616,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.error('[save-draft] SECURITY: Attempted to update peer reference not owned by employee');
                   throw new Error('Cannot update peer reference not owned by this employee');
                 }
-                await storage.updatePeerReference(reference.id, {
-                  ...reference,
-                  employeeId
-                });
+                await tx
+                  .update(peerReferences)
+                  .set({
+                    ...reference,
+                    employeeId
+                  } as any)
+                  .where(eq(peerReferences.id, reference.id));
               } else {
-                await storage.createPeerReference({
-                  ...reference,
-                  employeeId
-                });
+                await tx
+                  .insert(peerReferences)
+                  .values({
+                    ...reference,
+                    employeeId
+                  } as any);
               }
             }
           }
           
-          // Handle emergency contacts
+          // Handle emergency contacts using tx
           if (emergencyContacts && Array.isArray(emergencyContacts)) {
             console.log('[save-draft] Processing', emergencyContacts.length, 'emergency contacts');
             for (const contact of emergencyContacts) {
@@ -5594,20 +5645,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.error('[save-draft] SECURITY: Attempted to update emergency contact not owned by employee');
                   throw new Error('Cannot update emergency contact not owned by this employee');
                 }
-                await storage.updateEmergencyContact(contact.id, {
-                  ...contact,
-                  employeeId
-                });
+                await tx
+                  .update(emergencyContacts)
+                  .set({
+                    ...contact,
+                    employeeId
+                  } as any)
+                  .where(eq(emergencyContacts.id, contact.id));
               } else {
-                await storage.createEmergencyContact({
-                  ...contact,
-                  employeeId
-                });
+                await tx
+                  .insert(emergencyContacts)
+                  .values({
+                    ...contact,
+                    employeeId
+                  } as any);
               }
             }
           }
           
-          // Handle tax forms
+          // Handle tax forms using tx
           if (taxForms && Array.isArray(taxForms)) {
             console.log('[save-draft] Processing', taxForms.length, 'tax forms');
             for (const form of taxForms) {
@@ -5619,20 +5675,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.error('[save-draft] SECURITY: Attempted to update tax form not owned by employee');
                   throw new Error('Cannot update tax form not owned by this employee');
                 }
-                await storage.updateTaxForm(sanitizedForm.id, {
-                  ...sanitizedForm,
-                  employeeId
-                });
+                await tx
+                  .update(taxForms)
+                  .set({
+                    ...sanitizedForm,
+                    employeeId
+                  } as any)
+                  .where(eq(taxForms.id, sanitizedForm.id));
               } else {
-                await storage.createTaxForm({
-                  ...sanitizedForm,
-                  employeeId
-                });
+                await tx
+                  .insert(taxForms)
+                  .values({
+                    ...sanitizedForm,
+                    employeeId
+                  } as any);
               }
             }
           }
           
-          // Handle trainings
+          // Handle trainings using tx
           if (trainings && Array.isArray(trainings)) {
             console.log('[save-draft] Processing', trainings.length, 'trainings');
             for (const training of trainings) {
@@ -5644,20 +5705,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.error('[save-draft] SECURITY: Attempted to update training not owned by employee');
                   throw new Error('Cannot update training not owned by this employee');
                 }
-                await storage.updateTraining(sanitizedTraining.id, {
-                  ...sanitizedTraining,
-                  employeeId
-                });
+                await tx
+                  .update(trainings)
+                  .set({
+                    ...sanitizedTraining,
+                    employeeId
+                  } as any)
+                  .where(eq(trainings.id, sanitizedTraining.id));
               } else {
-                await storage.createTraining({
-                  ...sanitizedTraining,
-                  employeeId
-                });
+                await tx
+                  .insert(trainings)
+                  .values({
+                    ...sanitizedTraining,
+                    employeeId
+                  } as any);
               }
             }
           }
           
-          // Handle payer enrollments
+          // Handle payer enrollments using tx
           if (payerEnrollments && Array.isArray(payerEnrollments)) {
             console.log('[save-draft] Processing', payerEnrollments.length, 'payer enrollments');
             for (const enrollment of payerEnrollments) {
@@ -5669,15 +5735,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.error('[save-draft] SECURITY: Attempted to update payer enrollment not owned by employee');
                   throw new Error('Cannot update payer enrollment not owned by this employee');
                 }
-                await storage.updatePayerEnrollment(sanitizedEnrollment.id, {
-                  ...sanitizedEnrollment,
-                  employeeId
-                });
+                await tx
+                  .update(payerEnrollments)
+                  .set({
+                    ...sanitizedEnrollment,
+                    employeeId
+                  } as any)
+                  .where(eq(payerEnrollments.id, sanitizedEnrollment.id));
               } else {
-                await storage.createPayerEnrollment({
-                  ...sanitizedEnrollment,
-                  employeeId
-                });
+                await tx
+                  .insert(payerEnrollments)
+                  .values({
+                    ...sanitizedEnrollment,
+                    employeeId
+                  } as any);
               }
             }
           }

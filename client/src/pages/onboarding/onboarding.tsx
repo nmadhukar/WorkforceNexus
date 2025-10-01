@@ -76,19 +76,7 @@ const step3Schema = z.object({
   caqhLastAttestationDate: z.string().optional(),
   caqhReattestationDueDate: z.string().optional(),
   caqhEnabled: z.boolean().optional().default(false),
-}).refine(
-  (data) => {
-    return !!(
-      data.medicalLicenseNumber ||
-      data.substanceUseLicenseNumber ||
-      data.mentalHealthLicenseNumber
-    );
-  },
-  {
-    message: "At least one license number is required",
-    path: ["medicalLicenseNumber"],
-  }
-);
+});
 
 // Step 4: Education History
 const educationItemSchema = z.object({
@@ -2211,9 +2199,11 @@ export default function OnboardingPage() {
     }
   });
 
-  // Handle Save Draft
+  // Handle Save Draft - bypass validation to allow partial saves
   const handleSaveDraft = () => {
-    saveDraftMutation.mutate(formData);
+    // Get current form data without triggering validation
+    const currentData = form.getValues();
+    saveDraftMutation.mutate(currentData);
   };
 
   // Handle Next with validation guard
