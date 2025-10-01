@@ -1093,7 +1093,17 @@ export const insertUserSchema = createInsertSchema(users).pick({
   lockedUntil: true
 });
 
-export const insertEmployeeSchema = createInsertSchema(employees).omit({
+export const insertEmployeeSchema = createInsertSchema(employees, {
+  dateOfBirth: z.coerce.date().nullable().optional(),
+  dlIssueDate: z.coerce.date().nullable().optional(),
+  dlExpirationDate: z.coerce.date().nullable().optional(),
+  enumerationDate: z.coerce.date().nullable().optional(),
+  caqhIssueDate: z.coerce.date().nullable().optional(),
+  caqhLastAttestationDate: z.coerce.date().nullable().optional(),
+  caqhReattestationDueDate: z.coerce.date().nullable().optional(),
+  onboardingCompletedAt: z.coerce.date().nullable().optional(),
+  approvedAt: z.coerce.date().nullable().optional()
+}).omit({
   id: true,
   createdAt: true,
   updatedAt: true
@@ -1104,32 +1114,47 @@ export const insertEmployeeSchema = createInsertSchema(employees).omit({
   return true; // Allow if either date is missing
 }, { message: "Driver's license expiration date cannot be before issue date", path: ["dlExpirationDate"] });
 
-export const insertEducationSchema = createInsertSchema(educations).omit({ id: true }).refine((data) => {
+export const insertEducationSchema = createInsertSchema(educations, {
+  startDate: z.coerce.date().nullable().optional(),
+  endDate: z.coerce.date().nullable().optional()
+}).omit({ id: true }).refine((data) => {
   if (data.endDate && data.startDate) {
     return new Date(data.endDate) >= new Date(data.startDate);
   }
   return true; // Allow if either date is missing
 }, { message: "End date cannot be before start date", path: ["endDate"] });
-export const insertEmploymentSchema = createInsertSchema(employments).omit({ id: true }).refine((data) => {
+export const insertEmploymentSchema = createInsertSchema(employments, {
+  startDate: z.coerce.date().nullable().optional(),
+  endDate: z.coerce.date().nullable().optional()
+}).omit({ id: true }).refine((data) => {
   if (data.endDate && data.startDate) {
     return new Date(data.endDate) >= new Date(data.startDate);
   }
   return true; // Allow if either date is missing
 }, { message: "End date cannot be before start date", path: ["endDate"] });
 export const insertPeerReferenceSchema = createInsertSchema(peerReferences).omit({ id: true });
-export const insertStateLicenseSchema = createInsertSchema(stateLicenses).omit({ id: true }).refine((data) => {
+export const insertStateLicenseSchema = createInsertSchema(stateLicenses, {
+  issueDate: z.coerce.date().nullable().optional(),
+  expirationDate: z.coerce.date().nullable().optional()
+}).omit({ id: true }).refine((data) => {
   if (data.expirationDate && data.issueDate) {
     return new Date(data.expirationDate) >= new Date(data.issueDate);
   }
   return true; // Allow if either date is missing
 }, { message: "Expiration date cannot be before issue date", path: ["expirationDate"] });
-export const insertDeaLicenseSchema = createInsertSchema(deaLicenses).omit({ id: true }).refine((data) => {
+export const insertDeaLicenseSchema = createInsertSchema(deaLicenses, {
+  issueDate: z.coerce.date().nullable().optional(),
+  expirationDate: z.coerce.date().nullable().optional()
+}).omit({ id: true }).refine((data) => {
   if (data.expirationDate && data.issueDate) {
     return new Date(data.expirationDate) >= new Date(data.issueDate);
   }
   return true; // Allow if either date is missing
 }, { message: "Expiration date cannot be before issue date", path: ["expirationDate"] });
-export const insertBoardCertificationSchema = createInsertSchema(boardCertifications).omit({ id: true }).refine((data) => {
+export const insertBoardCertificationSchema = createInsertSchema(boardCertifications, {
+  issueDate: z.coerce.date().nullable().optional(),
+  expirationDate: z.coerce.date().nullable().optional()
+}).omit({ id: true }).refine((data) => {
   if (data.expirationDate && data.issueDate) {
     return new Date(data.expirationDate) >= new Date(data.issueDate);
   }
@@ -1138,13 +1163,19 @@ export const insertBoardCertificationSchema = createInsertSchema(boardCertificat
 export const insertDocumentSchema = createInsertSchema(documents).omit({ id: true, createdAt: true });
 export const insertEmergencyContactSchema = createInsertSchema(emergencyContacts).omit({ id: true });
 export const insertTaxFormSchema = createInsertSchema(taxForms).omit({ id: true });
-export const insertTrainingSchema = createInsertSchema(trainings).omit({ id: true }).refine((data) => {
+export const insertTrainingSchema = createInsertSchema(trainings, {
+  completionDate: z.coerce.date().nullable().optional(),
+  expirationDate: z.coerce.date().nullable().optional()
+}).omit({ id: true }).refine((data) => {
   if (data.expirationDate && data.completionDate) {
     return new Date(data.expirationDate) >= new Date(data.completionDate);
   }
   return true; // Allow if either date is missing
 }, { message: "Expiration date cannot be before completion date", path: ["expirationDate"] });
-export const insertPayerEnrollmentSchema = createInsertSchema(payerEnrollments).omit({ id: true }).refine((data) => {
+export const insertPayerEnrollmentSchema = createInsertSchema(payerEnrollments, {
+  effectiveDate: z.coerce.date().nullable().optional(),
+  terminationDate: z.coerce.date().nullable().optional()
+}).omit({ id: true }).refine((data) => {
   if (data.terminationDate && data.effectiveDate) {
     return new Date(data.terminationDate) >= new Date(data.effectiveDate);
   }

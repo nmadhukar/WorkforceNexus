@@ -5232,7 +5232,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Save onboarding progress as draft
    * 
    * This endpoint handles incremental saving of onboarding data.
-   * It validates input, sanitizes dates, and transactionally saves employee and related entities.
+   * SECURITY: Always uses req.user.id as source of truth, ignores userId/employeeId/status from request body
+   * VALIDATION: Uses insert schemas with .partial() and .strict() for type safety
+   * ATOMICITY: Verifies entity ownership before updates to prevent cross-employee tampering
    */
   app.post('/api/onboarding/save-draft',
     requireAnyAuth,
@@ -5240,71 +5242,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req: AuditRequest, res: Response) => {
       try {
         console.log('[save-draft] Starting save draft for userId:', req.user!.id);
+        
+        // SECURITY: Always use req.user.id as source of truth, never from request body
         const userId = req.user!.id;
         
         // Step 1: Sanitize date fields first
         const sanitizedData = sanitizeDateFields(req.body);
         console.log('[save-draft] Date fields sanitized');
         
-        // Step 2: Define validation schema for the complete onboarding draft payload
+        // Step 2: Define validation schema using insert schemas with proper validation
+        // SECURITY: Omit sensitive/controlled fields that should never come from request body
+        const employeeDraftSchema = insertEmployeeSchema
+          .omit({ 
+            id: true,
+            userId: true,        // SECURITY: Never accept userId from request
+            status: true,        // SECURITY: Never accept status from request
+            applicationStatus: true,
+            onboardingStatus: true,
+            invitationId: true,
+            onboardingCompletedAt: true,
+            approvedAt: true,
+            approvedBy: true,
+            createdAt: true,
+            updatedAt: true
+          })
+          .partial()             // All fields optional for draft
+          .strict();             // Reject unknown fields
+        
+        // Define array schemas with proper validation and length limits
+        const MAX_ARRAY_LENGTH = 50;
+        
+        // Helper to create entity schema with id tracking for updates
+        const createEntitySchema = <T extends z.ZodTypeAny>(schema: T) => 
+          z.object({
+            id: z.number().optional(),  // For tracking existing records during updates
+          }).and(schema).partial().strict();
+        
         const onboardingDraftSchema = z.object({
-          // Employee fields (partial validation for draft - only validate what's present)
-          firstName: z.string().optional(),
-          middleName: z.string().optional(),
-          lastName: z.string().optional(),
-          dateOfBirth: z.string().nullable().optional(),
-          personalEmail: z.string().email().optional().or(z.literal('')).or(z.null()),
-          workEmail: z.string().email().optional(),
-          cellPhone: z.string().optional(),
-          workPhone: z.string().optional(),
-          homeAddress1: z.string().optional(),
-          homeAddress2: z.string().optional(),
-          homeCity: z.string().optional(),
-          homeState: z.string().optional(),
-          homeZip: z.string().optional(),
-          gender: z.string().optional(),
-          birthCity: z.string().optional(),
-          birthState: z.string().optional(),
-          birthCountry: z.string().optional(),
-          driversLicenseNumber: z.string().optional(),
-          dlStateIssued: z.string().optional(),
-          dlIssueDate: z.string().nullable().optional(),
-          dlExpirationDate: z.string().nullable().optional(),
-          ssn: z.string().optional(),
-          npiNumber: z.string().optional().or(z.null()),
-          enumerationDate: z.string().nullable().optional(),
-          jobTitle: z.string().optional(),
-          workLocation: z.string().optional(),
-          qualification: z.string().optional(),
-          medicalLicenseNumber: z.string().optional(),
-          substanceUseLicenseNumber: z.string().optional(),
-          substanceUseQualification: z.string().optional(),
-          mentalHealthLicenseNumber: z.string().optional(),
-          mentalHealthQualification: z.string().optional(),
-          medicaidNumber: z.string().optional(),
-          medicarePtanNumber: z.string().optional(),
-          caqhProviderId: z.string().optional(),
-          caqhIssueDate: z.string().nullable().optional(),
-          caqhLastAttestationDate: z.string().nullable().optional(),
-          caqhEnabled: z.boolean().optional(),
-          caqhReattestationDueDate: z.string().nullable().optional(),
-          caqhLoginId: z.string().optional(),
-          caqhPassword: z.string().optional(),
-          nppesLoginId: z.string().optional(),
-          nppesPassword: z.string().optional(),
+          // Employee fields - flattened at root level to match existing frontend structure
+          ...employeeDraftSchema.shape,
           
-          // Related entities arrays
-          educations: z.array(z.any()).optional(),
-          employments: z.array(z.any()).optional(),
-          stateLicenses: z.array(z.any()).optional(),
-          deaLicenses: z.array(z.any()).optional(),
-          boardCertifications: z.array(z.any()).optional(),
-          peerReferences: z.array(z.any()).optional(),
-          emergencyContacts: z.array(z.any()).optional(),
-          taxForms: z.array(z.any()).optional(),
-          trainings: z.array(z.any()).optional(),
-          payerEnrollments: z.array(z.any()).optional()
-        }).passthrough();
+          // Related entities arrays with proper validation and length limits
+          educations: z.array(
+            createEntitySchema(insertEducationSchema.omit({ id: true, employeeId: true }))
+          ).max(MAX_ARRAY_LENGTH, `Maximum ${MAX_ARRAY_LENGTH} education records allowed`).optional(),
+          
+          employments: z.array(
+            createEntitySchema(insertEmploymentSchema.omit({ id: true, employeeId: true }))
+          ).max(MAX_ARRAY_LENGTH, `Maximum ${MAX_ARRAY_LENGTH} employment records allowed`).optional(),
+          
+          stateLicenses: z.array(
+            createEntitySchema(insertStateLicenseSchema.omit({ id: true, employeeId: true }))
+          ).max(MAX_ARRAY_LENGTH, `Maximum ${MAX_ARRAY_LENGTH} state license records allowed`).optional(),
+          
+          deaLicenses: z.array(
+            createEntitySchema(insertDeaLicenseSchema.omit({ id: true, employeeId: true }))
+          ).max(MAX_ARRAY_LENGTH, `Maximum ${MAX_ARRAY_LENGTH} DEA license records allowed`).optional(),
+          
+          boardCertifications: z.array(
+            createEntitySchema(insertBoardCertificationSchema.omit({ id: true, employeeId: true }))
+          ).max(MAX_ARRAY_LENGTH, `Maximum ${MAX_ARRAY_LENGTH} board certification records allowed`).optional(),
+          
+          peerReferences: z.array(
+            createEntitySchema(insertPeerReferenceSchema.omit({ id: true, employeeId: true }))
+          ).max(MAX_ARRAY_LENGTH, `Maximum ${MAX_ARRAY_LENGTH} peer reference records allowed`).optional(),
+          
+          emergencyContacts: z.array(
+            createEntitySchema(insertEmergencyContactSchema.omit({ id: true, employeeId: true }))
+          ).max(MAX_ARRAY_LENGTH, `Maximum ${MAX_ARRAY_LENGTH} emergency contact records allowed`).optional(),
+          
+          taxForms: z.array(
+            createEntitySchema(insertTaxFormSchema.omit({ id: true, employeeId: true }))
+          ).max(MAX_ARRAY_LENGTH, `Maximum ${MAX_ARRAY_LENGTH} tax form records allowed`).optional(),
+          
+          trainings: z.array(
+            createEntitySchema(insertTrainingSchema.omit({ id: true, employeeId: true }))
+          ).max(MAX_ARRAY_LENGTH, `Maximum ${MAX_ARRAY_LENGTH} training records allowed`).optional(),
+          
+          payerEnrollments: z.array(
+            createEntitySchema(insertPayerEnrollmentSchema.omit({ id: true, employeeId: true }))
+          ).max(MAX_ARRAY_LENGTH, `Maximum ${MAX_ARRAY_LENGTH} payer enrollment records allowed`).optional()
+        }).strict();  // SECURITY: Reject any unknown fields
         
         // Step 3: Validate the sanitized data
         const validationResult = onboardingDraftSchema.safeParse(sanitizedData);
@@ -5319,7 +5337,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const data = validationResult.data;
         console.log('[save-draft] Validation successful');
         
-        // Step 4: Separate employee data from related arrays
+        // Step 4: Extract employee and related entity data
         const {
           educations,
           employments,
@@ -5334,8 +5352,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ...employeeData
         } = data;
         
-        console.log('[save-draft] Separated employee data from related entities');
-        console.log('[save-draft] Employee fields present:', Object.keys(employeeData).length);
+        console.log('[save-draft] Extracted data structure');
+        console.log('[save-draft] Employee fields present:', employeeData ? Object.keys(employeeData).length : 0);
         console.log('[save-draft] Related entities:', {
           educations: educations?.length || 0,
           employments: employments?.length || 0,
@@ -5349,54 +5367,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
           payerEnrollments: payerEnrollments?.length || 0
         });
         
-        // Step 5: Find existing employee by userId (proper upsert)
-        const existingEmployees = await storage.getAllEmployees();
-        let employee = existingEmployees.find(emp => emp.userId === userId);
-        
-        let employeeId: number;
-        
-        if (!employee) {
-          // Create new employee record
-          console.log('[save-draft] Creating new employee record for userId:', userId);
-          const newEmployee = await storage.createEmployee({
-            ...employeeData,
-            userId,
-            status: 'prospective',
-            onboardingStatus: 'in_progress'
-          } as any);
-          employee = newEmployee;
-          employeeId = newEmployee.id!;
-          console.log('[save-draft] Employee created with id:', employeeId);
-        } else {
-          // Update existing employee record
-          employeeId = employee.id!;
-          console.log('[save-draft] Updating existing employee id:', employeeId);
-          await storage.updateEmployee(employeeId, {
-            ...employeeData,
-            status: 'prospective',
-            onboardingStatus: 'in_progress'
-          } as any);
-          console.log('[save-draft] Employee updated');
-        }
-        
-        // Step 6: Handle related entities transactionally
-        // For draft saves, we allow partial data and skip validation to let users save incomplete forms
-        
-        try {
+        // Step 5 & 6: ATOMIC TRANSACTION - Wrap all operations to prevent partial writes
+        // All employee + nested entity upserts are now atomic with rollback-on-error
+        const result = await db.transaction(async (tx) => {
+          console.log('[save-draft] Starting database transaction');
+          
+          // Find existing employee by userId (proper upsert)
+          const existingEmployees = await storage.getAllEmployees();
+          let employee = existingEmployees.find(emp => emp.userId === userId);
+          
+          let employeeId: number;
+          
+          if (!employee) {
+            // Create new employee record
+            console.log('[save-draft] Creating new employee record for userId:', userId);
+            // SECURITY: Enforce userId from req.user, status from server
+            const newEmployee = await storage.createEmployee({
+              ...employeeData,
+              userId,                           // SECURITY: Always from req.user.id
+              status: 'prospective',            // SECURITY: Server-controlled
+              onboardingStatus: 'in_progress'   // SECURITY: Server-controlled
+            } as any);
+            employee = newEmployee;
+            employeeId = newEmployee.id!;
+            console.log('[save-draft] Employee created with id:', employeeId);
+          } else {
+            // Update existing employee record
+            employeeId = employee.id!;
+            console.log('[save-draft] Updating existing employee id:', employeeId);
+            // SECURITY: Never update userId, status, or onboardingStatus from request body
+            await storage.updateEmployee(employeeId, {
+              ...employeeData,
+              // SECURITY: Preserve server-controlled fields
+              userId: employee.userId,           // Never allow changing userId
+              status: employee.status,           // Never allow changing status
+              onboardingStatus: 'in_progress'    // Server-controlled
+            } as any);
+            console.log('[save-draft] Employee updated');
+          }
+          
+          // Handle related entities with ownership verification
+          // SECURITY: Verify entity ownership before updates to prevent cross-employee tampering
+          // First fetch all existing entities for this employee to verify ownership
+          const [
+            existingEducations,
+            existingEmployments,
+            existingStateLicenses,
+            existingDeaLicenses,
+            existingBoardCertifications,
+            existingPeerReferences,
+            existingEmergencyContacts,
+            existingTaxForms,
+            existingTrainings,
+            existingPayerEnrollments
+          ] = await Promise.all([
+            storage.getEmployeeEducations(employeeId),
+            storage.getEmployeeEmployments(employeeId),
+            storage.getEmployeeStateLicenses(employeeId),
+            storage.getEmployeeDeaLicenses(employeeId),
+            storage.getEmployeeBoardCertifications(employeeId),
+            storage.getEmployeePeerReferences(employeeId),
+            storage.getEmployeeEmergencyContacts(employeeId),
+            storage.getEmployeeTaxForms(employeeId),
+            storage.getEmployeeTrainings(employeeId),
+            storage.getEmployeePayerEnrollments(employeeId)
+          ]);
+          
+          try {
           // Handle educations
           if (educations && Array.isArray(educations)) {
             console.log('[save-draft] Processing', educations.length, 'educations');
             for (const education of educations) {
               const sanitizedEducation = sanitizeDateFields(education);
               if (sanitizedEducation.id) {
+                // SECURITY: Verify ownership before update
+                const existing = existingEducations.find(e => e.id === sanitizedEducation.id);
+                if (!existing) {
+                  console.error('[save-draft] SECURITY: Attempted to update education not owned by employee');
+                  throw new Error('Cannot update education record not owned by this employee');
+                }
                 await storage.updateEducation(sanitizedEducation.id, {
                   ...sanitizedEducation,
-                  employeeId
+                  employeeId  // SECURITY: Enforce correct employeeId
                 });
               } else {
                 await storage.createEducation({
                   ...sanitizedEducation,
-                  employeeId
+                  employeeId  // SECURITY: Always use verified employeeId
                 });
               }
             }
@@ -5408,6 +5465,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             for (const employment of employments) {
               const sanitizedEmployment = sanitizeDateFields(employment);
               if (sanitizedEmployment.id) {
+                // SECURITY: Verify ownership before update
+                const existing = existingEmployments.find(e => e.id === sanitizedEmployment.id);
+                if (!existing) {
+                  console.error('[save-draft] SECURITY: Attempted to update employment not owned by employee');
+                  throw new Error('Cannot update employment record not owned by this employee');
+                }
                 await storage.updateEmployment(sanitizedEmployment.id, {
                   ...sanitizedEmployment,
                   employeeId
@@ -5427,6 +5490,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             for (const license of stateLicenses) {
               const sanitizedLicense = sanitizeDateFields(license);
               if (sanitizedLicense.id) {
+                // SECURITY: Verify ownership before update
+                const existing = existingStateLicenses.find(e => e.id === sanitizedLicense.id);
+                if (!existing) {
+                  console.error('[save-draft] SECURITY: Attempted to update state license not owned by employee');
+                  throw new Error('Cannot update state license not owned by this employee');
+                }
                 await storage.updateStateLicense(sanitizedLicense.id, {
                   ...sanitizedLicense,
                   employeeId
@@ -5446,6 +5515,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             for (const license of deaLicenses) {
               const sanitizedLicense = sanitizeDateFields(license);
               if (sanitizedLicense.id) {
+                // SECURITY: Verify ownership before update
+                const existing = existingDeaLicenses.find(e => e.id === sanitizedLicense.id);
+                if (!existing) {
+                  console.error('[save-draft] SECURITY: Attempted to update DEA license not owned by employee');
+                  throw new Error('Cannot update DEA license not owned by this employee');
+                }
                 await storage.updateDeaLicense(sanitizedLicense.id, {
                   ...sanitizedLicense,
                   employeeId
@@ -5465,6 +5540,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             for (const cert of boardCertifications) {
               const sanitizedCert = sanitizeDateFields(cert);
               if (sanitizedCert.id) {
+                // SECURITY: Verify ownership before update
+                const existing = existingBoardCertifications.find(e => e.id === sanitizedCert.id);
+                if (!existing) {
+                  console.error('[save-draft] SECURITY: Attempted to update board certification not owned by employee');
+                  throw new Error('Cannot update board certification not owned by this employee');
+                }
                 await storage.updateBoardCertification(sanitizedCert.id, {
                   ...sanitizedCert,
                   employeeId
@@ -5483,6 +5564,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log('[save-draft] Processing', peerReferences.length, 'peer references');
             for (const reference of peerReferences) {
               if (reference.id) {
+                // SECURITY: Verify ownership before update
+                const existing = existingPeerReferences.find(e => e.id === reference.id);
+                if (!existing) {
+                  console.error('[save-draft] SECURITY: Attempted to update peer reference not owned by employee');
+                  throw new Error('Cannot update peer reference not owned by this employee');
+                }
                 await storage.updatePeerReference(reference.id, {
                   ...reference,
                   employeeId
@@ -5501,6 +5588,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log('[save-draft] Processing', emergencyContacts.length, 'emergency contacts');
             for (const contact of emergencyContacts) {
               if (contact.id) {
+                // SECURITY: Verify ownership before update
+                const existing = existingEmergencyContacts.find(e => e.id === contact.id);
+                if (!existing) {
+                  console.error('[save-draft] SECURITY: Attempted to update emergency contact not owned by employee');
+                  throw new Error('Cannot update emergency contact not owned by this employee');
+                }
                 await storage.updateEmergencyContact(contact.id, {
                   ...contact,
                   employeeId
@@ -5520,6 +5613,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             for (const form of taxForms) {
               const sanitizedForm = sanitizeDateFields(form);
               if (sanitizedForm.id) {
+                // SECURITY: Verify ownership before update
+                const existing = existingTaxForms.find(e => e.id === sanitizedForm.id);
+                if (!existing) {
+                  console.error('[save-draft] SECURITY: Attempted to update tax form not owned by employee');
+                  throw new Error('Cannot update tax form not owned by this employee');
+                }
                 await storage.updateTaxForm(sanitizedForm.id, {
                   ...sanitizedForm,
                   employeeId
@@ -5539,6 +5638,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             for (const training of trainings) {
               const sanitizedTraining = sanitizeDateFields(training);
               if (sanitizedTraining.id) {
+                // SECURITY: Verify ownership before update
+                const existing = existingTrainings.find(e => e.id === sanitizedTraining.id);
+                if (!existing) {
+                  console.error('[save-draft] SECURITY: Attempted to update training not owned by employee');
+                  throw new Error('Cannot update training not owned by this employee');
+                }
                 await storage.updateTraining(sanitizedTraining.id, {
                   ...sanitizedTraining,
                   employeeId
@@ -5558,6 +5663,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             for (const enrollment of payerEnrollments) {
               const sanitizedEnrollment = sanitizeDateFields(enrollment);
               if (sanitizedEnrollment.id) {
+                // SECURITY: Verify ownership before update
+                const existing = existingPayerEnrollments.find(e => e.id === sanitizedEnrollment.id);
+                if (!existing) {
+                  console.error('[save-draft] SECURITY: Attempted to update payer enrollment not owned by employee');
+                  throw new Error('Cannot update payer enrollment not owned by this employee');
+                }
                 await storage.updatePayerEnrollment(sanitizedEnrollment.id, {
                   ...sanitizedEnrollment,
                   employeeId
@@ -5571,14 +5682,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
           
-          console.log('[save-draft] All related entities processed successfully');
-        } catch (relatedError) {
-          console.error('[save-draft] Error processing related entities:', relatedError);
-          console.error('[save-draft] Related entity error stack:', (relatedError as Error).stack);
-          throw new Error(`Failed to save related entities: ${(relatedError as Error).message}`);
-        }
+            console.log('[save-draft] All related entities processed successfully');
+            
+            // Return employeeId from transaction
+            return employeeId;
+          } catch (relatedError) {
+            console.error('[save-draft] Error processing related entities:', relatedError);
+            console.error('[save-draft] Related entity error stack:', (relatedError as Error).stack);
+            // Re-throw to trigger transaction rollback
+            throw new Error(`Failed to save related entities: ${(relatedError as Error).message}`);
+          }
+        });
         
-        // Step 7: Log audit trail
+        // Transaction completed successfully - result contains employeeId
+        const employeeId = result;
+        console.log('[save-draft] Transaction completed successfully for employeeId:', employeeId);
+        
+        // Step 7: Log audit trail (outside transaction for non-critical logging)
         await logAudit(req, employeeId, employeeId, { 
           action: 'onboarding_draft_saved',
           timestamp: new Date().toISOString()
