@@ -5,6 +5,25 @@ This HR management system is designed for healthcare organizations to manage med
 
 ## Recent Changes
 
+### Qualification Fields Converted to Dropdowns (October 12, 2025)
+**Converted Substance Use Qualification and Mental Health Qualification from text inputs to dropdown select fields.**
+
+**Changes:**
+1. **Substance Use Qualification** - Now a required dropdown with 25 predefined options (LPC, LCDC III, LCDC II, LSW, LMFT, LPN, RN, PSY assistant, CDC-A, C-T, SW-A, SW-T, MFT-T, CPS variants, MD/DO, CNS, CNP, PA, LISW, LIMFT, LPCC, LICDC)
+2. **Mental Health Qualification** - Now a required dropdown with 26 predefined options (LPC, LSW, LMFT, LPN, RN, PSY assistant, C-T, SW-A, SW-T, MFT-T, QMHS variants, CMS variants, MD/DO, CNS, CNP, PA, LISW, LIMFT, LPCC)
+3. Both fields marked as mandatory with red asterisk (*)
+4. Validation schemas updated to require selection
+
+**Files Modified:**
+- `client/src/pages/onboarding/onboarding.tsx`: Lines 113-114 (validation), Lines 795-885 (UI dropdowns)
+- `client/src/components/forms/employee-credentials.tsx`: Lines 5 (imports), Lines 19-20 (validation), Lines 195-286 (UI dropdowns)
+
+**Benefits:**
+- Standardized qualification values across all records
+- Improved data consistency and reporting accuracy
+- Better user experience with predefined options
+- Eliminates typos and inconsistent entries
+
 ### Onboarding Form Button Type Fix (October 1, 2025)
 **Fixed "Add Document" button causing form to reset to Step 1.**
 

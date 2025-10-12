@@ -107,8 +107,8 @@ const step3Schema = z.object({
   medicalLicenseNumber: z.string().optional(),
   substanceUseLicenseNumber: z.string().optional(),
   mentalHealthLicenseNumber: z.string().optional(),
-  substanceUseQualification: z.string().optional(),
-  mentalHealthQualification: z.string().optional(),
+  substanceUseQualification: z.string().min(1, "Substance use qualification is required"),
+  mentalHealthQualification: z.string().min(1, "Mental health qualification is required"),
   medicaidNumber: z.string().optional(),
   medicarePtanNumber: z.string().optional(),
   caqhProviderId: z.string().optional(),
@@ -794,10 +794,41 @@ function StepRenderer({ stepNumber, updateFormData, formData, onboardingId }: St
               name="substanceUseQualification"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Substance Use Qualification</FormLabel>
-                  <FormControl>
-                    <Textarea {...field} placeholder="Enter substance use qualifications" data-testid="textarea-substance-use-qualification" />
-                  </FormControl>
+                  <FormLabel>Substance Use Qualification <span className="text-red-500">*</span></FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-substance-use-qualification">
+                        <SelectValue placeholder="Select substance use qualification" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent className="max-h-[300px]">
+                      <SelectItem value="LPC - Licensed professional counselor">LPC - Licensed professional counselor</SelectItem>
+                      <SelectItem value="LCDC III - Licensed chemical dependency counselor III">LCDC III - Licensed chemical dependency counselor III</SelectItem>
+                      <SelectItem value="LCDC II - Licensed chemical dependency counselor II">LCDC II - Licensed chemical dependency counselor II</SelectItem>
+                      <SelectItem value="LSW - Licensed social worker">LSW - Licensed social worker</SelectItem>
+                      <SelectItem value="LMFT - Licensed marriage and family therapist">LMFT - Licensed marriage and family therapist</SelectItem>
+                      <SelectItem value="LPN - Licensed practical nurse">LPN - Licensed practical nurse</SelectItem>
+                      <SelectItem value="RN - Registered nurse">RN - Registered nurse</SelectItem>
+                      <SelectItem value="PSY assistant - Psychology assistant, psychology intern, psychology trainee">PSY assistant - Psychology assistant, psychology intern, psychology trainee</SelectItem>
+                      <SelectItem value="CDC-A - Chemical dependency counselor assistant">CDC-A - Chemical dependency counselor assistant</SelectItem>
+                      <SelectItem value="C-T - Counselor trainee">C-T - Counselor trainee</SelectItem>
+                      <SelectItem value="SW-A - Social worker assistant">SW-A - Social worker assistant</SelectItem>
+                      <SelectItem value="SW-T - Social worker trainee">SW-T - Social worker trainee</SelectItem>
+                      <SelectItem value="MFT-T - Marriage and family therapist trainee">MFT-T - Marriage and family therapist trainee</SelectItem>
+                      <SelectItem value="CPS - Certified Peer Supporter – high school">CPS - Certified Peer Supporter – high school</SelectItem>
+                      <SelectItem value="CPS - Certified Peer Supporter – Associate's">CPS - Certified Peer Supporter – Associate's</SelectItem>
+                      <SelectItem value="CPS - Certified Peer Supporter – Bachelor's">CPS - Certified Peer Supporter – Bachelor's</SelectItem>
+                      <SelectItem value="CPS - Certified Peer Supporter – Master's">CPS - Certified Peer Supporter – Master's</SelectItem>
+                      <SelectItem value="MD/DO - Physician">MD/DO - Physician</SelectItem>
+                      <SelectItem value="CNS - Clinical nurse specialist">CNS - Clinical nurse specialist</SelectItem>
+                      <SelectItem value="CNP - Certified nurse practitioner">CNP - Certified nurse practitioner</SelectItem>
+                      <SelectItem value="PA - Physician assistant">PA - Physician assistant</SelectItem>
+                      <SelectItem value="LISW - Licensed independent social worker">LISW - Licensed independent social worker</SelectItem>
+                      <SelectItem value="LIMFT - Licensed independent marriage and family therapist">LIMFT - Licensed independent marriage and family therapist</SelectItem>
+                      <SelectItem value="LPCC - Licensed professional clinical counselor">LPCC - Licensed professional clinical counselor</SelectItem>
+                      <SelectItem value="LICDC - Licensed independent chemical dependency counselor">LICDC - Licensed independent chemical dependency counselor</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
@@ -808,10 +839,42 @@ function StepRenderer({ stepNumber, updateFormData, formData, onboardingId }: St
               name="mentalHealthQualification"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Mental Health Qualification</FormLabel>
-                  <FormControl>
-                    <Textarea {...field} placeholder="Enter mental health qualifications" data-testid="textarea-mental-health-qualification" />
-                  </FormControl>
+                  <FormLabel>Mental Health Qualification <span className="text-red-500">*</span></FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-mental-health-qualification">
+                        <SelectValue placeholder="Select mental health qualification" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent className="max-h-[300px]">
+                      <SelectItem value="LPC - Licensed professional counselor">LPC - Licensed professional counselor</SelectItem>
+                      <SelectItem value="LSW - Licensed social worker">LSW - Licensed social worker</SelectItem>
+                      <SelectItem value="LMFT - Licensed marriage and family therapist">LMFT - Licensed marriage and family therapist</SelectItem>
+                      <SelectItem value="LPN - Licensed practical nurse">LPN - Licensed practical nurse</SelectItem>
+                      <SelectItem value="RN - Registered nurse">RN - Registered nurse</SelectItem>
+                      <SelectItem value="PSY assistant - Psychology assistant, psychology intern, psychology trainee">PSY assistant - Psychology assistant, psychology intern, psychology trainee</SelectItem>
+                      <SelectItem value="C-T - Counselor trainee">C-T - Counselor trainee</SelectItem>
+                      <SelectItem value="SW-A - Social worker assistant">SW-A - Social worker assistant</SelectItem>
+                      <SelectItem value="SW-T - Social worker trainee">SW-T - Social worker trainee</SelectItem>
+                      <SelectItem value="MFT-T - Marriage and family therapist trainee">MFT-T - Marriage and family therapist trainee</SelectItem>
+                      <SelectItem value="QMHS - QMHS – high school">QMHS - QMHS – high school</SelectItem>
+                      <SelectItem value="QMHS - QMHS – Associate's">QMHS - QMHS – Associate's</SelectItem>
+                      <SelectItem value="QMHS - QMHS – Bachelor's">QMHS - QMHS – Bachelor's</SelectItem>
+                      <SelectItem value="QMHS - QMHS – Master's">QMHS - QMHS – Master's</SelectItem>
+                      <SelectItem value="QMHS - QMHS – 3 years' experience">QMHS - QMHS – 3 years' experience</SelectItem>
+                      <SelectItem value="CMS - Care management specialist – high school">CMS - Care management specialist – high school</SelectItem>
+                      <SelectItem value="CMS - Care management specialist – Associate's">CMS - Care management specialist – Associate's</SelectItem>
+                      <SelectItem value="CMS - Care management specialist – Bachelor's">CMS - Care management specialist – Bachelor's</SelectItem>
+                      <SelectItem value="CMS - Care management specialist – Master's">CMS - Care management specialist – Master's</SelectItem>
+                      <SelectItem value="MD/DO - Physician">MD/DO - Physician</SelectItem>
+                      <SelectItem value="CNS - Clinical nurse specialist">CNS - Clinical nurse specialist</SelectItem>
+                      <SelectItem value="CNP - Certified nurse practitioner">CNP - Certified nurse practitioner</SelectItem>
+                      <SelectItem value="PA - Physician assistant">PA - Physician assistant</SelectItem>
+                      <SelectItem value="LISW - Licensed independent social worker">LISW - Licensed independent social worker</SelectItem>
+                      <SelectItem value="LIMFT - Licensed independent marriage and family therapist">LIMFT - Licensed independent marriage and family therapist</SelectItem>
+                      <SelectItem value="LPCC - Licensed professional clinical counselor">LPCC - Licensed professional clinical counselor</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
