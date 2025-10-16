@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/main-layout";
@@ -151,6 +151,7 @@ export default function EmployeeForm() {
     payerEnrollments: [],
     incidentLogs: []
   });
+  const currentStepValidatorRef = useRef<(() => Promise<boolean>) | null>(null);
 
   const isEdit = params.id !== undefined;
   
@@ -352,7 +353,12 @@ export default function EmployeeForm() {
    * Advances to the next step in the form
    * @description Validates current step before advancing (if validation implemented)
    */
-  const handleNext = () => {
+  const handleNext = async () => {
+    const validate = currentStepValidatorRef.current;
+    if (validate) {
+      const isValid = await validate();
+      if (!isValid) return;
+    }
     if (currentStep < 13) {
       setCurrentStep(currentStep + 1);
     }
@@ -371,9 +377,9 @@ export default function EmployeeForm() {
    * Updates form data with partial data from step components
    * @param {Partial<EmployeeFormData>} data - Partial form data to merge
    */
-  const updateFormData = (data: Partial<EmployeeFormData>) => {
+  const updateFormData = useCallback((data: Partial<EmployeeFormData>) => {
     setFormData(prev => ({ ...prev, ...data }));
-  };
+  }, []);
 
   const steps = [
     {
@@ -382,6 +388,7 @@ export default function EmployeeForm() {
         <EmployeePersonalInfo
           data={formData}
           onChange={updateFormData}
+          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
           data-testid="step-personal-info"
         />
       )
@@ -392,6 +399,7 @@ export default function EmployeeForm() {
         <EmployeeProfessionalInfo
           data={formData}
           onChange={updateFormData}
+          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
           data-testid="step-professional-info"
         />
       )
@@ -402,6 +410,7 @@ export default function EmployeeForm() {
         <EmployeeCredentials
           data={formData}
           onChange={updateFormData}
+          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
           data-testid="step-credentials"
         />
       )
@@ -412,6 +421,7 @@ export default function EmployeeForm() {
         <EmployeeAdditionalInfo
           data={formData}
           onChange={updateFormData}
+          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
           data-testid="step-additional-info"
         />
       )
@@ -423,6 +433,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
+          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
           data-testid="step-education-employment"
         />
       )
@@ -434,6 +445,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
+          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
           data-testid="step-licenses"
         />
       )
@@ -445,6 +457,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
+          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
           data-testid="step-certifications"
         />
       )
@@ -456,6 +469,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
+          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
           data-testid="step-references-contacts"
         />
       )
@@ -467,6 +481,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
+          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
           data-testid="step-documents-submission"
         />
       )
@@ -478,6 +493,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
+          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
           data-testid="step-training-payer"
         />
       )
@@ -489,6 +505,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
+          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
           data-testid="step-forms"
         />
       )
@@ -500,6 +517,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
+          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
           data-testid="step-incidents"
         />
       )
@@ -614,7 +632,7 @@ export default function EmployeeForm() {
             onPrevious={handlePrevious}
             onSubmit={handleSubmit}
             isSubmitting={createMutation.isPending || updateMutation.isPending}
-            canNext={true} // Add validation logic here
+            canNext={true}
             data-testid="multi-step-form"
           />
         </div>

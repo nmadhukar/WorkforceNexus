@@ -35,8 +35,25 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
   const [selectedEmployment, setSelectedEmployment] = useState<any>(null);
   const [localEducations, setLocalEducations] = useState<any[]>(data.educations || []);
   const [localEmployments, setLocalEmployments] = useState<any[]>(data.employments || []);
+  const [stepError, setStepError] = useState<string | null>(null);
+  const formatDateInput = (value: unknown): string => {
+    if (!value) return "";
+    if (value instanceof Date) return value.toISOString().split("T")[0];
+    const str = String(value);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? str : d.toISOString().split("T")[0];
+  };
+  const formatDateDisplay = (value: unknown): string => {
+    if (!value) return "-";
+    if (value instanceof Date) return value.toISOString().split("T")[0];
+    const str = String(value);
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.split("T")[0];
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? str : d.toISOString().split("T")[0];
+  };
 
-  const educationForm = useForm<EducationFormData>({
+  const educationForm = useForm<any>({
     resolver: zodResolver(insertEducationSchema),
     defaultValues: {
       educationType: "",
@@ -48,7 +65,7 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
     }
   });
 
-  const employmentForm = useForm<EmploymentFormData>({
+  const employmentForm = useForm<any>({
     resolver: zodResolver(insertEmploymentSchema),
     defaultValues: {
       employer: "",
@@ -60,12 +77,12 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
   });
 
   // Fetch existing data if in update mode
-  const { data: educations = [] } = useQuery({
+  const { data: educations = [] } = useQuery<any[]>({
     queryKey: ["/api/employees", employeeId, "educations"],
     enabled: !!employeeId
   });
 
-  const { data: employments = [] } = useQuery({
+  const { data: employments = [] } = useQuery<any[]>({
     queryKey: ["/api/employees", employeeId, "employments"],
     enabled: !!employeeId
   });
@@ -85,25 +102,29 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
   useEffect(() => {
     if (registerValidation) {
       registerValidation(async () => {
-        // Validate that at least one education entry exists
-        const hasEducation = localEducations.length > 0;
-        // Report validation state
-        if (onValidationChange) {
-          onValidationChange(hasEducation);
+        // Require at least one Education AND one Employment entry
+        const hasBoth = (localEducations.length > 0) && (localEmployments.length > 0);
+        if (!hasBoth) {
+          setStepError("Please add at least one education and one employment record.");
+        } else {
+          setStepError(null);
         }
-        return hasEducation;
+        if (onValidationChange) {
+          onValidationChange(hasBoth);
+        }
+        return hasBoth;
       });
     }
-  }, [registerValidation, localEducations, onValidationChange]);
+  }, [registerValidation, localEducations, localEmployments, onValidationChange]);
 
   // Report validation state changes to parent
   useEffect(() => {
+    const hasBoth = (localEducations.length > 0) && (localEmployments.length > 0);
+    if (hasBoth) setStepError(null);
     if (onValidationChange) {
-      // Check if at least one education entry exists
-      const isValid = localEducations.length > 0;
-      onValidationChange(isValid);
+      onValidationChange(hasBoth);
     }
-  }, [localEducations, onValidationChange]);
+  }, [localEducations, localEmployments, onValidationChange]);
 
   // Education handlers
   const handleEducationSubmit = (formData: EducationFormData) => {
@@ -127,8 +148,8 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
       schoolInstitution: education.schoolInstitution || "",
       degree: education.degree || "",
       specialtyMajor: education.specialtyMajor || "",
-      startDate: education.startDate || "",
-      endDate: education.endDate || ""
+      startDate: formatDateInput(education.startDate),
+      endDate: formatDateInput(education.endDate)
     });
     setIsEducationDialogOpen(true);
   };
@@ -157,8 +178,8 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
     employmentForm.reset({
       employer: employment.employer || "",
       position: employment.position || "",
-      startDate: employment.startDate || "",
-      endDate: employment.endDate || "",
+      startDate: formatDateInput(employment.startDate),
+      endDate: formatDateInput(employment.endDate),
       description: employment.description || ""
     });
     setIsEmploymentDialogOpen(true);
@@ -170,6 +191,11 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
 
   return (
     <div className="space-y-6">
+      {stepError && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700" data-testid="education-employment-error">
+          {stepError}
+        </div>
+      )}
       {/* Education Section */}
       <Card>
         <CardHeader>
@@ -216,6 +242,7 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
                     <TableCell>{education.schoolInstitution || "-"}</TableCell>
                     <TableCell>{education.degree || "-"}</TableCell>
                     <TableCell>{education.specialtyMajor || "-"}</TableCell>
+                    
                     <TableCell className="text-right">
                       <Button
                         variant="ghost"
@@ -286,8 +313,8 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
                   <TableRow key={employment.id} data-testid={`row-employment-${employment.id}`}>
                     <TableCell>{employment.employer || "-"}</TableCell>
                     <TableCell>{employment.position || "-"}</TableCell>
-                    <TableCell>{employment.startDate || "-"}</TableCell>
-                    <TableCell>{employment.endDate || "-"}</TableCell>
+                    <TableCell>{formatDateDisplay(employment.startDate)}</TableCell>
+                    <TableCell>{formatDateDisplay(employment.endDate)}</TableCell>
                     <TableCell className="text-right">
                       <Button
                         variant="ghost"

@@ -32,8 +32,24 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
   const [selectedDeaLicense, setSelectedDeaLicense] = useState<any>(null);
   const [localStateLicenses, setLocalStateLicenses] = useState<any[]>(data.stateLicenses || []);
   const [localDeaLicenses, setLocalDeaLicenses] = useState<any[]>(data.deaLicenses || []);
+  const formatDateInput = (value: unknown): string => {
+    if (!value) return "";
+    if (value instanceof Date) return value.toISOString().split("T")[0];
+    const str = String(value);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? str : d.toISOString().split("T")[0];
+  };
+  const formatDateDisplay = (value: unknown): string => {
+    if (!value) return "-";
+    if (value instanceof Date) return value.toISOString().split("T")[0];
+    const str = String(value);
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.split("T")[0];
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? str : d.toISOString().split("T")[0];
+  };
 
-  const stateForm = useForm<StateLicenseFormData>({
+  const stateForm = useForm<any>({
     resolver: zodResolver(insertStateLicenseSchema),
     defaultValues: {
       licenseNumber: "",
@@ -44,7 +60,7 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
     }
   });
 
-  const deaForm = useForm<DeaLicenseFormData>({
+  const deaForm = useForm<any>({
     resolver: zodResolver(insertDeaLicenseSchema),
     defaultValues: {
       licenseNumber: "",
@@ -56,12 +72,12 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
   });
 
   // Fetch existing data if in update mode
-  const { data: stateLicenses = [] } = useQuery({
+  const { data: stateLicenses = [] } = useQuery<any[]>({
     queryKey: ["/api/employees", employeeId, "state-licenses"],
     enabled: !!employeeId
   });
 
-  const { data: deaLicenses = [] } = useQuery({
+  const { data: deaLicenses = [] } = useQuery<any[]>({
     queryKey: ["/api/employees", employeeId, "dea-licenses"],
     enabled: !!employeeId
   });
@@ -105,7 +121,7 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
 
     const currentDate = new Date();
     currentDate.setHours(0, 0, 0, 0); // Reset time for date-only comparison
-    const expirationDate = new Date(license.expirationDate);
+    const expirationDate = new Date(license.expirationDate as any);
     expirationDate.setHours(0, 0, 0, 0);
     
     // Check if expired
@@ -180,8 +196,8 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
     stateForm.reset({
       licenseNumber: license.licenseNumber || "",
       state: license.state || "",
-      issueDate: license.issueDate || "",
-      expirationDate: license.expirationDate || "",
+      issueDate: formatDateInput(license.issueDate),
+      expirationDate: formatDateInput(license.expirationDate),
       status: license.status || "active"
     });
     setIsStateDialogOpen(true);
@@ -233,8 +249,8 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
     deaForm.reset({
       licenseNumber: license.licenseNumber || "",
       state: license.state || "",
-      issueDate: license.issueDate || "",
-      expirationDate: license.expirationDate || "",
+      issueDate: formatDateInput(license.issueDate),
+      expirationDate: formatDateInput(license.expirationDate),
       status: license.status || "active"
     });
     setIsDeaDialogOpen(true);
@@ -291,8 +307,8 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
                   <TableRow key={license.id} data-testid={`row-state-license-${license.id}`}>
                     <TableCell>{license.licenseNumber}</TableCell>
                     <TableCell>{license.state || "-"}</TableCell>
-                    <TableCell>{license.issueDate || "-"}</TableCell>
-                    <TableCell>{license.expirationDate || "-"}</TableCell>
+                    <TableCell>{formatDateDisplay(license.issueDate)}</TableCell>
+                    <TableCell>{formatDateDisplay(license.expirationDate)}</TableCell>
                     <TableCell>{getStatusBadge(getActualStatus(license))}</TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -365,8 +381,10 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
                   <TableRow key={license.id} data-testid={`row-dea-license-${license.id}`}>
                     <TableCell>{license.licenseNumber}</TableCell>
                     <TableCell>{license.state || "-"}</TableCell>
-                    <TableCell>{license.issueDate || "-"}</TableCell>
-                    <TableCell>{license.expirationDate || "-"}</TableCell>
+                    <TableCell>{formatDateDisplay(license.issueDate)}</TableCell>
+                    <TableCell>{formatDateDisplay(license.expirationDate)}</TableCell>
+                    <TableCell>{formatDateDisplay(license.issueDate)}</TableCell>
+                    <TableCell>{formatDateDisplay(license.expirationDate)}</TableCell>
                     <TableCell>{getStatusBadge(getActualStatus(license))}</TableCell>
                     <TableCell className="text-right">
                       <Button

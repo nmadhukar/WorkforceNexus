@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -39,6 +39,8 @@ interface EmployeePersonalInfoProps {
 export function EmployeePersonalInfo({ data, onChange, onValidationChange, registerValidation }: EmployeePersonalInfoProps) {
   const form = useForm<PersonalInfoFormData>({
     resolver: zodResolver(personalInfoSchema),
+    mode: "onSubmit",
+    reValidateMode: "onChange",
     defaultValues: {
       firstName: data.firstName || "",
       middleName: data.middleName || "",
@@ -57,13 +59,31 @@ export function EmployeePersonalInfo({ data, onChange, onValidationChange, regis
     },
   });
 
-  // Watch form values and update parent on valid changes
+  // Debounced propagation of only the changed field to the parent to avoid thrash
+  const debounceTimerRef = useRef<number | undefined>(undefined);
+  const pendingDeltaRef = useRef<Record<string, unknown> | null>(null);
+
   useEffect(() => {
-    const subscription = form.watch((value) => {
-      // Update parent with current form values to maintain backward compatibility
-      onChange(value);
+    const subscription = form.watch((values, { name }) => {
+      if (!name) return;
+      const delta: Record<string, unknown> = { [name]: (values as any)[name] };
+      pendingDeltaRef.current = { ...(pendingDeltaRef.current || {}), ...delta };
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+      }
+      debounceTimerRef.current = window.setTimeout(() => {
+        if (pendingDeltaRef.current) {
+          onChange(pendingDeltaRef.current);
+          pendingDeltaRef.current = null;
+        }
+      }, 150);
     });
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+      }
+    };
   }, [form, onChange]);
 
   // Register validation function with parent
@@ -78,24 +98,15 @@ export function EmployeePersonalInfo({ data, onChange, onValidationChange, regis
     }
   }, [form, registerValidation]);
 
-  // Report validation state changes to parent
+  // Expose validation function to parent; do not show messages until asked
   useEffect(() => {
-    if (onValidationChange) {
-      const subscription = form.watch(() => {
-        // Trigger validation and report state
-        form.trigger().then((isValid) => {
-          onValidationChange(isValid);
-        });
+    if (registerValidation) {
+      registerValidation(async () => {
+        const isValid = await form.trigger(undefined, { shouldFocus: true });
+        return isValid;
       });
-      
-      // Initial validation check
-      form.trigger().then((isValid) => {
-        onValidationChange(isValid);
-      });
-      
-      return () => subscription.unsubscribe();
     }
-  }, [form, onValidationChange]);
+  }, [form, registerValidation]);
 
   return (
     <Form {...form}>
