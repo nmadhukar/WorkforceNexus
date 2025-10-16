@@ -33,6 +33,8 @@ interface EmployeeProfessionalInfoProps {
 export function EmployeeProfessionalInfo({ data, onChange, onValidationChange, registerValidation }: EmployeeProfessionalInfoProps) {
   const form = useForm<ProfessionalInfoFormData>({
     resolver: zodResolver(professionalInfoSchema),
+    mode: "onSubmit",
+    reValidateMode: "onChange",
     defaultValues: {
       jobTitle: data.jobTitle || "",
       workLocation: data.workLocation || "",
@@ -44,45 +46,24 @@ export function EmployeeProfessionalInfo({ data, onChange, onValidationChange, r
     },
   });
 
-  // Watch form values and update parent on valid changes
+  // Watch and propagate changes to parent
   useEffect(() => {
     const subscription = form.watch((value) => {
-      // Update parent with current form values to maintain backward compatibility
       onChange(value);
     });
     return () => subscription.unsubscribe();
   }, [form, onChange]);
 
-  // Register validation function with parent
+  // Register validation for Next click
   useEffect(() => {
     if (registerValidation) {
       registerValidation(async () => {
-        // Trigger validation on all fields
-        const isValid = await form.trigger();
-        // Return validation result
-        return isValid;
+        return await form.trigger(undefined, { shouldFocus: true });
       });
     }
   }, [form, registerValidation]);
 
-  // Report validation state changes to parent
-  useEffect(() => {
-    if (onValidationChange) {
-      const subscription = form.watch(() => {
-        // Trigger validation and report state
-        form.trigger().then((isValid) => {
-          onValidationChange(isValid);
-        });
-      });
-      
-      // Initial validation check
-      form.trigger().then((isValid) => {
-        onValidationChange(isValid);
-      });
-      
-      return () => subscription.unsubscribe();
-    }
-  }, [form, onValidationChange]);
+  // No live validation reporting
 
   return (
     <Form {...form}>
