@@ -27,8 +27,26 @@ export function EmployeeCertifications({ data, onChange, employeeId, onValidatio
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedCertification, setSelectedCertification] = useState<any>(null);
   const [localCertifications, setLocalCertifications] = useState<any[]>(data.boardCertifications || []);
+  const [stepError, setStepError] = useState<string | null>(null);
 
-  const form = useForm<CertificationFormData>({
+  const formatDateInput = (value: unknown): string => {
+    if (!value) return "";
+    if (value instanceof Date) return value.toISOString().split("T")[0];
+    const str = String(value);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? str : d.toISOString().split("T")[0];
+  };
+  const formatDateDisplay = (value: unknown): string => {
+    if (!value) return "-";
+    if (value instanceof Date) return value.toISOString().split("T")[0];
+    const str = String(value);
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.split("T")[0];
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? str : d.toISOString().split("T")[0];
+  };
+
+  const form = useForm<any>({
     resolver: zodResolver(insertBoardCertificationSchema),
     defaultValues: {
       boardName: "",
@@ -39,7 +57,7 @@ export function EmployeeCertifications({ data, onChange, employeeId, onValidatio
   });
 
   // Fetch existing data if in update mode
-  const { data: certifications = [] } = useQuery({
+  const { data: certifications = [] } = useQuery<any[]>({
     queryKey: ["/api/employees", employeeId, "board-certifications"],
     enabled: !!employeeId
   });
@@ -54,28 +72,36 @@ export function EmployeeCertifications({ data, onChange, employeeId, onValidatio
     onChange({ ...data, boardCertifications: localCertifications });
   }, [localCertifications]);
 
-  // Register validation function with parent
+  // Register validation function with parent: require at least one certification
   useEffect(() => {
     if (registerValidation) {
       registerValidation(async () => {
-        // Certifications are optional, so always valid (even if empty)
-        // But if certifications are added, they must have required fields filled via form validation
-        return true;
+        const hasOne = localCertifications.length > 0;
+        if (!hasOne) {
+          setStepError("Please add at least one board certification.");
+        } else {
+          setStepError(null);
+        }
+        if (onValidationChange) {
+          onValidationChange(hasOne);
+        }
+        return hasOne;
       });
     }
-  }, [registerValidation]);
+  }, [registerValidation, localCertifications, onValidationChange]);
 
-  // Report validation state to parent - certifications are optional
+  // Report validation state to parent and clear banner when valid
   useEffect(() => {
+    const hasOne = localCertifications.length > 0;
+    if (hasOne) setStepError(null);
     if (onValidationChange) {
-      // Always valid since certifications are optional
-      onValidationChange(true);
+      onValidationChange(hasOne);
     }
-  }, [onValidationChange]);
+  }, [localCertifications, onValidationChange]);
 
-  const isExpiringSoon = (date: string) => {
+  const isExpiringSoon = (date: unknown) => {
     if (!date) return false;
-    const expDate = new Date(date);
+    const expDate = new Date(date as any);
     const now = new Date();
     const thirtyDays = 30 * 24 * 60 * 60 * 1000;
     return expDate.getTime() - now.getTime() < thirtyDays && expDate.getTime() > now.getTime();
@@ -100,8 +126,8 @@ export function EmployeeCertifications({ data, onChange, employeeId, onValidatio
     form.reset({
       boardName: certification.boardName || "",
       certification: certification.certification || "",
-      issueDate: certification.issueDate || "",
-      expirationDate: certification.expirationDate || ""
+      issueDate: formatDateInput(certification.issueDate),
+      expirationDate: formatDateInput(certification.expirationDate)
     });
     setIsDialogOpen(true);
   };
@@ -112,6 +138,11 @@ export function EmployeeCertifications({ data, onChange, employeeId, onValidatio
 
   return (
     <div className="space-y-6">
+      {stepError && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700" data-testid="certifications-error">
+          {stepError}
+        </div>
+      )}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -155,10 +186,10 @@ export function EmployeeCertifications({ data, onChange, employeeId, onValidatio
                   <TableRow key={cert.id} data-testid={`row-certification-${cert.id}`}>
                     <TableCell>{cert.boardName || "-"}</TableCell>
                     <TableCell>{cert.certification || "-"}</TableCell>
-                    <TableCell>{cert.issueDate || "-"}</TableCell>
+                    <TableCell>{formatDateDisplay(cert.issueDate)}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        {cert.expirationDate || "-"}
+                        {formatDateDisplay(cert.expirationDate)}
                         {isExpiringSoon(cert.expirationDate) && (
                           <Badge className="bg-orange-100 text-orange-800 text-xs">Expiring Soon</Badge>
                         )}

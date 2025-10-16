@@ -61,6 +61,8 @@ interface EmployeeCredentialsProps {
 export function EmployeeCredentials({ data, onChange, onValidationChange, registerValidation }: EmployeeCredentialsProps) {
   const form = useForm<CredentialsFormData>({
     resolver: zodResolver(credentialsSchema),
+    mode: "onSubmit",
+    reValidateMode: "onChange",
     defaultValues: {
       medicalLicenseNumber: data.medicalLicenseNumber || "",
       substanceUseLicenseNumber: data.substanceUseLicenseNumber || "",
@@ -92,36 +94,16 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
     form.trigger(["caqhProviderId"]);
   }, [caqhEnabled, form]);
 
-  // Register validation function with parent
+  // Register validation for Next click
   useEffect(() => {
     if (registerValidation) {
       registerValidation(async () => {
-        // Trigger validation on all fields
-        const isValid = await form.trigger();
-        // Return validation result
-        return isValid;
+        return await form.trigger(undefined, { shouldFocus: true });
       });
     }
   }, [form, registerValidation]);
 
-  // Report validation state changes to parent
-  useEffect(() => {
-    if (onValidationChange) {
-      const subscription = form.watch(() => {
-        // Trigger validation and report state
-        form.trigger().then((isValid) => {
-          onValidationChange(isValid);
-        });
-      });
-      
-      // Initial validation check
-      form.trigger().then((isValid) => {
-        onValidationChange(isValid);
-      });
-      
-      return () => subscription.unsubscribe();
-    }
-  }, [form, onValidationChange]);
+  // No live validation reporting
 
   return (
     <Form {...form}>
