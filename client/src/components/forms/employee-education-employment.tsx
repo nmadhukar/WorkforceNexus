@@ -15,6 +15,7 @@ import { Plus, Edit, Trash2, GraduationCap, Briefcase } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { insertEducationSchema, insertEmploymentSchema } from "@shared/schema";
+import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 
 type EducationFormData = z.infer<typeof insertEducationSchema>;
 type EmploymentFormData = z.infer<typeof insertEmploymentSchema>;
@@ -36,6 +37,7 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
   const [localEducations, setLocalEducations] = useState<any[]>(data.educations || []);
   const [localEmployments, setLocalEmployments] = useState<any[]>(data.employments || []);
   const [stepError, setStepError] = useState<string | null>(null);
+  const [employmentGap, setEmploymentGap] = useState<string>("No");
   const formatDateInput = (value: unknown): string => {
     if (!value) return "";
     if (value instanceof Date) return value.toISOString().split("T")[0];
@@ -129,7 +131,7 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
   // Education handlers
   const handleEducationSubmit = (formData: EducationFormData) => {
     if (selectedEducation) {
-      const updatedEducations = localEducations.map(edu => 
+      const updatedEducations = localEducations.map(edu =>
         edu.id === selectedEducation.id ? { ...edu, ...formData } : edu
       );
       setLocalEducations(updatedEducations);
@@ -161,7 +163,7 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
   // Employment handlers
   const handleEmploymentSubmit = (formData: EmploymentFormData) => {
     if (selectedEmployment) {
-      const updatedEmployments = localEmployments.map(emp => 
+      const updatedEmployments = localEmployments.map(emp =>
         emp.id === selectedEmployment.id ? { ...emp, ...formData } : emp
       );
       setLocalEmployments(updatedEmployments);
@@ -242,7 +244,7 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
                     <TableCell>{education.schoolInstitution || "-"}</TableCell>
                     <TableCell>{education.degree || "-"}</TableCell>
                     <TableCell>{education.specialtyMajor || "-"}</TableCell>
-                    
+
                     <TableCell className="text-right">
                       <Button
                         variant="ghost"
@@ -269,6 +271,73 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
         </CardContent>
       </Card>
 
+      {/* Emplyement gap */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Briefcase className="h-5 w-5" />
+                They have any gaps in employment history?
+              </CardTitle>
+              <CardDescription>Add or manage gaps in employment history</CardDescription>
+            </div>
+          <RadioGroup
+            name="employmentGap"
+            value={employmentGap}
+            onValueChange={(value: string) => setEmploymentGap(value)}
+          >
+            <RadioGroupItem value="Yes">Yes</RadioGroupItem>
+            <RadioGroupItem value="No">No</RadioGroupItem>
+          </RadioGroup>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {localEmployments.length === 0 ? (
+            <p className="text-muted-foreground">No employment records added</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Employer</TableHead>
+                  <TableHead>Position</TableHead>
+                  <TableHead>Start Date</TableHead>
+                  <TableHead>End Date</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {localEmployments.map((employment: any) => (
+                  <TableRow key={employment.id} data-testid={`row-employment-${employment.id}`}>
+                    <TableCell>{employment.employer || "-"}</TableCell>
+                    <TableCell>{employment.position || "-"}</TableCell>
+                    <TableCell>{formatDateDisplay(employment.startDate)}</TableCell>
+                    <TableCell>{formatDateDisplay(employment.endDate)}</TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEditEmployment(employment)}
+                        data-testid={`button-edit-employment-${employment.id}`}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteEmployment(employment.id)}
+                        data-testid={`button-delete-employment-${employment.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
       {/* Employment Section */}
       <Card>
         <CardHeader>

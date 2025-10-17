@@ -12,13 +12,13 @@ const additionalInfoSchema = z.object({
   caqhPassword: z.string().optional(),
   nppesLoginId: z.string().optional(),
   nppesPassword: z.string().optional(),
-  birthCity: z.string().optional(),
-  birthState: z.string().optional(),
-  birthCountry: z.string().optional(),
-  driversLicenseNumber: z.string().optional(),
-  dlStateIssued: z.string().optional(),
-  dlIssueDate: z.string().optional(),
-  dlExpirationDate: z.string().optional()
+  // birthCity: z.string().optional(),
+  // birthState: z.string().optional(),
+  // birthCountry: z.string().optional(),
+  // driversLicenseNumber: z.string().optional(),
+  // dlStateIssued: z.string().optional(),
+  // dlIssueDate: z.string().optional(),
+  // dlExpirationDate: z.string().optional()
 });
 
 type AdditionalInfoFormData = z.infer<typeof additionalInfoSchema>;
@@ -40,13 +40,13 @@ export function EmployeeAdditionalInfo({ data, onChange, onValidationChange, reg
       caqhPassword: data.caqhPassword || "",
       nppesLoginId: data.nppesLoginId || "",
       nppesPassword: data.nppesPassword || "",
-      birthCity: data.birthCity || "",
-      birthState: data.birthState || "",
-      birthCountry: data.birthCountry || "",
-      driversLicenseNumber: data.driversLicenseNumber || "",
-      dlStateIssued: data.dlStateIssued || "",
-      dlIssueDate: data.dlIssueDate || "",
-      dlExpirationDate: data.dlExpirationDate || ""
+      // birthCity: data.birthCity || "",
+      // birthState: data.birthState || "",
+      // birthCountry: data.birthCountry || "",
+      // driversLicenseNumber: data.driversLicenseNumber || "",
+      // dlStateIssued: data.dlStateIssued || "",
+      // dlIssueDate: data.dlIssueDate || "",
+      // dlExpirationDate: data.dlExpirationDate || ""
     }
   });
 
@@ -89,7 +89,7 @@ export function EmployeeAdditionalInfo({ data, onChange, onValidationChange, reg
     <Form {...form}>
       <div className="space-y-6">
         {/* Login Credentials */}
-        <div className="space-y-4">
+        {/* <div className="space-y-4">
           <h4 className="text-md font-semibold text-foreground">Login Credentials</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <FormField
@@ -148,10 +148,10 @@ export function EmployeeAdditionalInfo({ data, onChange, onValidationChange, reg
               )}
             />
           </div>
-        </div>
+        </div> */}
 
         {/* Birth Information */}
-        <div className="space-y-4">
+        {/* <div className="space-y-4">
           <h4 className="text-md font-semibold text-foreground">Birth Information</h4>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <FormField
@@ -196,10 +196,10 @@ export function EmployeeAdditionalInfo({ data, onChange, onValidationChange, reg
               )}
             />
           </div>
-        </div>
+        </div> */}
 
         {/* Driver's License */}
-        <div className="space-y-4">
+        {/* <div className="space-y-4">
           <h4 className="text-md font-semibold text-foreground">Driver's License</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <FormField
@@ -258,7 +258,8 @@ export function EmployeeAdditionalInfo({ data, onChange, onValidationChange, reg
               )}
             />
           </div>
-        </div>
+        </div> */}
+        
       </div>
     </Form>
   );
