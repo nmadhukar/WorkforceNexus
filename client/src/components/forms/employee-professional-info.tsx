@@ -19,6 +19,10 @@ const professionalInfoSchema = z.object({
   enumerationDate: z.string().optional(),
   workPhone: z.string().optional(),
   qualification: z.string().optional(),
+  caqhLoginId: z.string().optional(),
+  caqhPassword: z.string().optional(),
+  nppesLoginId: z.string().optional(),
+  nppesPassword: z.string().optional(),
 });
 
 type ProfessionalInfoFormData = z.infer<typeof professionalInfoSchema>;
@@ -43,6 +47,10 @@ export function EmployeeProfessionalInfo({ data, onChange, onValidationChange, r
       enumerationDate: data.enumerationDate || "",
       workPhone: data.workPhone || "",
       qualification: data.qualification || "",
+      caqhLoginId: data.caqhLoginId || "",
+      caqhPassword: data.caqhPassword || "",
+      nppesLoginId: data.nppesLoginId || "",
+      nppesPassword: data.nppesPassword || "",
     },
   });
 
@@ -138,7 +146,7 @@ export function EmployeeProfessionalInfo({ data, onChange, onValidationChange, r
             )}
           />
           
-          <FormField
+          {/* <FormField
             control={form.control}
             name="npiNumber"
             render={({ field }) => (
@@ -192,9 +200,8 @@ export function EmployeeProfessionalInfo({ data, onChange, onValidationChange, r
                 <FormMessage />
               </FormItem>
             )}
-          />
+          /> */}
         </div>
-
         <FormField
           control={form.control}
           name="qualification"
@@ -213,6 +220,66 @@ export function EmployeeProfessionalInfo({ data, onChange, onValidationChange, r
             </FormItem>
           )}
         />
+         <div className="space-y-4">
+          <h4 className="text-md font-semibold text-foreground">Login Credentials</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <FormField
+              control={form.control}
+              name="caqhLoginId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>CAQH Login ID</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Enter CAQH login ID" data-testid="input-caqh-login-id" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="caqhPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>CAQH Password</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="password" placeholder="Enter CAQH password" data-testid="input-caqh-password" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="nppesLoginId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>NPPES Login ID</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Enter NPPES login ID" data-testid="input-nppes-login-id" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="nppesPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>NPPES Password</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="password" placeholder="Enter NPPES password" data-testid="input-nppes-password" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </div>
       </div>
     </Form>
   );

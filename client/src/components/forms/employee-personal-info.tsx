@@ -25,6 +25,13 @@ const personalInfoSchema = z.object({
   homeCity: z.string().optional(),
   homeState: z.string().optional(),
   homeZip: z.string().optional(),
+  birthCity: z.string().optional(),
+  birthState: z.string().optional(),
+  birthCountry: z.string().optional(),
+  driversLicenseNumber: z.string().optional(),
+  dlStateIssued: z.string().optional(),
+  dlIssueDate: z.string().optional(),
+  dlExpirationDate: z.string().optional(),
 });
 
 type PersonalInfoFormData = z.infer<typeof personalInfoSchema>;
@@ -56,6 +63,13 @@ export function EmployeePersonalInfo({ data, onChange, onValidationChange, regis
       homeCity: data.homeCity || "",
       homeState: data.homeState || "",
       homeZip: data.homeZip || "",
+      birthCity: data.birthCity || "",
+      birthState: data.birthState || "",
+      birthCountry: data.birthCountry || "",
+      driversLicenseNumber: data.driversLicenseNumber || "",
+      dlStateIssued: data.dlStateIssued || "",
+      dlIssueDate: data.dlIssueDate || "",
+      dlExpirationDate: data.dlExpirationDate || "",
     },
   });
 
@@ -318,7 +332,6 @@ export function EmployeePersonalInfo({ data, onChange, onValidationChange, regis
                 </FormItem>
               )}
             />
-            
             <FormField
               control={form.control}
               name="homeAddress2"
@@ -336,7 +349,6 @@ export function EmployeePersonalInfo({ data, onChange, onValidationChange, regis
                 </FormItem>
               )}
             />
-            
             <FormField
               control={form.control}
               name="homeCity"
@@ -372,7 +384,6 @@ export function EmployeePersonalInfo({ data, onChange, onValidationChange, regis
                 </FormItem>
               )}
             />
-            
             <FormField
               control={form.control}
               name="homeZip"
@@ -385,6 +396,109 @@ export function EmployeePersonalInfo({ data, onChange, onValidationChange, regis
                       placeholder="12345"
                       data-testid="input-home-zip"
                     />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </div>
+        {/* Birth Information */}
+        <div className="space-y-4">
+          <h4 className="text-md font-semibold text-foreground">Birth Information</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <FormField
+              control={form.control}
+              name="birthCity"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Birth City</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Enter birth city" data-testid="input-birth-city" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="birthState"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Birth State</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Enter birth state" data-testid="input-birth-state" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="birthCountry"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Birth Country</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Enter birth country" data-testid="input-birth-country" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </div>
+        {/* Driver's License */}
+        <div className="space-y-4">
+          <h4 className="text-md font-semibold text-foreground">Driver's License</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <FormField
+              control={form.control}
+              name="driversLicenseNumber"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>License Number</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Enter license number" data-testid="input-drivers-license-number" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="dlStateIssued"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>State Issued</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Enter state" data-testid="input-dl-state-issued" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="dlIssueDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Issue Date</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="date" data-testid="input-dl-issue-date" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="dlExpirationDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Expiration Date</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="date" data-testid="input-dl-expiration-date" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
