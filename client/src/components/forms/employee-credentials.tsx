@@ -10,6 +10,11 @@ import { z } from "zod";
 
 // Validation schema with at least one license number required
 const credentialsSchema = z.object({
+  departments: z.string().min(1, "Departments are required"),
+  npiNumber: z.string().optional(),
+  medicalQualification: z.string().optional(),
+  deaNumber: z.string().optional(),
+  enumerationDate: z.string().optional(),
   medicalLicenseNumber: z.string().optional(),
   substanceUseLicenseNumber: z.string().optional(),
   mentalHealthLicenseNumber: z.string().optional(),
@@ -64,6 +69,11 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
     mode: "onSubmit",
     reValidateMode: "onChange",
     defaultValues: {
+      departments: data.departments || "",
+      npiNumber: data.npiNumber || "",
+      deaNumber: data.deaNumber || "",
+      medicalQualification: data.medicalQualification || "",
+      enumerationDate: data.enumerationDate || "",
       medicalLicenseNumber: data.medicalLicenseNumber || "",
       substanceUseLicenseNumber: data.substanceUseLicenseNumber || "",
       mentalHealthLicenseNumber: data.mentalHealthLicenseNumber || "",
@@ -78,6 +88,7 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
       caqhEnabled: data.caqhEnabled || false,
     },
   });
+  const medicalQualificationArray = ["physician", "physician-assistant", "clinical-nurse-specialist", "certified-nurse-practitioner"];
 
   // Watch form values and update parent on valid changes
   useEffect(() => {
@@ -94,14 +105,124 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
     form.trigger(["caqhProviderId"]);
   }, [caqhEnabled, form]);
 
+  // Re-validate when Departments changes to enforce conditional NPI requirement
+  const selectedDepartment = form.watch("departments");
+  useEffect(() => {
+    form.trigger(["npiNumber"]);
+    // If department no longer requires NPI, clear any manual errors
+    const requiresNpi = selectedDepartment === "Medical" || selectedDepartment === "Clinical";
+    if (!requiresNpi) {
+      form.clearErrors("npiNumber");
+    }
+    // Clear mental health license error when department is not Medical
+    if (selectedDepartment !== "Medical") {
+      form.clearErrors("medicalQualification");
+    }
+    // Clear medicalQualification error when department is not Medical
+    if (selectedDepartment !== "Medical") {
+      form.clearErrors("medicalQualification");
+    }
+  }, [selectedDepartment, form]);
+
   // Register validation for Next click
   useEffect(() => {
     if (registerValidation) {
       registerValidation(async () => {
-        return await form.trigger(undefined, { shouldFocus: true });
+        const baseValid = await form.trigger(undefined, { shouldFocus: true });
+        const department = form.getValues("departments");
+        const npi = (form.getValues("npiNumber") || "").trim();
+        const medQual = (form.getValues("medicalQualification") || "").trim();
+
+        let focused = false;
+        let hasError = false;
+
+        const requiresNpi = department === "Medical" || department === "Clinical";
+        if (requiresNpi && !npi) {
+          form.setError("npiNumber", { type: "manual", message: "NPI number is required for Medical or Clinical" });
+          if (!focused) {
+            try {
+              const el = document.querySelector('[data-testid="input-npi-number"]') as HTMLInputElement | null;
+              el?.focus();
+            } catch { }
+            focused = true;
+          }
+          hasError = true;
+        }
+
+        if (department === "Medical" && !medQual) {
+          form.setError("medicalQualification", { type: "manual", message: "Medical qualification is required" });
+          if (!focused) {
+            try {
+              const el = document.querySelector('[data-testid=\"select-medical-qualification\"]') as HTMLElement | null;
+              el?.focus();
+            } catch { }
+            focused = true;
+          }
+          hasError = true;
+        }
+
+
+        // Require DEA Number always
+        if (medicalQualificationArray.includes(medQual)) {
+          const dea = (form.getValues("deaNumber") || "").trim();
+          if (!dea) {
+            form.setError("deaNumber", { type: "manual", message: "DEA number is required" });
+            if (!focused) {
+              try {
+                const el = document.querySelector('[data-testid="input-dea-number"]') as HTMLInputElement | null;
+                el?.focus();
+              } catch { }
+              focused = true;
+            }
+            hasError = true;
+          }
+        }
+
+        if (hasError) return false;
+        return baseValid;
       });
     }
   }, [form, registerValidation]);
+
+  // Clear manual NPI error as soon as user provides any value
+  const watchedNpiNumber = form.watch("npiNumber");
+  useEffect(() => {
+    const current = (watchedNpiNumber || "").trim();
+    const err = form.formState.errors.npiNumber;
+    if (err?.type === "manual" && current.length > 0) {
+      form.clearErrors("npiNumber");
+    }
+  }, [watchedNpiNumber, form]);
+
+  // Clear manual mental health license error as soon as user provides any value
+  const watchedMedicalQualification = form.watch("medicalQualification");
+  useEffect(() => {
+    const current = (watchedMedicalQualification || "").trim();
+    const err = form.formState.errors.medicalQualification;
+    if (err?.type === "manual" && current.length > 0) {
+      form.clearErrors("medicalQualification");
+    }
+  }, [watchedMedicalQualification, form]);
+
+  // Clear manual medicalQualification error as soon as user selects any value
+  const watchedMentalHealthQualification = form.watch("mentalHealthQualification");
+  useEffect(() => {
+    const current = (watchedMentalHealthQualification || "").trim();
+    const err = form.formState.errors.mentalHealthQualification;
+    if (err?.type === "manual" && current.length > 0) {
+      form.clearErrors("mentalHealthQualification");
+    }
+  }, [watchedMentalHealthQualification, form]);
+
+  // Clear manual DEA error as soon as user types a value
+  const watchedDeaNumber = form.watch("deaNumber");
+  useEffect(() => {
+    const current = (watchedDeaNumber || "").trim();
+    const err = form.formState.errors.deaNumber;
+    if (err?.type === "manual" && current.length > 0) {
+      form.clearErrors("deaNumber");
+    }
+  }, [watchedDeaNumber, form]);
 
   // No live validation reporting
 
@@ -110,6 +231,127 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
       <div className="space-y-6">
         {/* Medical Licenses */}
         <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+            <FormField
+              control={form.control}
+              name="departments"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    Departments <span className="text-red-500">*</span>
+                  </FormLabel>
+                  <Select value={field.value?.toString()} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-departments">
+                        <SelectValue placeholder="Select departments" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="Medical">Medical</SelectItem>
+                      <SelectItem value="Clinical">Clinical</SelectItem>
+                      <SelectItem value="Admin">Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="enumerationDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Enumeration Date</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="date"
+                      data-testid="input-enumeration-date"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <FormField
+              control={form.control}
+              name="npiNumber"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    NPI Number
+                    {(form.watch("departments") === "Medical" || form.watch("departments") === "Clinical") && (
+                      <span className="text-red-500"> *</span>
+                    )}
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder="Enter 10 digit NPI number"
+                      maxLength={10}
+                      data-testid="input-npi-number"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="medicalQualification"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    Medical Qualification {form.watch("departments") === "Medical" && (
+                      <span className="text-red-500"> *</span>
+                    )}
+                  </FormLabel>
+                  <Select value={field.value?.toString()} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-medical-qualification">
+                        <SelectValue placeholder="Select medical qualification" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="licensed-practical-nurse">Licensed practical nurse</SelectItem>
+                      <SelectItem value="registered-nurse">Registered nurse</SelectItem>
+                      <SelectItem value="physician">Physician</SelectItem>
+                      <SelectItem value="clinical-nurse-specialist">Clinical nurse specialist</SelectItem>
+                      <SelectItem value="certified-nurse-practitioner">Certified nurse practitioner</SelectItem>
+                      <SelectItem value="physician-assistant">Physician assistant</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+          {
+            medicalQualificationArray?.includes(form?.watch("medicalQualification") || "") && (
+              <FormField
+                control={form.control}
+                name="deaNumber"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      DEA Number
+                      <span className="text-red-500"> *</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder="Enter DEA number"
+                        data-testid="input-dea-number"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
           <h4 className="text-md font-semibold text-foreground">
             Medical Licenses <span className="text-red-500">*</span>
             <span className="text-sm font-normal text-muted-foreground ml-2">
@@ -134,7 +376,7 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
                 </FormItem>
               )}
             />
-            
+
             <FormField
               control={form.control}
               name="substanceUseLicenseNumber"
@@ -152,7 +394,7 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
                 </FormItem>
               )}
             />
-            
+
             <FormField
               control={form.control}
               name="mentalHealthLicenseNumber"
@@ -171,7 +413,7 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
               )}
             />
           </div>
-          
+
           <div className="space-y-4">
             <FormField
               control={form.control}
@@ -217,7 +459,7 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
                 </FormItem>
               )}
             />
-            
+
             <FormField
               control={form.control}
               name="mentalHealthQualification"
@@ -287,7 +529,7 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
                 </FormItem>
               )}
             />
-            
+
             <FormField
               control={form.control}
               name="medicarePtanNumber"
@@ -332,7 +574,7 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
                 </FormItem>
               )}
             />
-            
+
             <FormField
               control={form.control}
               name="caqhIssueDate"
@@ -350,7 +592,7 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
                 </FormItem>
               )}
             />
-            
+
             <FormField
               control={form.control}
               name="caqhLastAttestationDate"
@@ -368,7 +610,7 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
                 </FormItem>
               )}
             />
-            
+
             <FormField
               control={form.control}
               name="caqhReattestationDueDate"
@@ -387,7 +629,7 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
               )}
             />
           </div>
-          
+
           <FormField
             control={form.control}
             name="caqhEnabled"
