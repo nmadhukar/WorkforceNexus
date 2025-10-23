@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+// Textarea not used in this form
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm } from "react-hook-form";
@@ -16,8 +16,20 @@ const credentialsSchema = z.object({
   deaNumber: z.string().optional(),
   enumerationDate: z.string().optional(),
   medicalLicenseNumber: z.string().optional(),
+  medicalLicenseState: z.string().optional(),
+  medicalLicenseIssueDate: z.string().optional(),
+  medicalLicenseExpirationDate: z.string().optional(),
+  medicalLicenseStatus: z.string().optional(),
   substanceUseLicenseNumber: z.string().optional(),
+  substanceUseLicenseState: z.string().optional(),
+  substanceUseLicenseIssueDate: z.string().optional(),
+  substanceUseLicenseExpirationDate: z.string().optional(),
+  substanceUseLicenseStatus: z.string().optional(),
   mentalHealthLicenseNumber: z.string().optional(),
+  mentalHealthLicenseState: z.string().optional(),
+  mentalHealthLicenseIssueDate: z.string().optional(),
+  mentalHealthLicenseExpirationDate: z.string().optional(),
+  mentalHealthLicenseStatus: z.string().optional(),
   substanceUseQualification: z.string().min(1, "Substance use qualification is required"),
   mentalHealthQualification: z.string().min(1, "Mental health qualification is required"),
   medicaidNumber: z.string().optional(),
@@ -75,8 +87,20 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
       medicalQualification: data.medicalQualification || "",
       enumerationDate: data.enumerationDate || "",
       medicalLicenseNumber: data.medicalLicenseNumber || "",
+      medicalLicenseState: data.medicalLicenseState || "",
+      medicalLicenseIssueDate: data.medicalLicenseIssueDate || "",
+      medicalLicenseExpirationDate: data.medicalLicenseExpirationDate || "",
+      medicalLicenseStatus: data.medicalLicenseStatus || "pending",
       substanceUseLicenseNumber: data.substanceUseLicenseNumber || "",
+      substanceUseLicenseState: data.substanceUseLicenseState || "",
+      substanceUseLicenseIssueDate: data.substanceUseLicenseIssueDate || "",
+      substanceUseLicenseExpirationDate: data.substanceUseLicenseExpirationDate || "",
+      substanceUseLicenseStatus: data.substanceUseLicenseStatus || "pending",
       mentalHealthLicenseNumber: data.mentalHealthLicenseNumber || "",
+      mentalHealthLicenseState: data.mentalHealthLicenseState || "",
+      mentalHealthLicenseIssueDate: data.mentalHealthLicenseIssueDate || "",
+      mentalHealthLicenseExpirationDate: data.mentalHealthLicenseExpirationDate || "",
+      mentalHealthLicenseStatus: data.mentalHealthLicenseStatus || "pending",
       substanceUseQualification: data.substanceUseQualification || "",
       mentalHealthQualification: data.mentalHealthQualification || "",
       medicaidNumber: data.medicaidNumber || "",
@@ -94,7 +118,9 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
   useEffect(() => {
     const subscription = form.watch((value) => {
       // Update parent with current form values to maintain backward compatibility
-      onChange(value);
+      onChange({
+        ...value,
+      });
     });
     return () => subscription.unsubscribe();
   }, [form, onChange]);
@@ -358,7 +384,8 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
               (At least one license number is required)
             </span>
           </h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+          <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
             <FormField
               control={form.control}
               name="medicalLicenseNumber"
@@ -376,8 +403,72 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
                 </FormItem>
               )}
             />
-
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <FormField
+                control={form.control}
+                name="medicalLicenseState"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>State</FormLabel>
+                  <FormControl>
+                      <Input {...field} placeholder="e.g., CA, NY, TX" data-testid="input-medical-state" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+                control={form.control}
+                name="medicalLicenseIssueDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Issue Date</FormLabel>
+                  <FormControl>
+                      <Input {...field} type="date" data-testid="input-medical-state-issue" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+                control={form.control}
+                name="medicalLicenseExpirationDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Expiration Date</FormLabel>
+                  <FormControl>
+                      <Input {...field} type="date" data-testid="input-medical-state-exp" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+             <FormField
+                control={form.control}
+                name="medicalLicenseStatus"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Status</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-dea-status">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="expired">Expired</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
+          <FormField
               control={form.control}
               name="substanceUseLicenseNumber"
               render={({ field }) => (
@@ -394,28 +485,77 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
                 </FormItem>
               )}
             />
-
+          </div>
+          </div>
+          <div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <FormField
-              control={form.control}
-              name="mentalHealthLicenseNumber"
+                control={form.control}
+                name="substanceUseLicenseState"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Mental Health License Number</FormLabel>
+                  <FormLabel>State</FormLabel>
                   <FormControl>
-                    <Input
-                      {...field}
-                      placeholder="Enter mental health license number"
-                      data-testid="input-mental-health-license-number"
-                    />
+                      <Input {...field} placeholder="e.g., CA, NY, TX" data-testid="input-substance-state" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-          </div>
-
-          <div className="space-y-4">
             <FormField
+                control={form.control}
+                name="substanceUseLicenseIssueDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Issue Date</FormLabel>
+                  <FormControl>
+                      <Input {...field} type="date" data-testid="input-substance-state-issue" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+                control={form.control}
+                name="substanceUseLicenseExpirationDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Expiration Date</FormLabel>
+                  <FormControl>
+                      <Input {...field} type="date" data-testid="input-substance-state-exp" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+             <FormField
+                control={form.control}
+                name="substanceUseLicenseStatus"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Status</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-dea-status">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="expired">Expired</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+          </div>
+          </div>
+          {/* <div className="grid grid-cols-1 md:grid-cols-2 gap-6"> */}
+<div>
+          <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
+          <FormField
               control={form.control}
               name="substanceUseQualification"
               render={({ field }) => (
@@ -459,7 +599,94 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
                 </FormItem>
               )}
             />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <FormField
+                control={form.control}
+                name="mentalHealthLicenseState"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>State</FormLabel>
+                  <FormControl>
+                      <Input {...field} placeholder="e.g., CA, NY, TX" data-testid="input-mental-state" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+                control={form.control}
+                name="mentalHealthLicenseIssueDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Issue Date</FormLabel>
+                  <FormControl>
+                      <Input {...field} type="date" data-testid="input-mental-state-issue" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+                control={form.control}
+                name="mentalHealthLicenseExpirationDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Expiration Date</FormLabel>
+                  <FormControl>
+                      <Input {...field} type="date" data-testid="input-mental-state-exp" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+             <FormField
+                control={form.control}
+                name="mentalHealthLicenseStatus"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Status</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-dea-status">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="expired">Expired</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+          </div>
+          </div>
 
+
+            <FormField
+              control={form.control}
+              name="mentalHealthLicenseNumber"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Mental Health License Number</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder="Enter mental health license number"
+                      data-testid="input-mental-health-license-number"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          {/* </div> */}
+
+
+          <div className="space-y-4">
             <FormField
               control={form.control}
               name="mentalHealthQualification"

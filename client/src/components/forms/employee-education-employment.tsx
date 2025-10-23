@@ -16,6 +16,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { insertEducationSchema, insertEmploymentSchema } from "@shared/schema";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
+import { Label } from "@/components/ui/label";
 
 type EducationFormData = z.infer<typeof insertEducationSchema>;
 type EmploymentFormData = z.infer<typeof insertEmploymentSchema>;
@@ -37,7 +38,8 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
   const [localEducations, setLocalEducations] = useState<any[]>(data.educations || []);
   const [localEmployments, setLocalEmployments] = useState<any[]>(data.employments || []);
   const [stepError, setStepError] = useState<string | null>(null);
-  const [employmentGap, setEmploymentGap] = useState<string>("No");
+  const [employmentGap, setEmploymentGap] = useState<string>(data?.hasEmploymentGap ? "yes" : "no");
+  const [employmentGapText, setEmploymentGapText] = useState<string>(data?.employmentGap || "");
   const formatDateInput = (value: unknown): string => {
     if (!value) return "";
     if (value instanceof Date) return value.toISOString().split("T")[0];
@@ -97,8 +99,26 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
   }, [educations, employments, employeeId]);
 
   useEffect(() => {
-    onChange({ ...data, educations: localEducations, employments: localEmployments });
-  }, [localEducations, localEmployments]);
+    onChange({
+      ...data,
+      educations: localEducations,
+      employments: localEmployments,
+      hasEmploymentGap: employmentGap === "yes",
+      employmentGap: employmentGap === "yes" ? employmentGapText : "",
+    });
+  }, [localEducations, localEmployments, employmentGap, employmentGapText]);
+
+  // Initialize local state from incoming data (e.g., when navigating back)
+  useEffect(() => {
+    if (data) {
+      if (typeof data.hasEmploymentGap === "boolean") {
+        setEmploymentGap(data.hasEmploymentGap ? "yes" : "no");
+      }
+      if (typeof data.employmentGap === "string") {
+        setEmploymentGapText(data.employmentGap);
+      }
+    }
+  }, [data]);
 
   // Register validation function with parent
   useEffect(() => {
@@ -271,8 +291,9 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
         </CardContent>
       </Card>
 
-      {/* Emplyement gap */}
-      <Card>
+      {/* Employment gap */}
+      <Card>  
+
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -280,18 +301,45 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
                 <Briefcase className="h-5 w-5" />
                 They have any gaps in employment history?
               </CardTitle>
-              <CardDescription>Add or manage gaps in employment history</CardDescription>
+
+              {
+                employmentGap === "no" ? (
+                  <CardDescription>Add or manage gaps in employment history</CardDescription>
+                ) : (
+                  <div>
+                    <div className="space-y-2">
+                      <Label>Employment Gap</Label>
+                      <Textarea
+                        style={{width: "100%", maxWidth: "100%"}}
+                        value={employmentGapText}
+                        onChange={(e) => setEmploymentGapText(e.target.value)}
+                        placeholder="Add or manage gaps in employment history"
+                        data-testid="textarea-employment-gap"
+                      />
+                    </div>
+                </div>
+                )
+              }
             </div>
-          <RadioGroup
-            name="employmentGap"
-            value={employmentGap}
-            onValueChange={(value: string) => setEmploymentGap(value)}
-          >
-            <RadioGroupItem value="Yes">Yes</RadioGroupItem>
-            <RadioGroupItem value="No">No</RadioGroupItem>
-          </RadioGroup>
+            <RadioGroup
+              name="employmentGap"
+              value={employmentGap}
+              onValueChange={(value: string) => setEmploymentGap(value)}
+              style={{display: "flex", flexDirection: "row", gap: 16}}
+            >
+              <div className="flex items-center gap-2">
+                <RadioGroupItem value="yes" id="employment-gap-yes" />
+                <Label htmlFor="employment-gap-yes">Yes</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <RadioGroupItem value="no" id="employment-gap-no" />
+                <Label htmlFor="employment-gap-no">No</Label>
+              </div>
+            </RadioGroup>
           </div>
         </CardHeader>
+      </Card>
+      {/* <Card>
         <CardContent>
           {localEmployments.length === 0 ? (
             <p className="text-muted-foreground">No employment records added</p>
@@ -337,7 +385,7 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
             </Table>
           )}
         </CardContent>
-      </Card>
+      </Card> */}
       {/* Employment Section */}
       <Card>
         <CardHeader>

@@ -134,6 +134,8 @@ export default function EmployeeForm() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
+  const [canProceed, setCanProceed] = useState(true);
+  const [proceedBlockedMessage, setProceedBlockedMessage] = useState<string | undefined>(undefined);
   const [formData, setFormData] = useState<EmployeeFormData>({
     firstName: "",
     lastName: "",
@@ -178,6 +180,12 @@ export default function EmployeeForm() {
       });
     }
   }, [employee]);
+
+  // Reset gating when step changes; individual steps can override via onValidationChange
+  useEffect(() => {
+    setCanProceed(true);
+    setProceedBlockedMessage(undefined);
+  }, [currentStep]);
 
   const createMutation = useMutation({
     mutationFn: async (data: EmployeeFormData) => {
@@ -415,17 +423,17 @@ export default function EmployeeForm() {
         />
       )
     },
-    {
-      title: "Additional Info",
-      component: (
-        <EmployeeAdditionalInfo
-          data={formData}
-          onChange={updateFormData}
-          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
-          data-testid="step-additional-info"
-        />
-      )
-    },
+    // {
+    //   title: "Additional Info",
+    //   component: (
+    //     <EmployeeAdditionalInfo
+    //       data={formData}
+    //       onChange={updateFormData}
+    //       registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
+    //       data-testid="step-additional-info"
+    //     />
+    //   )
+    // },
     {
       title: "Education & Employment",
       component: (
@@ -462,18 +470,18 @@ export default function EmployeeForm() {
         />
       )
     },
-    {
-      title: "References & Contacts",
-      component: (
-        <EmployeeReferencesContacts
-          data={formData}
-          onChange={updateFormData}
-          employeeId={isEdit ? parseInt(params.id!) : undefined}
-          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
-          data-testid="step-references-contacts"
-        />
-      )
-    },
+    // {
+    //   title: "References & Contacts",
+    //   component: (
+    //     <EmployeeReferencesContacts
+    //       data={formData}
+    //       onChange={updateFormData}
+    //       employeeId={isEdit ? parseInt(params.id!) : undefined}
+    //       registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
+    //       data-testid="step-references-contacts"
+    //     />
+    //   )
+    // },
     {
       title: "Documents Submission",
       component: (
@@ -482,6 +490,10 @@ export default function EmployeeForm() {
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
           registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
+          onValidationChange={(isValid) => {
+            setCanProceed(!!isValid);
+            setProceedBlockedMessage(isValid ? undefined : "Please upload all required documents to continue");
+          }}
           data-testid="step-documents-submission"
         />
       )
@@ -633,6 +645,8 @@ export default function EmployeeForm() {
             onSubmit={handleSubmit}
             isSubmitting={createMutation.isPending || updateMutation.isPending}
             canNext={true}
+            canProceed={canProceed}
+            proceedBlockedMessage={proceedBlockedMessage}
             data-testid="multi-step-form"
           />
         </div>
