@@ -32,6 +32,8 @@ import { format } from "date-fns";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { DocumentUploader } from "@/components/documents/DocumentUploader";
+import { DocumentList } from "@/components/documents/DocumentList";
 
 interface ComplianceDashboardData {
   totalLocations: number;
@@ -553,6 +555,29 @@ export default function ComplianceDashboard() {
                 No licenses expiring in the next {dateRange} days
               </p>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Compliance Document Management */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Compliance Documents</CardTitle>
+            <CardDescription>Manage compliance-related documents and certifications</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div>
+                <DocumentUploader 
+                  locationId={selectedLocation !== 'all' ? parseInt(selectedLocation) : undefined}
+                  documentType="Compliance Document"
+                />
+              </div>
+              <div>
+                <DocumentList 
+                  locationId={selectedLocation !== 'all' ? parseInt(selectedLocation) : undefined}
+                />
+              </div>
+            </div>
           </CardContent>
         </Card>
 

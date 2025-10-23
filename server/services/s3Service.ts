@@ -119,6 +119,41 @@ export interface VersionedUploadResult extends UploadResult {
 }
 
 /**
+ * Batch upload file interface
+ */
+export interface BatchUploadFile {
+  buffer: Buffer;
+  key: string;
+  contentType: string;
+  metadata?: Record<string, string>;
+  tags?: Record<string, string>;
+}
+
+/**
+ * Batch upload result interface
+ */
+export interface BatchUploadResult {
+  key: string;
+  success: boolean;
+  storageType?: 'local' | 's3';
+  storageKey?: string;
+  etag?: string;
+  versionId?: string;
+  error?: string;
+}
+
+/**
+ * Bucket information interface
+ */
+export interface BucketInfo {
+  configured: boolean;
+  bucketName: string | null;
+  region: string;
+  endpoint?: string;
+  accessible: boolean;
+}
+
+/**
  * S3 Service Class
  * 
  * Manages all interactions with Amazon S3 for document storage.
@@ -550,15 +585,62 @@ class S3Service {
   }
 
   /**
+   * Sanitize and slugify filename for S3 keys
+   * Removes special characters, spaces, and converts to safe format
+   * 
+   * @param {string} filename - Original filename
+   * @returns {string} Slugified filename
+   */
+  public slugifyFilename(filename: string): string {
+    // Extract extension
+    const lastDotIndex = filename.lastIndexOf('.');
+    const name = lastDotIndex > 0 ? filename.substring(0, lastDotIndex) : filename;
+    const ext = lastDotIndex > 0 ? filename.substring(lastDotIndex) : '';
+    
+    // Slugify the name part
+    const slugified = name
+      .toLowerCase()
+      .normalize('NFD') // Decompose Unicode characters
+      .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+      .replace(/[^a-z0-9]+/g, '-') // Replace non-alphanumeric with hyphens
+      .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
+      .replace(/-{2,}/g, '-') // Replace multiple hyphens with single
+      .substring(0, 100); // Limit length
+    
+    // Sanitize extension
+    const sanitizedExt = ext.toLowerCase().replace(/[^a-z0-9.]/g, '');
+    
+    return slugified + sanitizedExt;
+  }
+
+  /**
+   * Generate structured S3 key for employee documents
+   * Format: employees/{employeeId}/documents/{documentType}/{timestamp}-{slugified-filename}
+   * 
+   * @param {number} employeeId - Employee ID
+   * @param {string} documentType - Type of document (e.g., 'license', 'certification', 'w2')
+   * @param {string} filename - Original filename
+   * @returns {string} Structured S3 key for employee documents
+   */
+  public generateEmployeeDocumentKey(employeeId: number, documentType: string, filename: string): string {
+    const timestamp = Date.now();
+    const sanitizedType = documentType.replace(/[^a-zA-Z0-9-_]/g, '_').toLowerCase();
+    const slugifiedFilename = this.slugifyFilename(filename);
+    return `employees/${employeeId}/documents/${sanitizedType}/${timestamp}-${slugifiedFilename}`;
+  }
+
+  /**
    * Generate structured S3 key for compliance documents
+   * Format: compliance/locations/{locationId}/licenses/{licenseId}/versions/{version}/{timestamp}-{slug}
+   * 
    * @param {string} filename - Original filename
    * @param {ComplianceUploadOptions} options - Compliance document options
    * @returns {string} Structured S3 key for compliance documents
    */
   public generateComplianceS3Key(filename: string, options: ComplianceUploadOptions): string {
     const timestamp = Date.now();
-    const sanitizedFilename = filename.replace(/[^a-zA-Z0-9-_.]/g, '_');
-    const sanitizedType = options.documentType.replace(/[^a-zA-Z0-9-_]/g, '_');
+    const slugifiedFilename = this.slugifyFilename(filename);
+    const sanitizedType = options.documentType.replace(/[^a-zA-Z0-9-_]/g, '_').toLowerCase();
     
     // Create hierarchical folder structure based on document association
     let keyPrefix = 'compliance';
@@ -575,10 +657,44 @@ class S3Service {
       keyPrefix = `compliance/sop/${options.licenseTypeId}`;
     }
     
-    // Add version to the key if provided
-    const versionSuffix = options.version ? `_v${options.version}` : '';
+    // Add version to the path if provided
+    if (options.version) {
+      keyPrefix += `/versions/${options.version}`;
+    }
     
-    return `${keyPrefix}/${sanitizedType}/${timestamp}-${sanitizedFilename}${versionSuffix}`;
+    return `${keyPrefix}/${sanitizedType}/${timestamp}-${slugifiedFilename}`;
+  }
+
+  /**
+   * Generate structured S3 key for onboarding documents
+   * Format: onboarding/{employeeId}/{documentType}/{timestamp}-{slug}
+   * 
+   * @param {number} employeeId - Employee ID
+   * @param {string} documentType - Type of document (e.g., 'i9', 'w4', 'direct-deposit')
+   * @param {string} filename - Original filename
+   * @returns {string} Structured S3 key for onboarding documents
+   */
+  public generateOnboardingDocumentKey(employeeId: number, documentType: string, filename: string): string {
+    const timestamp = Date.now();
+    const sanitizedType = documentType.replace(/[^a-zA-Z0-9-_]/g, '_').toLowerCase();
+    const slugifiedFilename = this.slugifyFilename(filename);
+    return `onboarding/${employeeId}/${sanitizedType}/${timestamp}-${slugifiedFilename}`;
+  }
+
+  /**
+   * Generate structured S3 key for facility documents
+   * Format: facilities/{facilityId}/{category}/{timestamp}-{slug}
+   * 
+   * @param {number} facilityId - Facility ID
+   * @param {string} category - Document category (e.g., 'inspection', 'maintenance', 'insurance')
+   * @param {string} filename - Original filename
+   * @returns {string} Structured S3 key for facility documents
+   */
+  public generateFacilityDocumentKey(facilityId: number, category: string, filename: string): string {
+    const timestamp = Date.now();
+    const sanitizedCategory = category.replace(/[^a-zA-Z0-9-_]/g, '_').toLowerCase();
+    const slugifiedFilename = this.slugifyFilename(filename);
+    return `facilities/${facilityId}/${sanitizedCategory}/${timestamp}-${slugifiedFilename}`;
   }
 
   /**
@@ -588,14 +704,16 @@ class S3Service {
    * @param {string} key - S3 key or local path
    * @param {string} contentType - MIME type of the file
    * @param {object} metadata - Additional metadata for the file
-   * @returns {Promise<UploadResult>} Upload result with storage details
+   * @param {object} tags - Tags to apply to the S3 object
+   * @returns {Promise<UploadResult & { versionId?: string }>} Upload result with storage details and version ID
    */
   public async uploadFile(
     buffer: Buffer,
     key: string,
     contentType: string,
-    metadata?: Record<string, string>
-  ): Promise<UploadResult> {
+    metadata?: Record<string, string>,
+    tags?: Record<string, string>
+  ): Promise<UploadResult & { versionId?: string }> {
     // Use S3 if configured
     if (this.isConfigured() && this.client && this.bucketName) {
       try {
@@ -612,13 +730,34 @@ class S3Service {
         const command = new PutObjectCommand(params);
         const response = await this.client.send(command);
         
-        console.log(`S3 Service: Successfully uploaded file to S3: ${key}`);
+        // Add tags if provided
+        if (tags && Object.keys(tags).length > 0) {
+          try {
+            const tagCommand = new PutObjectTaggingCommand({
+              Bucket: this.bucketName,
+              Key: key,
+              Tagging: {
+                TagSet: Object.entries(tags).map(([tagKey, value]) => ({
+                  Key: tagKey,
+                  Value: value
+                }))
+              }
+            });
+            await this.client.send(tagCommand);
+          } catch (tagError) {
+            console.error('S3 Service: Failed to add tags:', tagError);
+            // Continue even if tagging fails
+          }
+        }
+        
+        console.log(`S3 Service: Successfully uploaded file to S3: ${key}${response.VersionId ? ` (version: ${response.VersionId})` : ''}`);
         
         return {
           success: true,
           storageType: 's3',
           storageKey: key,
-          etag: response.ETag
+          etag: response.ETag,
+          versionId: response.VersionId
         };
       } catch (error) {
         console.error('S3 Service: Upload failed, falling back to local storage:', error);
@@ -630,6 +769,12 @@ class S3Service {
     try {
       const localPath = path.join(this.localFallbackPath, key.replace(/\//g, '-'));
       await fs.promises.writeFile(localPath, buffer);
+      
+      // Save metadata and tags as companion JSON file if provided
+      if (metadata || tags) {
+        const metaPath = `${localPath}.meta.json`;
+        await fs.promises.writeFile(metaPath, JSON.stringify({ metadata, tags }, null, 2));
+      }
       
       console.log(`S3 Service: Saved file to local storage: ${localPath}`);
       
@@ -855,6 +1000,296 @@ class S3Service {
       }
       console.error('S3 Service: Error checking file existence:', error);
       return false;
+    }
+  }
+
+  /**
+   * Execute operation with retry logic for transient S3 errors
+   * Implements exponential backoff strategy
+   * 
+   * @param {Function} operation - Operation to execute
+   * @param {number} maxRetries - Maximum number of retries (default: 3)
+   * @param {string} operationName - Name of operation for logging
+   * @returns {Promise<T>} Result of the operation
+   */
+  private async executeWithRetry<T>(
+    operation: () => Promise<T>,
+    maxRetries: number = 3,
+    operationName: string = 'S3 operation'
+  ): Promise<T> {
+    let lastError: Error | undefined;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const startTime = Date.now();
+        const result = await operation();
+        const duration = Date.now() - startTime;
+        
+        if (attempt > 0) {
+          console.log(`S3 Service: ${operationName} succeeded on retry ${attempt} (${duration}ms)`);
+        }
+        
+        return result;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        
+        // Don't retry on certain errors
+        if (error instanceof S3ServiceException) {
+          const nonRetryableErrors = ['NoSuchBucket', 'AccessDenied', 'InvalidAccessKeyId', 'SignatureDoesNotMatch'];
+          if (nonRetryableErrors.includes(error.name)) {
+            console.error(`S3 Service: ${operationName} failed with non-retryable error: ${error.name}`);
+            throw error;
+          }
+        }
+        
+        if (attempt < maxRetries) {
+          const backoffTime = Math.min(1000 * Math.pow(2, attempt), 10000); // Exponential backoff, max 10s
+          console.warn(`S3 Service: ${operationName} failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${backoffTime}ms...`, lastError.message);
+          await new Promise(resolve => setTimeout(resolve, backoffTime));
+        }
+      }
+    }
+    
+    console.error(`S3 Service: ${operationName} failed after ${maxRetries + 1} attempts`);
+    throw lastError;
+  }
+
+  /**
+   * Upload multiple files in parallel with batch processing
+   * 
+   * @param {BatchUploadFile[]} files - Array of files to upload
+   * @returns {Promise<BatchUploadResult[]>} Array of upload results
+   */
+  public async uploadFiles(files: BatchUploadFile[]): Promise<BatchUploadResult[]> {
+    const timestamp = Date.now();
+    console.log(`S3 Service: Starting batch upload of ${files.length} files at ${new Date(timestamp).toISOString()}`);
+    
+    // Process uploads in parallel with Promise.all
+    const results = await Promise.all(
+      files.map(async (file): Promise<BatchUploadResult> => {
+        try {
+          const result = await this.executeWithRetry(
+            () => this.uploadFile(file.buffer, file.key, file.contentType, file.metadata, file.tags),
+            3,
+            `Upload ${file.key}`
+          );
+          
+          return {
+            key: file.key,
+            success: result.success,
+            storageType: result.storageType,
+            storageKey: result.storageKey,
+            etag: result.etag,
+            versionId: result.versionId,
+            error: result.error
+          };
+        } catch (error) {
+          console.error(`S3 Service: Failed to upload ${file.key}:`, error);
+          return {
+            key: file.key,
+            success: false,
+            error: error instanceof Error ? error.message : 'Upload failed'
+          };
+        }
+      })
+    );
+    
+    const successCount = results.filter(r => r.success).length;
+    console.log(`S3 Service: Batch upload completed: ${successCount}/${files.length} successful`);
+    
+    return results;
+  }
+
+  /**
+   * Delete multiple files in parallel with batch processing
+   * 
+   * @param {string[]} keys - Array of S3 keys to delete
+   * @param {string} storageType - Storage type ('s3' or 'local')
+   * @returns {Promise<boolean[]>} Array of deletion results
+   */
+  public async deleteFiles(keys: string[], storageType: 'local' | 's3' = 's3'): Promise<boolean[]> {
+    const timestamp = Date.now();
+    console.log(`S3 Service: Starting batch delete of ${keys.length} files at ${new Date(timestamp).toISOString()}`);
+    
+    // Process deletions in parallel
+    const results = await Promise.all(
+      keys.map(async (key): Promise<boolean> => {
+        try {
+          return await this.executeWithRetry(
+            () => this.deleteFile(key, storageType),
+            3,
+            `Delete ${key}`
+          );
+        } catch (error) {
+          console.error(`S3 Service: Failed to delete ${key}:`, error);
+          return false;
+        }
+      })
+    );
+    
+    const successCount = results.filter(r => r).length;
+    console.log(`S3 Service: Batch delete completed: ${successCount}/${keys.length} successful`);
+    
+    return results;
+  }
+
+  /**
+   * List all documents for a specific employee
+   * 
+   * @param {number} employeeId - Employee ID
+   * @param {number} maxResults - Maximum number of results (default: 1000)
+   * @returns {Promise<FileInfo[]>} Array of file information
+   */
+  public async listDocumentsByEmployee(employeeId: number, maxResults: number = 1000): Promise<FileInfo[]> {
+    // Construct prefix for employee documents
+    const prefix = `employees/${employeeId}/`;
+    
+    console.log(`S3 Service: Listing documents for employee ${employeeId}`);
+    
+    try {
+      return await this.executeWithRetry(
+        () => this.listFiles(prefix, maxResults),
+        2,
+        `List employee ${employeeId} documents`
+      );
+    } catch (error) {
+      console.error(`S3 Service: Failed to list documents for employee ${employeeId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * List all compliance documents for a specific location
+   * 
+   * @param {number} locationId - Location ID
+   * @param {number} maxResults - Maximum number of results (default: 1000)
+   * @returns {Promise<FileInfo[]>} Array of file information
+   */
+  public async listDocumentsByLocation(locationId: number, maxResults: number = 1000): Promise<FileInfo[]> {
+    // Construct prefix for location compliance documents
+    const prefix = `compliance/locations/${locationId}/`;
+    
+    console.log(`S3 Service: Listing compliance documents for location ${locationId}`);
+    
+    try {
+      return await this.executeWithRetry(
+        () => this.listFiles(prefix, maxResults),
+        2,
+        `List location ${locationId} documents`
+      );
+    } catch (error) {
+      console.error(`S3 Service: Failed to list documents for location ${locationId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Generate a pre-signed URL for uploading files directly from browser
+   * 
+   * @param {string} key - S3 key for the file to be uploaded
+   * @param {string} contentType - MIME type of the file
+   * @param {number} expirationSeconds - URL expiration time in seconds (default: 3600)
+   * @returns {Promise<string | null>} Pre-signed upload URL or null if not available
+   */
+  public async getUploadSignedUrl(
+    key: string,
+    contentType: string,
+    expirationSeconds: number = 3600
+  ): Promise<string | null> {
+    if (!this.isConfigured || !this.client || !this.bucketName) {
+      console.log('S3 Service: Cannot generate upload signed URL - S3 not configured');
+      return null;
+    }
+
+    try {
+      const command = new PutObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+        ContentType: contentType,
+        ServerSideEncryption: 'AES256'
+      });
+
+      const url = await getSignedUrl(this.client, command, { expiresIn: expirationSeconds });
+      console.log(`S3 Service: Generated upload signed URL for ${key}, expires in ${expirationSeconds}s`);
+      return url;
+    } catch (error) {
+      console.error('S3 Service: Failed to generate upload signed URL:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Test S3 connection and permissions
+   * 
+   * @returns {Promise<boolean>} True if connection is successful and bucket is accessible
+   */
+  public async testConnection(): Promise<boolean> {
+    console.log('S3 Service: Testing S3 connection...');
+    
+    if (!this.client || !this.bucketName) {
+      console.log('S3 Service: Connection test failed - S3 not configured');
+      return false;
+    }
+
+    try {
+      const isAccessible = await this.executeWithRetry(
+        () => this.checkBucketAccess(),
+        1,
+        'Connection test'
+      );
+      
+      if (isAccessible) {
+        console.log('S3 Service: ✅ Connection test successful');
+      } else {
+        console.log('S3 Service: ❌ Connection test failed - bucket not accessible');
+      }
+      
+      return isAccessible;
+    } catch (error) {
+      console.error('S3 Service: Connection test failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get comprehensive bucket information
+   * 
+   * @returns {Promise<BucketInfo>} Bucket configuration and status information
+   */
+  public async getBucketInfo(): Promise<BucketInfo> {
+    const info: BucketInfo = {
+      configured: this.isConfigured(),
+      bucketName: this.bucketName,
+      region: process.env.AWS_REGION || 'us-east-1',
+      endpoint: process.env.AWS_S3_ENDPOINT,
+      accessible: false
+    };
+
+    if (this.isConfigured()) {
+      try {
+        info.accessible = await this.checkBucketAccess();
+      } catch (error) {
+        console.error('S3 Service: Error checking bucket accessibility:', error);
+      }
+    }
+
+    return info;
+  }
+
+  /**
+   * Reload S3 configuration from database
+   * Alias for refreshConfiguration for better clarity
+   * 
+   * @returns {Promise<void>}
+   */
+  public async reconfigure(): Promise<void> {
+    console.log('S3 Service: Reconfiguring S3 service...');
+    await this.refreshConfiguration();
+    
+    if (this.isConfigured()) {
+      console.log('S3 Service: ✅ Reconfiguration successful');
+    } else {
+      console.log('S3 Service: ⚠️ Reconfiguration completed but S3 is not accessible');
     }
   }
 
@@ -1466,27 +1901,103 @@ class S3Service {
 // Export singleton instance
 export const s3Service = new S3Service();
 
-// Export helper function for generating S3 keys
+/**
+ * Export helper function for generating employee document S3 keys
+ * @param {number} employeeId - Employee ID
+ * @param {string} documentType - Type of document
+ * @param {string} filename - Original filename
+ * @returns {string} Structured S3 key for employee documents
+ */
+export function generateEmployeeDocumentKey(
+  employeeId: number,
+  documentType: string,
+  filename: string
+): string {
+  return s3Service.generateEmployeeDocumentKey(employeeId, documentType, filename);
+}
+
+/**
+ * Export helper function for generating compliance document S3 keys
+ * @param {number} locationId - Location ID
+ * @param {number} licenseId - License ID
+ * @param {number} version - Document version
+ * @param {string} filename - Original filename
+ * @returns {string} Structured S3 key for compliance documents
+ */
+export function generateComplianceDocumentKey(
+  locationId: number | undefined,
+  licenseId: number | undefined,
+  version: number | undefined,
+  filename: string
+): string {
+  return s3Service.generateComplianceS3Key(filename, {
+    locationId,
+    licenseId,
+    version,
+    documentType: 'general'
+  });
+}
+
+/**
+ * Export helper function for generating compliance document S3 keys with full options
+ * @param {string} filename - Original filename
+ * @param {ComplianceUploadOptions} options - Compliance document options
+ * @returns {string} Structured S3 key for compliance documents
+ */
+export function generateComplianceDocumentKeyWithOptions(
+  filename: string,
+  options: ComplianceUploadOptions
+): string {
+  return s3Service.generateComplianceS3Key(filename, options);
+}
+
+/**
+ * Export helper function for generating onboarding document S3 keys
+ * @param {number} employeeId - Employee ID
+ * @param {string} documentType - Type of document
+ * @param {string} filename - Original filename
+ * @returns {string} Structured S3 key for onboarding documents
+ */
+export function generateOnboardingDocumentKey(
+  employeeId: number,
+  documentType: string,
+  filename: string
+): string {
+  return s3Service.generateOnboardingDocumentKey(employeeId, documentType, filename);
+}
+
+/**
+ * Export helper function for generating facility document S3 keys
+ * @param {number} facilityId - Facility ID
+ * @param {string} category - Document category
+ * @param {string} filename - Original filename
+ * @returns {string} Structured S3 key for facility documents
+ */
+export function generateFacilityDocumentKey(
+  facilityId: number,
+  category: string,
+  filename: string
+): string {
+  return s3Service.generateFacilityDocumentKey(facilityId, category, filename);
+}
+
+/**
+ * Export helper function for slugifying filenames
+ * @param {string} filename - Original filename
+ * @returns {string} Slugified filename safe for S3 keys
+ */
+export function slugifyFilename(filename: string): string {
+  return s3Service.slugifyFilename(filename);
+}
+
+/**
+ * Legacy export for backward compatibility
+ * @deprecated Use generateEmployeeDocumentKey instead
+ */
 export function generateDocumentKey(
   employeeId: number,
   documentType: string,
   filename: string
 ): string {
-  const timestamp = Date.now();
-  const sanitizedType = documentType.replace(/[^a-zA-Z0-9-_]/g, '_');
-  const sanitizedFilename = filename.replace(/[^a-zA-Z0-9-_.]/g, '_');
-  return `documents/${employeeId}/${sanitizedType}/${timestamp}-${sanitizedFilename}`;
-}
-
-/**
- * Generate compliance document S3 key helper
- * @param {string} filename - Original filename
- * @param {ComplianceUploadOptions} options - Compliance document options
- * @returns {string} Structured S3 key for compliance documents
- */
-export function generateComplianceDocumentKey(
-  filename: string,
-  options: ComplianceUploadOptions
-): string {
-  return s3Service.generateComplianceS3Key(filename, options);
+  return s3Service.generateEmployeeDocumentKey(employeeId, documentType, filename);
 }

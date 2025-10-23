@@ -62,6 +62,7 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import rateLimit from "express-rate-limit";
 import { s3Service, generateDocumentKey } from "./services/s3Service";
+import { S3MigrationService } from "./services/migration/s3MigrationService";
 import { db } from "./db";
 import { 
   documents, 
@@ -8814,6 +8815,1553 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error('Error fetching employment history:', error);
         res.status(500).json({ error: 'Failed to fetch employment history' });
+      }
+    }
+  );
+
+  // ============================================================================
+  // S3 CONFIGURATION ENDPOINTS (Admin Only)
+  // ============================================================================
+
+  /**
+   * Initialize S3 Migration Service
+   */
+  const s3MigrationService = new S3MigrationService();
+
+  /**
+   * GET /api/admin/s3/config
+   * Get current S3 configuration with masked credentials
+   */
+  app.get('/api/admin/s3/config',
+    requireAuth,
+    requireRole(['admin']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const config = await storage.getS3Configuration();
+        
+        if (config) {
+          // Mask credentials for security
+          const maskedConfig = {
+            ...config,
+            accessKeyId: config.accessKeyId ? '****' + config.accessKeyId.slice(-4) : null,
+            secretAccessKey: config.secretAccessKey ? '********' : null
+          };
+          
+          await logAudit(req, null, null, { action: 's3_config_viewed' });
+          res.json(maskedConfig);
+        } else {
+          res.json(null);
+        }
+      } catch (error) {
+        console.error('Error fetching S3 config:', error);
+        res.status(500).json({ error: 'Failed to fetch S3 configuration' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/admin/s3/config
+   * Save or update S3 configuration
+   */
+  app.post('/api/admin/s3/config',
+    requireAuth,
+    requireRole(['admin']),
+    auditMiddleware('s3_configuration'),
+    [
+      body('region').notEmpty().withMessage('Region is required'),
+      body('bucketName').notEmpty().withMessage('Bucket name is required'),
+      body('accessKeyId').notEmpty().withMessage('Access key ID is required'),
+      body('secretAccessKey').notEmpty().withMessage('Secret access key is required')
+    ],
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { region, bucketName, accessKeyId, secretAccessKey, endpoint, enabled } = req.body;
+        
+        // Encrypt sensitive credentials
+        const encryptedAccessKey = encrypt(accessKeyId);
+        const encryptedSecretKey = encrypt(secretAccessKey);
+        
+        const configData = {
+          region,
+          bucketName,
+          accessKeyId: encryptedAccessKey,
+          secretAccessKey: encryptedSecretKey,
+          endpoint: endpoint || null,
+          enabled: enabled !== false
+        };
+        
+        const config = await storage.saveS3Configuration(configData);
+        
+        await logAudit(req, null, null, { action: 's3_config_saved', bucketName, region });
+        
+        // Return masked config
+        res.json({
+          ...config,
+          accessKeyId: '****' + accessKeyId.slice(-4),
+          secretAccessKey: '********'
+        });
+      } catch (error) {
+        console.error('Error saving S3 config:', error);
+        res.status(500).json({ error: 'Failed to save S3 configuration' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/admin/s3/test
+   * Test S3 connection with current configuration
+   */
+  app.post('/api/admin/s3/test',
+    requireAuth,
+    requireRole(['admin']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const isConfigured = s3Service.isConfigured();
+        
+        if (!isConfigured) {
+          return res.status(400).json({ 
+            success: false, 
+            error: 'S3 is not configured' 
+          });
+        }
+        
+        // Test by trying to list objects (limit to 1)
+        try {
+          await s3Service.listFiles('test/', 1);
+          
+          await logAudit(req, null, null, { action: 's3_connection_test', success: true });
+          res.json({ 
+            success: true, 
+            message: 'S3 connection successful' 
+          });
+        } catch (error: any) {
+          await logAudit(req, null, null, { action: 's3_connection_test', success: false, error: error.message });
+          res.status(500).json({ 
+            success: false, 
+            error: error.message || 'S3 connection failed' 
+          });
+        }
+      } catch (error) {
+        console.error('Error testing S3 connection:', error);
+        res.status(500).json({ error: 'Failed to test S3 connection' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/admin/s3/bucket-info
+   * Get bucket information
+   */
+  app.get('/api/admin/s3/bucket-info',
+    requireAuth,
+    requireRole(['admin']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const bucketInfo = s3Service.getBucketInfo();
+        
+        await logAudit(req, null, null, { action: 's3_bucket_info_viewed' });
+        res.json(bucketInfo);
+      } catch (error) {
+        console.error('Error fetching bucket info:', error);
+        res.status(500).json({ error: 'Failed to fetch bucket information' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/admin/s3/reconfigure
+   * Reload S3 configuration from database
+   */
+  app.post('/api/admin/s3/reconfigure',
+    requireAuth,
+    requireRole(['admin']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        await s3Service.reconfigure();
+        const isConfigured = s3Service.isConfigured();
+        
+        await logAudit(req, null, null, { action: 's3_reconfigured', success: isConfigured });
+        
+        res.json({ 
+          success: isConfigured,
+          message: isConfigured ? 'S3 reconfigured successfully' : 'S3 reconfiguration failed'
+        });
+      } catch (error) {
+        console.error('Error reconfiguring S3:', error);
+        res.status(500).json({ error: 'Failed to reconfigure S3' });
+      }
+    }
+  );
+
+  // ============================================================================
+  // S3 MIGRATION ENDPOINTS (Admin Only)
+  // ============================================================================
+
+  /**
+   * GET /api/admin/s3/migration/stats
+   * Get migration statistics
+   */
+  app.get('/api/admin/s3/migration/stats',
+    requireAuth,
+    requireRole(['admin']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const stats = await s3MigrationService.getMigrationStats();
+        
+        await logAudit(req, null, null, { action: 'migration_stats_viewed' });
+        res.json(stats);
+      } catch (error) {
+        console.error('Error fetching migration stats:', error);
+        res.status(500).json({ error: 'Failed to fetch migration statistics' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/admin/s3/migration/employee
+   * Migrate employee documents to S3
+   */
+  app.post('/api/admin/s3/migration/employee',
+    requireAuth,
+    requireRole(['admin']),
+    auditMiddleware('s3_migration'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { employeeId, dryRun = false, deleteLocal = false } = req.body;
+        
+        if (!s3Service.isConfigured()) {
+          return res.status(400).json({ error: 'S3 is not configured' });
+        }
+        
+        const result = await s3MigrationService.migrateEmployeeDocuments(
+          employeeId ? parseInt(employeeId) : undefined,
+          { dryRun, deleteLocal }
+        );
+        
+        await logAudit(req, null, null, { 
+          action: 'employee_documents_migration', 
+          employeeId,
+          dryRun,
+          result 
+        });
+        
+        res.json(result);
+      } catch (error) {
+        console.error('Error migrating employee documents:', error);
+        res.status(500).json({ error: 'Failed to migrate employee documents' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/admin/s3/migration/compliance
+   * Migrate compliance documents to S3
+   */
+  app.post('/api/admin/s3/migration/compliance',
+    requireAuth,
+    requireRole(['admin']),
+    auditMiddleware('s3_migration'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { locationId, dryRun = false, deleteLocal = false } = req.body;
+        
+        if (!s3Service.isConfigured()) {
+          return res.status(400).json({ error: 'S3 is not configured' });
+        }
+        
+        const result = await s3MigrationService.migrateComplianceDocuments(
+          locationId ? parseInt(locationId) : undefined,
+          { dryRun, deleteLocal }
+        );
+        
+        await logAudit(req, null, null, { 
+          action: 'compliance_documents_migration', 
+          locationId,
+          dryRun,
+          result 
+        });
+        
+        res.json(result);
+      } catch (error) {
+        console.error('Error migrating compliance documents:', error);
+        res.status(500).json({ error: 'Failed to migrate compliance documents' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/admin/s3/migration/onboarding
+   * Migrate onboarding documents to S3
+   */
+  app.post('/api/admin/s3/migration/onboarding',
+    requireAuth,
+    requireRole(['admin']),
+    auditMiddleware('s3_migration'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { employeeId, dryRun = false, deleteLocal = false } = req.body;
+        
+        if (!s3Service.isConfigured()) {
+          return res.status(400).json({ error: 'S3 is not configured' });
+        }
+        
+        const result = await s3MigrationService.migrateOnboardingDocuments(
+          employeeId ? parseInt(employeeId) : undefined,
+          { dryRun, deleteLocal }
+        );
+        
+        await logAudit(req, null, null, { 
+          action: 'onboarding_documents_migration', 
+          employeeId,
+          dryRun,
+          result 
+        });
+        
+        res.json(result);
+      } catch (error) {
+        console.error('Error migrating onboarding documents:', error);
+        res.status(500).json({ error: 'Failed to migrate onboarding documents' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/admin/s3/migration/all
+   * Migrate all documents to S3
+   */
+  app.post('/api/admin/s3/migration/all',
+    requireAuth,
+    requireRole(['admin']),
+    auditMiddleware('s3_migration'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { dryRun = false, deleteLocal = false } = req.body;
+        
+        if (!s3Service.isConfigured()) {
+          return res.status(400).json({ error: 'S3 is not configured' });
+        }
+        
+        const result = await s3MigrationService.migrateAllDocuments({ dryRun, deleteLocal });
+        
+        await logAudit(req, null, null, { 
+          action: 'all_documents_migration', 
+          dryRun,
+          result 
+        });
+        
+        res.json(result);
+      } catch (error) {
+        console.error('Error migrating all documents:', error);
+        res.status(500).json({ error: 'Failed to migrate all documents' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/admin/s3/migration/rollback/:id
+   * Rollback a specific document migration
+   */
+  app.post('/api/admin/s3/migration/rollback/:id',
+    requireAuth,
+    requireRole(['admin']),
+    auditMiddleware('s3_migration'),
+    validateId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const documentId = parseInt(req.params.id);
+        
+        const result = await s3MigrationService.rollbackDocument(documentId);
+        
+        await logAudit(req, null, null, { 
+          action: 'document_migration_rollback', 
+          documentId,
+          result 
+        });
+        
+        res.json(result);
+      } catch (error) {
+        console.error('Error rolling back document:', error);
+        res.status(500).json({ error: 'Failed to rollback document migration' });
+      }
+    }
+  );
+
+  // ============================================================================
+  // ENHANCED DOCUMENT UPLOAD ENDPOINTS
+  // ============================================================================
+
+  /**
+   * Rate limiter for document upload endpoints
+   */
+  const uploadLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 50, // limit each IP to 50 uploads per windowMs
+    message: 'Too many upload requests, please try again later'
+  });
+
+  /**
+   * POST /api/documents/upload
+   * Generic document upload endpoint with auto-detection
+   */
+  app.post('/api/documents/upload',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    uploadLimiter,
+    upload.single('document'),
+    auditMiddleware('documents'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ error: 'No file uploaded' });
+        }
+        
+        const { employeeId, documentType, tags, metadata } = req.body;
+        
+        if (!employeeId) {
+          return res.status(400).json({ error: 'Employee ID is required' });
+        }
+        
+        // Verify employee exists
+        const employee = await storage.getEmployee(parseInt(employeeId));
+        if (!employee) {
+          // Clean up uploaded file
+          fs.unlinkSync(req.file.path);
+          return res.status(404).json({ error: 'Employee not found' });
+        }
+        
+        const fileBuffer = fs.readFileSync(req.file.path);
+        const fileName = req.file.originalname;
+        const fileType = req.file.mimetype;
+        const fileSize = req.file.size;
+        
+        // Generate S3 key based on document type
+        const s3Key = s3Service.generateEmployeeDocumentKey(
+          parseInt(employeeId),
+          fileName,
+          documentType || 'general'
+        );
+        
+        let storageType: 'local' | 's3' = 'local';
+        let storageKey = req.file.filename;
+        let s3Etag: string | undefined;
+        let s3VersionId: string | undefined;
+        
+        // Try to upload to S3 if configured
+        if (s3Service.isConfigured()) {
+          try {
+            const parsedTags = tags ? JSON.parse(tags) : undefined;
+            const parsedMetadata = metadata ? JSON.parse(metadata) : undefined;
+            
+            const uploadResult = await s3Service.uploadFile(
+              fileBuffer,
+              s3Key,
+              fileType,
+              parsedMetadata,
+              parsedTags
+            );
+            
+            if (uploadResult.success && uploadResult.storageType === 's3') {
+              storageType = 's3';
+              storageKey = uploadResult.storageKey;
+              s3Etag = uploadResult.etag;
+              s3VersionId = uploadResult.versionId;
+              
+              // Clean up local file after successful S3 upload
+              fs.unlinkSync(req.file.path);
+            }
+          } catch (error) {
+            console.error('S3 upload failed, using local storage:', error);
+            // Continue with local storage
+          }
+        }
+        
+        // Save document record to database
+        const document = await storage.createDocument({
+          employeeId: parseInt(employeeId),
+          fileName,
+          filePath: storageType === 'local' ? req.file.path : undefined,
+          fileSize,
+          fileType,
+          documentType: documentType || 'general',
+          storageType,
+          storageKey,
+          s3Etag,
+          s3VersionId,
+          uploadedBy: req.user!.id
+        });
+        
+        // Generate presigned URL for S3 documents
+        let presignedUrl: string | undefined;
+        if (storageType === 's3') {
+          try {
+            presignedUrl = await s3Service.getSignedUrl(storageKey, 3600);
+          } catch (error) {
+            console.error('Failed to generate presigned URL:', error);
+          }
+        }
+        
+        await logAudit(req, null, parseInt(employeeId), { 
+          action: 'document_upload', 
+          documentId: document.id,
+          storageType,
+          fileName 
+        });
+        
+        res.status(201).json({
+          ...document,
+          presignedUrl
+        });
+      } catch (error) {
+        console.error('Error uploading document:', error);
+        
+        // Clean up file on error
+        if (req.file && fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+        
+        res.status(500).json({ error: 'Failed to upload document' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/documents/employee/:id/upload
+   * Upload employee-specific document
+   */
+  app.post('/api/documents/employee/:id/upload',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    uploadLimiter,
+    upload.single('document'),
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('documents'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ error: 'No file uploaded' });
+        }
+        
+        const employeeId = parseInt(req.params.id);
+        const { documentType = 'general', tags, metadata } = req.body;
+        
+        // Verify employee exists
+        const employee = await storage.getEmployee(employeeId);
+        if (!employee) {
+          fs.unlinkSync(req.file.path);
+          return res.status(404).json({ error: 'Employee not found' });
+        }
+        
+        const fileBuffer = fs.readFileSync(req.file.path);
+        const fileName = req.file.originalname;
+        const fileType = req.file.mimetype;
+        const fileSize = req.file.size;
+        
+        const s3Key = s3Service.generateEmployeeDocumentKey(employeeId, fileName, documentType);
+        
+        let storageType: 'local' | 's3' = 'local';
+        let storageKey = req.file.filename;
+        let s3Etag: string | undefined;
+        let s3VersionId: string | undefined;
+        
+        if (s3Service.isConfigured()) {
+          try {
+            const parsedTags = tags ? JSON.parse(tags) : undefined;
+            const parsedMetadata = metadata ? JSON.parse(metadata) : undefined;
+            
+            const uploadResult = await s3Service.uploadFile(
+              fileBuffer,
+              s3Key,
+              fileType,
+              parsedMetadata,
+              parsedTags
+            );
+            
+            if (uploadResult.success && uploadResult.storageType === 's3') {
+              storageType = 's3';
+              storageKey = uploadResult.storageKey;
+              s3Etag = uploadResult.etag;
+              s3VersionId = uploadResult.versionId;
+              fs.unlinkSync(req.file.path);
+            }
+          } catch (error) {
+            console.error('S3 upload failed, using local storage:', error);
+          }
+        }
+        
+        const document = await storage.createDocument({
+          employeeId,
+          fileName,
+          filePath: storageType === 'local' ? req.file.path : undefined,
+          fileSize,
+          fileType,
+          documentType,
+          storageType,
+          storageKey,
+          s3Etag,
+          s3VersionId,
+          uploadedBy: req.user!.id
+        });
+        
+        let presignedUrl: string | undefined;
+        if (storageType === 's3') {
+          try {
+            presignedUrl = await s3Service.getSignedUrl(storageKey, 3600);
+          } catch (error) {
+            console.error('Failed to generate presigned URL:', error);
+          }
+        }
+        
+        await logAudit(req, null, employeeId, { 
+          action: 'employee_document_upload', 
+          documentId: document.id,
+          documentType,
+          storageType
+        });
+        
+        res.status(201).json({
+          ...document,
+          presignedUrl
+        });
+      } catch (error) {
+        console.error('Error uploading employee document:', error);
+        
+        if (req.file && fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+        
+        res.status(500).json({ error: 'Failed to upload employee document' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/documents/compliance/:id/upload
+   * Upload compliance document for a location
+   */
+  app.post('/api/documents/compliance/:id/upload',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    uploadLimiter,
+    upload.single('document'),
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('compliance_documents'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ error: 'No file uploaded' });
+        }
+        
+        const locationId = parseInt(req.params.id);
+        const { documentType, licenseId, tags, metadata } = req.body;
+        
+        if (!documentType) {
+          fs.unlinkSync(req.file.path);
+          return res.status(400).json({ error: 'Document type is required' });
+        }
+        
+        // Verify location exists
+        const location = await storage.getLocation(locationId);
+        if (!location) {
+          fs.unlinkSync(req.file.path);
+          return res.status(404).json({ error: 'Location not found' });
+        }
+        
+        const fileBuffer = fs.readFileSync(req.file.path);
+        const fileName = req.file.originalname;
+        const fileType = req.file.mimetype;
+        const fileSize = req.file.size;
+        
+        const s3Key = s3Service.generateComplianceDocumentKey(
+          locationId,
+          documentType,
+          fileName
+        );
+        
+        let storageType: 'local' | 's3' = 'local';
+        let storageKey = req.file.filename;
+        let s3Etag: string | undefined;
+        let s3VersionId: string | undefined;
+        
+        if (s3Service.isConfigured()) {
+          try {
+            const parsedTags = tags ? JSON.parse(tags) : undefined;
+            const parsedMetadata = metadata ? JSON.parse(metadata) : undefined;
+            
+            const uploadResult = await s3Service.uploadFile(
+              fileBuffer,
+              s3Key,
+              fileType,
+              parsedMetadata,
+              parsedTags
+            );
+            
+            if (uploadResult.success && uploadResult.storageType === 's3') {
+              storageType = 's3';
+              storageKey = uploadResult.storageKey;
+              s3Etag = uploadResult.etag;
+              s3VersionId = uploadResult.versionId;
+              fs.unlinkSync(req.file.path);
+            }
+          } catch (error) {
+            console.error('S3 upload failed, using local storage:', error);
+          }
+        }
+        
+        const document = await storage.createComplianceDocument({
+          locationId,
+          clinicLicenseId: licenseId ? parseInt(licenseId) : null,
+          fileName,
+          fileSize,
+          fileType,
+          documentType,
+          storageType,
+          storageKey,
+          s3Etag,
+          s3VersionId,
+          uploadedBy: req.user!.id
+        });
+        
+        let presignedUrl: string | undefined;
+        if (storageType === 's3') {
+          try {
+            presignedUrl = await s3Service.getSignedUrl(storageKey, 3600);
+          } catch (error) {
+            console.error('Failed to generate presigned URL:', error);
+          }
+        }
+        
+        await logAudit(req, null, null, { 
+          action: 'compliance_document_upload', 
+          documentId: document.id,
+          locationId,
+          documentType,
+          storageType
+        });
+        
+        res.status(201).json({
+          ...document,
+          presignedUrl
+        });
+      } catch (error) {
+        console.error('Error uploading compliance document:', error);
+        
+        if (req.file && fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+        
+        res.status(500).json({ error: 'Failed to upload compliance document' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/documents/onboarding/:id/upload
+   * Upload onboarding document for an employee
+   */
+  app.post('/api/documents/onboarding/:id/upload',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    uploadLimiter,
+    upload.single('document'),
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('onboarding_documents'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ error: 'No file uploaded' });
+        }
+        
+        const employeeId = parseInt(req.params.id);
+        const { documentType = 'onboarding', tags, metadata } = req.body;
+        
+        // Verify employee exists
+        const employee = await storage.getEmployee(employeeId);
+        if (!employee) {
+          fs.unlinkSync(req.file.path);
+          return res.status(404).json({ error: 'Employee not found' });
+        }
+        
+        const fileBuffer = fs.readFileSync(req.file.path);
+        const fileName = req.file.originalname;
+        const fileType = req.file.mimetype;
+        const fileSize = req.file.size;
+        
+        const s3Key = s3Service.generateOnboardingDocumentKey(employeeId, fileName, documentType);
+        
+        let storageType: 'local' | 's3' = 'local';
+        let storageKey = req.file.filename;
+        let s3Etag: string | undefined;
+        let s3VersionId: string | undefined;
+        
+        if (s3Service.isConfigured()) {
+          try {
+            const parsedTags = tags ? JSON.parse(tags) : undefined;
+            const parsedMetadata = metadata ? JSON.parse(metadata) : undefined;
+            
+            const uploadResult = await s3Service.uploadFile(
+              fileBuffer,
+              s3Key,
+              fileType,
+              parsedMetadata,
+              parsedTags
+            );
+            
+            if (uploadResult.success && uploadResult.storageType === 's3') {
+              storageType = 's3';
+              storageKey = uploadResult.storageKey;
+              s3Etag = uploadResult.etag;
+              s3VersionId = uploadResult.versionId;
+              fs.unlinkSync(req.file.path);
+            }
+          } catch (error) {
+            console.error('S3 upload failed, using local storage:', error);
+          }
+        }
+        
+        // Store as employee document upload
+        const document = await storage.createEmployeeDocumentUpload({
+          employeeId,
+          fileName,
+          fileType,
+          fileSize,
+          documentType,
+          storageType,
+          storageKey,
+          s3Etag,
+          s3VersionId,
+          uploadedBy: req.user!.id,
+          status: 'uploaded'
+        });
+        
+        let presignedUrl: string | undefined;
+        if (storageType === 's3') {
+          try {
+            presignedUrl = await s3Service.getSignedUrl(storageKey, 3600);
+          } catch (error) {
+            console.error('Failed to generate presigned URL:', error);
+          }
+        }
+        
+        await logAudit(req, null, employeeId, { 
+          action: 'onboarding_document_upload', 
+          documentId: document.id,
+          documentType,
+          storageType
+        });
+        
+        res.status(201).json({
+          ...document,
+          presignedUrl
+        });
+      } catch (error) {
+        console.error('Error uploading onboarding document:', error);
+        
+        if (req.file && fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+        
+        res.status(500).json({ error: 'Failed to upload onboarding document' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/documents/facility/:id/upload
+   * Upload facility document
+   */
+  app.post('/api/documents/facility/:id/upload',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    uploadLimiter,
+    upload.single('document'),
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('facility_documents'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ error: 'No file uploaded' });
+        }
+        
+        const facilityId = parseInt(req.params.id);
+        const { documentType = 'facility', tags, metadata } = req.body;
+        
+        const fileBuffer = fs.readFileSync(req.file.path);
+        const fileName = req.file.originalname;
+        const fileType = req.file.mimetype;
+        const fileSize = req.file.size;
+        
+        const s3Key = `facilities/${facilityId}/${documentType}/${Date.now()}-${fileName}`;
+        
+        let storageType: 'local' | 's3' = 'local';
+        let storageKey = req.file.filename;
+        let s3Etag: string | undefined;
+        let s3VersionId: string | undefined;
+        
+        if (s3Service.isConfigured()) {
+          try {
+            const parsedTags = tags ? JSON.parse(tags) : undefined;
+            const parsedMetadata = metadata ? JSON.parse(metadata) : undefined;
+            
+            const uploadResult = await s3Service.uploadFile(
+              fileBuffer,
+              s3Key,
+              fileType,
+              parsedMetadata,
+              parsedTags
+            );
+            
+            if (uploadResult.success && uploadResult.storageType === 's3') {
+              storageType = 's3';
+              storageKey = uploadResult.storageKey;
+              s3Etag = uploadResult.etag;
+              s3VersionId = uploadResult.versionId;
+              fs.unlinkSync(req.file.path);
+            }
+          } catch (error) {
+            console.error('S3 upload failed, using local storage:', error);
+          }
+        }
+        
+        // For facility documents, we can store in general documents table
+        const document = await storage.createDocument({
+          employeeId: null,
+          fileName,
+          filePath: storageType === 'local' ? req.file.path : undefined,
+          fileSize,
+          fileType,
+          documentType,
+          storageType,
+          storageKey,
+          s3Etag,
+          s3VersionId,
+          uploadedBy: req.user!.id
+        });
+        
+        let presignedUrl: string | undefined;
+        if (storageType === 's3') {
+          try {
+            presignedUrl = await s3Service.getSignedUrl(storageKey, 3600);
+          } catch (error) {
+            console.error('Failed to generate presigned URL:', error);
+          }
+        }
+        
+        await logAudit(req, null, null, { 
+          action: 'facility_document_upload', 
+          documentId: document.id,
+          facilityId,
+          documentType,
+          storageType
+        });
+        
+        res.status(201).json({
+          ...document,
+          presignedUrl
+        });
+      } catch (error) {
+        console.error('Error uploading facility document:', error);
+        
+        if (req.file && fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+        
+        res.status(500).json({ error: 'Failed to upload facility document' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/documents/upload/presigned-url
+   * Get presigned URL for direct browser upload to S3
+   */
+  app.post('/api/documents/upload/presigned-url',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    [
+      body('fileName').notEmpty().withMessage('File name is required'),
+      body('fileType').notEmpty().withMessage('File type is required'),
+      body('documentType').notEmpty().withMessage('Document type is required')
+    ],
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        if (!s3Service.isConfigured()) {
+          return res.status(400).json({ error: 'S3 is not configured' });
+        }
+        
+        const { fileName, fileType, documentType, employeeId, locationId } = req.body;
+        
+        // Generate appropriate S3 key based on context
+        let s3Key: string;
+        if (employeeId) {
+          s3Key = s3Service.generateEmployeeDocumentKey(
+            parseInt(employeeId),
+            fileName,
+            documentType
+          );
+        } else if (locationId) {
+          s3Key = s3Service.generateComplianceDocumentKey(
+            parseInt(locationId),
+            documentType,
+            fileName
+          );
+        } else {
+          s3Key = `documents/${documentType}/${Date.now()}-${fileName}`;
+        }
+        
+        // Generate presigned URL for upload (PUT)
+        const presignedUrl = await s3Service.getSignedUploadUrl(s3Key, fileType, 3600);
+        
+        await logAudit(req, null, employeeId || null, { 
+          action: 'presigned_upload_url_generated', 
+          fileName,
+          documentType,
+          s3Key
+        });
+        
+        res.json({
+          presignedUrl,
+          s3Key,
+          expiresIn: 3600
+        });
+      } catch (error) {
+        console.error('Error generating presigned upload URL:', error);
+        res.status(500).json({ error: 'Failed to generate presigned upload URL' });
+      }
+    }
+  );
+
+  // ============================================================================
+  // ENHANCED DOCUMENT DOWNLOAD/ACCESS ENDPOINTS
+  // ============================================================================
+
+  /**
+   * GET /api/documents/:id/download
+   * Download document with support for both S3 and local storage
+   */
+  app.get('/api/documents/:id/download',
+    requireAuth,
+    validateId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const documentId = parseInt(req.params.id);
+        const document = await storage.getDocument(documentId);
+        
+        if (!document) {
+          return res.status(404).json({ error: 'Document not found' });
+        }
+        
+        // Check permissions
+        if (document.employeeId) {
+          const employee = await storage.getEmployee(document.employeeId);
+          const isOwnProfile = employee?.userId === req.user!.id;
+          const hasManagementRole = req.user!.role === 'admin' || req.user!.role === 'hr';
+          
+          if (!isOwnProfile && !hasManagementRole) {
+            return res.status(403).json({ error: 'Insufficient permissions' });
+          }
+        }
+        
+        if (document.storageType === 's3' && document.storageKey) {
+          // For S3 documents, redirect to presigned URL
+          try {
+            const presignedUrl = await s3Service.getSignedUrl(document.storageKey, 3600);
+            
+            await logAudit(req, null, document.employeeId || null, { 
+              action: 'document_download', 
+              documentId,
+              storageType: 's3'
+            });
+            
+            res.redirect(presignedUrl);
+          } catch (error) {
+            console.error('Error generating presigned URL:', error);
+            return res.status(500).json({ error: 'Failed to generate download URL' });
+          }
+        } else if (document.filePath) {
+          // For local documents, serve the file
+          if (!fs.existsSync(document.filePath)) {
+            return res.status(404).json({ error: 'File not found on disk' });
+          }
+          
+          await logAudit(req, null, document.employeeId || null, { 
+            action: 'document_download', 
+            documentId,
+            storageType: 'local'
+          });
+          
+          res.download(document.filePath, document.fileName);
+        } else {
+          return res.status(404).json({ error: 'Document file not found' });
+        }
+      } catch (error) {
+        console.error('Error downloading document:', error);
+        res.status(500).json({ error: 'Failed to download document' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/documents/:id/presigned-url
+   * Get presigned URL for S3 document (no redirect)
+   */
+  app.get('/api/documents/:id/presigned-url',
+    requireAuth,
+    validateId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const documentId = parseInt(req.params.id);
+        const document = await storage.getDocument(documentId);
+        
+        if (!document) {
+          return res.status(404).json({ error: 'Document not found' });
+        }
+        
+        // Check permissions
+        if (document.employeeId) {
+          const employee = await storage.getEmployee(document.employeeId);
+          const isOwnProfile = employee?.userId === req.user!.id;
+          const hasManagementRole = req.user!.role === 'admin' || req.user!.role === 'hr';
+          
+          if (!isOwnProfile && !hasManagementRole) {
+            return res.status(403).json({ error: 'Insufficient permissions' });
+          }
+        }
+        
+        if (document.storageType !== 's3' || !document.storageKey) {
+          return res.status(400).json({ error: 'Document is not stored on S3' });
+        }
+        
+        try {
+          const expiresIn = parseInt(req.query.expiresIn as string) || 3600;
+          const presignedUrl = await s3Service.getSignedUrl(document.storageKey, expiresIn);
+          
+          await logAudit(req, null, document.employeeId || null, { 
+            action: 'presigned_url_generated', 
+            documentId
+          });
+          
+          res.json({
+            url: presignedUrl,
+            expiresIn,
+            fileName: document.fileName,
+            documentId: document.id
+          });
+        } catch (error) {
+          console.error('Error generating presigned URL:', error);
+          return res.status(500).json({ error: 'Failed to generate presigned URL' });
+        }
+      } catch (error) {
+        console.error('Error fetching presigned URL:', error);
+        res.status(500).json({ error: 'Failed to fetch presigned URL' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/documents/:id/metadata
+   * Get document metadata only (no file access)
+   */
+  app.get('/api/documents/:id/metadata',
+    requireAuth,
+    validateId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const documentId = parseInt(req.params.id);
+        const document = await storage.getDocument(documentId);
+        
+        if (!document) {
+          return res.status(404).json({ error: 'Document not found' });
+        }
+        
+        // Check permissions
+        if (document.employeeId) {
+          const employee = await storage.getEmployee(document.employeeId);
+          const isOwnProfile = employee?.userId === req.user!.id;
+          const hasManagementRole = req.user!.role === 'admin' || req.user!.role === 'hr';
+          
+          if (!isOwnProfile && !hasManagementRole) {
+            return res.status(403).json({ error: 'Insufficient permissions' });
+          }
+        }
+        
+        // Return metadata without file path or storage key
+        const metadata = {
+          id: document.id,
+          employeeId: document.employeeId,
+          fileName: document.fileName,
+          fileSize: document.fileSize,
+          fileType: document.fileType,
+          documentType: document.documentType,
+          storageType: document.storageType,
+          uploadedBy: document.uploadedBy,
+          uploadedAt: document.uploadedAt,
+          createdAt: document.createdAt,
+          s3VersionId: document.s3VersionId
+        };
+        
+        await logAudit(req, null, document.employeeId || null, { 
+          action: 'document_metadata_viewed', 
+          documentId
+        });
+        
+        res.json(metadata);
+      } catch (error) {
+        console.error('Error fetching document metadata:', error);
+        res.status(500).json({ error: 'Failed to fetch document metadata' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/documents/employee/:employeeId
+   * List all documents for an employee
+   */
+  app.get('/api/documents/employee/:employeeId',
+    requireAuth,
+    validateId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.employeeId);
+        
+        // Verify employee exists
+        const employee = await storage.getEmployee(employeeId);
+        if (!employee) {
+          return res.status(404).json({ error: 'Employee not found' });
+        }
+        
+        // Check permissions
+        const isOwnProfile = employee.userId === req.user!.id;
+        const hasManagementRole = req.user!.role === 'admin' || req.user!.role === 'hr';
+        
+        if (!isOwnProfile && !hasManagementRole) {
+          return res.status(403).json({ error: 'Insufficient permissions' });
+        }
+        
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 50;
+        const offset = (page - 1) * limit;
+        
+        const { documents: docs, total } = await storage.getDocuments({
+          employeeId,
+          limit,
+          offset
+        });
+        
+        await logAudit(req, null, employeeId, { 
+          action: 'employee_documents_listed', 
+          count: docs.length
+        });
+        
+        res.json({
+          documents: docs,
+          total,
+          page,
+          totalPages: Math.ceil(total / limit)
+        });
+      } catch (error) {
+        console.error('Error listing employee documents:', error);
+        res.status(500).json({ error: 'Failed to list employee documents' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/documents/compliance/:locationId
+   * List all compliance documents for a location
+   */
+  app.get('/api/documents/compliance/:locationId',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const locationId = parseInt(req.params.locationId);
+        
+        // Verify location exists
+        const location = await storage.getLocation(locationId);
+        if (!location) {
+          return res.status(404).json({ error: 'Location not found' });
+        }
+        
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 50;
+        const offset = (page - 1) * limit;
+        
+        const { documents: docs, total } = await storage.getComplianceDocuments({
+          locationId,
+          limit,
+          offset
+        });
+        
+        await logAudit(req, null, null, { 
+          action: 'compliance_documents_listed', 
+          locationId,
+          count: docs.length
+        });
+        
+        res.json({
+          documents: docs,
+          total,
+          page,
+          totalPages: Math.ceil(total / limit)
+        });
+      } catch (error) {
+        console.error('Error listing compliance documents:', error);
+        res.status(500).json({ error: 'Failed to list compliance documents' });
+      }
+    }
+  );
+
+  // ============================================================================
+  // DOCUMENT MANAGEMENT ENDPOINTS
+  // ============================================================================
+
+  /**
+   * DELETE /api/documents/:id
+   * Delete document (both S3 and database record)
+   */
+  app.delete('/api/documents/:id',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('documents'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const documentId = parseInt(req.params.id);
+        const document = await storage.getDocument(documentId);
+        
+        if (!document) {
+          return res.status(404).json({ error: 'Document not found' });
+        }
+        
+        // Delete from S3 if stored there
+        if (document.storageType === 's3' && document.storageKey) {
+          try {
+            await s3Service.deleteFile(document.storageKey);
+          } catch (error) {
+            console.error('Error deleting file from S3:', error);
+            // Continue with database deletion even if S3 deletion fails
+          }
+        } else if (document.filePath && fs.existsSync(document.filePath)) {
+          // Delete local file
+          try {
+            fs.unlinkSync(document.filePath);
+          } catch (error) {
+            console.error('Error deleting local file:', error);
+          }
+        }
+        
+        // Delete database record
+        await storage.deleteDocument(documentId);
+        
+        await logAudit(req, null, document.employeeId || null, { 
+          action: 'document_deleted', 
+          documentId,
+          fileName: document.fileName,
+          storageType: document.storageType
+        });
+        
+        res.json({ 
+          success: true, 
+          message: 'Document deleted successfully' 
+        });
+      } catch (error) {
+        console.error('Error deleting document:', error);
+        res.status(500).json({ error: 'Failed to delete document' });
+      }
+    }
+  );
+
+  /**
+   * PATCH /api/documents/:id
+   * Update document metadata
+   */
+  app.patch('/api/documents/:id',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('documents'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const documentId = parseInt(req.params.id);
+        const document = await storage.getDocument(documentId);
+        
+        if (!document) {
+          return res.status(404).json({ error: 'Document not found' });
+        }
+        
+        const { fileName, documentType } = req.body;
+        const updates: any = {};
+        
+        if (fileName) updates.fileName = fileName;
+        if (documentType) updates.documentType = documentType;
+        
+        if (Object.keys(updates).length === 0) {
+          return res.status(400).json({ error: 'No valid fields to update' });
+        }
+        
+        const updatedDocument = await storage.updateDocument(documentId, updates);
+        
+        await logAudit(req, null, document.employeeId || null, { 
+          action: 'document_metadata_updated', 
+          documentId,
+          updates
+        });
+        
+        res.json(updatedDocument);
+      } catch (error) {
+        console.error('Error updating document metadata:', error);
+        res.status(500).json({ error: 'Failed to update document metadata' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/documents/batch/download
+   * Download multiple documents as ZIP
+   */
+  app.get('/api/documents/batch/download',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const documentIds = (req.query.ids as string)?.split(',').map(id => parseInt(id));
+        
+        if (!documentIds || documentIds.length === 0) {
+          return res.status(400).json({ error: 'Document IDs are required' });
+        }
+        
+        if (documentIds.length > 50) {
+          return res.status(400).json({ error: 'Maximum 50 documents allowed per batch' });
+        }
+        
+        // For now, return URLs for each document
+        // Full ZIP implementation would require archiver library
+        const documentUrls = [];
+        
+        for (const id of documentIds) {
+          const document = await storage.getDocument(id);
+          if (document) {
+            if (document.storageType === 's3' && document.storageKey) {
+              try {
+                const url = await s3Service.getSignedUrl(document.storageKey, 3600);
+                documentUrls.push({
+                  id: document.id,
+                  fileName: document.fileName,
+                  url
+                });
+              } catch (error) {
+                console.error(`Error generating URL for document ${id}:`, error);
+              }
+            }
+          }
+        }
+        
+        await logAudit(req, null, null, { 
+          action: 'batch_download_requested', 
+          documentIds,
+          count: documentUrls.length
+        });
+        
+        res.json({
+          documents: documentUrls,
+          expiresIn: 3600,
+          message: 'Download URLs generated. ZIP download feature coming soon.'
+        });
+      } catch (error) {
+        console.error('Error batch downloading documents:', error);
+        res.status(500).json({ error: 'Failed to batch download documents' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/documents/batch/delete
+   * Delete multiple documents
+   */
+  app.post('/api/documents/batch/delete',
+    requireAuth,
+    requireRole(['admin']),
+    auditMiddleware('documents'),
+    [
+      body('documentIds').isArray().withMessage('Document IDs must be an array'),
+      body('documentIds.*').isNumeric().withMessage('Each document ID must be a number')
+    ],
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { documentIds } = req.body;
+        
+        if (!documentIds || documentIds.length === 0) {
+          return res.status(400).json({ error: 'Document IDs are required' });
+        }
+        
+        if (documentIds.length > 100) {
+          return res.status(400).json({ error: 'Maximum 100 documents allowed per batch' });
+        }
+        
+        const results = {
+          deleted: 0,
+          failed: 0,
+          errors: [] as any[]
+        };
+        
+        for (const id of documentIds) {
+          try {
+            const document = await storage.getDocument(id);
+            if (document) {
+              // Delete from S3 if stored there
+              if (document.storageType === 's3' && document.storageKey) {
+                try {
+                  await s3Service.deleteFile(document.storageKey);
+                } catch (error) {
+                  console.error(`Error deleting file from S3 for document ${id}:`, error);
+                }
+              } else if (document.filePath && fs.existsSync(document.filePath)) {
+                try {
+                  fs.unlinkSync(document.filePath);
+                } catch (error) {
+                  console.error(`Error deleting local file for document ${id}:`, error);
+                }
+              }
+              
+              await storage.deleteDocument(id);
+              results.deleted++;
+            }
+          } catch (error) {
+            console.error(`Error deleting document ${id}:`, error);
+            results.failed++;
+            results.errors.push({
+              documentId: id,
+              error: error instanceof Error ? error.message : String(error)
+            });
+          }
+        }
+        
+        await logAudit(req, null, null, { 
+          action: 'batch_delete', 
+          documentIds,
+          results
+        });
+        
+        res.json(results);
+      } catch (error) {
+        console.error('Error batch deleting documents:', error);
+        res.status(500).json({ error: 'Failed to batch delete documents' });
       }
     }
   );

@@ -61,6 +61,8 @@ import { TrainingsManager } from "@/components/entity-managers/trainings-manager
 import { PayerEnrollmentsManager } from "@/components/entity-managers/payer-enrollments-manager";
 import { IncidentLogsManager } from "@/components/entity-managers/incident-logs-manager";
 import { FormsManager } from "@/components/entity-managers/forms-manager";
+import { DocumentUploader } from "@/components/documents/DocumentUploader";
+import { DocumentList } from "@/components/documents/DocumentList";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -786,6 +788,14 @@ export default function EmployeeProfile() {
                       <span className="text-left">DocuSeal Forms</span>
                     </TabsTrigger>
                     <TabsTrigger 
+                      value="documents"
+                      className="w-full justify-start data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-l-2 data-[state=active]:border-primary rounded-md h-10 px-3 hover:bg-muted/50 transition-colors"
+                      data-testid="tab-documents"
+                    >
+                      <FileCheck className="w-4 h-4 mr-3 flex-shrink-0" />
+                      <span className="text-left">Documents</span>
+                    </TabsTrigger>
+                    <TabsTrigger 
                       value="payer"
                       className="w-full justify-start data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-l-2 data-[state=active]:border-primary rounded-md h-10 px-3 hover:bg-muted/50 transition-colors"
                     >
@@ -849,6 +859,13 @@ export default function EmployeeProfile() {
                   
                   <TabsContent value="forms" className="mt-0 animate-in fade-in-50 duration-300">
                     <FormsManager employeeId={employeeId} />
+                  </TabsContent>
+                  
+                  <TabsContent value="documents" className="mt-0 animate-in fade-in-50 duration-300">
+                    <div className="space-y-6">
+                      <DocumentUploader employeeId={employeeId} />
+                      <DocumentList employeeId={employeeId} />
+                    </div>
                   </TabsContent>
                 </div>
               </Tabs>
