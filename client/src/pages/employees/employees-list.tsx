@@ -107,7 +107,11 @@ export default function EmployeesList() {
     lastName: "",
     position: "",
     department: "",
-    intendedRole: "prospective_employee"  // Default to prospective_employee for invitations
+    workLocation: "",
+    departmentType: "", // Clinical | Medical | Admin
+    projectedStartDate: "",
+    intendedRole: "prospective_employee",  // Default to prospective_employee for invitations
+    offerLetterFile: null as File | null
   });
 
   // Employees Query
@@ -146,8 +150,46 @@ export default function EmployeesList() {
 
   // Send Invitation Mutation
   const sendInvitationMutation = useMutation({
-    mutationFn: (invitationData: typeof newInvitation) => 
-      apiRequest("POST", "/api/invitations", invitationData),
+    mutationFn: async (invitationData: typeof newInvitation) => {
+      // Send as multipart when offer letter is provided
+      if (invitationData.offerLetterFile) {
+        const formData = new FormData();
+        formData.append("email", invitationData.email);
+        formData.append("firstName", invitationData.firstName);
+        formData.append("lastName", invitationData.lastName);
+        formData.append("position", invitationData.position);
+        formData.append("department", invitationData.department);
+        if (invitationData.workLocation) formData.append("workLocation", invitationData.workLocation);
+        if (invitationData.departmentType) formData.append("departmentType", invitationData.departmentType);
+        if (invitationData.projectedStartDate) formData.append("projectedStartDate", invitationData.projectedStartDate);
+        formData.append("intendedRole", invitationData.intendedRole);
+        formData.append("offerLetter", invitationData.offerLetterFile);
+
+        const res = await fetch("/api/invitations", {
+          method: "POST",
+          body: formData,
+          credentials: "include"
+        });
+        if (!res.ok) {
+          const text = (await res.text()) || res.statusText;
+          throw new Error(`${res.status}: ${text}`);
+        }
+        return res;
+      }
+
+      // Fallback to JSON request
+      return apiRequest("POST", "/api/invitations", {
+        email: invitationData.email,
+        firstName: invitationData.firstName,
+        lastName: invitationData.lastName,
+        position: invitationData.position,
+        department: invitationData.department,
+        workLocation: invitationData.workLocation,
+        departmentType: invitationData.departmentType,
+        projectedStartDate: invitationData.projectedStartDate,
+        intendedRole: invitationData.intendedRole
+      });
+    },
     onSuccess: () => {
       toast({
         title: "Success",
@@ -161,7 +203,11 @@ export default function EmployeesList() {
         lastName: "",
         position: "",
         department: "",
-        intendedRole: "prospective_employee"
+        workLocation: "",
+        departmentType: "",
+        projectedStartDate: "",
+        intendedRole: "prospective_employee",
+        offerLetterFile: null
       });
     },
     onError: (error) => {
@@ -215,7 +261,11 @@ export default function EmployeesList() {
           lastName: "",
           position: "",
           department: "",
-          intendedRole: "prospective_employee"
+          workLocation: "",
+          departmentType: "",
+          projectedStartDate: "",
+          intendedRole: "prospective_employee",
+          offerLetterFile: null
         });
       }
     }
@@ -270,8 +320,10 @@ export default function EmployeesList() {
 
   // Generate Test Invitation Mutation
   const generateTestInvitationMutation = useMutation({
-    mutationFn: () => 
-      apiRequest("POST", "/api/invitations/test-generate", {}),
+    mutationFn: async (): Promise<TestInvitationResponse> => {
+      const res = await apiRequest("POST", "/api/invitations/test-generate", {});
+      return (await res.json()) as TestInvitationResponse;
+    },
     onSuccess: (data: TestInvitationResponse) => {
       toast({
         title: "Success",
@@ -436,15 +488,15 @@ export default function EmployeesList() {
     }
   };
 
-  if (error) {
-    return (
-      <MainLayout>
-        <div className="text-center py-8">
-          <p className="text-destructive">Failed to load employees</p>
-        </div>
-      </MainLayout>
-    );
-  }
+  // if (error) {
+  //   return (
+  //     <MainLayout>
+  //       <div className="text-center py-8">
+  //         <p className="text-destructive">Failed to load employees</p>
+  //       </div>
+  //     </MainLayout>
+  //   );
+  // }
 
   return (
     <MainLayout>
@@ -520,6 +572,53 @@ export default function EmployeesList() {
                         onChange={(e) => setNewInvitation(prev => ({ ...prev, department: e.target.value }))}
                         placeholder="Emergency Medicine"
                         data-testid="input-invitation-department"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="invitation-workLocation">Work Location</Label>
+                      <Input
+                        id="invitation-workLocation"
+                        value={newInvitation.workLocation}
+                        onChange={(e) => setNewInvitation(prev => ({ ...prev, workLocation: e.target.value }))}
+                        placeholder="Main Hospital"
+                        data-testid="input-invitation-workLocation"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="invitation-departmentType">Department Type</Label>
+                      <Select
+                        value={newInvitation.departmentType}
+                        onValueChange={(value) => setNewInvitation(prev => ({ ...prev, departmentType: value }))}
+                      >
+                        <SelectTrigger id="invitation-departmentType" data-testid="select-invitation-departmentType">
+                          <SelectValue placeholder="Select department type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Clinical">Clinical</SelectItem>
+                          <SelectItem value="Medical">Medical</SelectItem>
+                          <SelectItem value="Admin">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="invitation-projectedStartDate">Projected Start Date</Label>
+                      <Input
+                        id="invitation-projectedStartDate"
+                        type="date"
+                        value={newInvitation.projectedStartDate}
+                        onChange={(e) => setNewInvitation(prev => ({ ...prev, projectedStartDate: e.target.value }))}
+                        data-testid="input-invitation-projectedStartDate"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="invitation-offerLetter">Upload Offer Letter</Label>
+                      <input
+                        id="invitation-offerLetter"
+                        type="file"
+                        accept=".pdf,.doc,.docx"
+                        onChange={(e) => setNewInvitation(prev => ({ ...prev, offerLetterFile: e.target.files?.[0] || null }))}
+                        data-testid="input-invitation-offerLetter"
+                        className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-secondary file:text-secondary-foreground hover:file:bg-secondary/90"
                       />
                     </div>
                     <div>

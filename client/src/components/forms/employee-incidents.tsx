@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -36,6 +37,7 @@ export function EmployeeIncidents({ data, onChange, employeeId, onValidationChan
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState<any>(null);
   const [localIncidents, setLocalIncidents] = useState<any[]>(data.incidentLogs || []);
+  const [hadLicenseIncidents, setHadLicenseIncidents] = useState<boolean>(false);
 
   const form = useForm<IncidentFormData>({
     resolver: zodResolver(incidentSchema),
@@ -64,23 +66,21 @@ export function EmployeeIncidents({ data, onChange, employeeId, onValidationChan
     onChange({ ...data, incidentLogs: localIncidents });
   }, [localIncidents]);
 
+  const isValid = !hadLicenseIncidents || (hadLicenseIncidents && localIncidents.length > 0);
+
   // Register validation function with parent
   useEffect(() => {
     if (registerValidation) {
-      registerValidation(async () => {
-        // Incidents are optional, so always valid
-        return true;
-      });
+      registerValidation(async () => isValid);
     }
-  }, [registerValidation]);
+  }, [registerValidation, isValid]);
 
-  // Report validation state to parent - incidents are optional
+  // Report validation state to parent for gating Next button
   useEffect(() => {
     if (onValidationChange) {
-      // Always valid since incidents are optional
-      onValidationChange(true);
+      onValidationChange(isValid);
     }
-  }, [onValidationChange]);
+  }, [onValidationChange, isValid]);
 
   const getSeverityBadge = (severity: string) => {
     switch (severity) {
@@ -129,6 +129,37 @@ export function EmployeeIncidents({ data, onChange, employeeId, onValidationChan
 
   return (
     <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">Incidents</CardTitle>
+              <CardDescription>Have there been any incidents reported against your license in the past?</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="max-w-md space-y-1">
+            <label className="text-sm font-medium">Incidents against license?</label>
+            <Select value={hadLicenseIncidents ? "yes" : "no"} onValueChange={(v) => setHadLicenseIncidents(v === "yes")}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="no">No</SelectItem>
+                <SelectItem value="yes">Yes</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {!isValid && (
+            <Alert className="border-amber-200 bg-amber-50">
+              <AlertDescription className="text-amber-800">
+                Please add at least one incident log below to proceed.
+              </AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
