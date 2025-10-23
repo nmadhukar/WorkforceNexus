@@ -226,7 +226,8 @@ export function DocumentUploader({
           file: validFiles[i].file,
           documentType: selectedDocumentType,
           notes,
-          employeeId
+          employeeId,
+          locationId
         });
 
         setFiles(prev => {

@@ -5,6 +5,90 @@ This HR management system is designed for healthcare organizations to manage med
 
 ## Recent Changes
 
+### Complete S3 Document Storage Implementation (October 23, 2025)
+**Implemented production-ready S3 document storage system with comprehensive frontend/backend integration.**
+
+**Backend Changes:**
+1. **Enhanced S3Service** (`server/services/s3Service.ts`):
+   - Added key generation methods for all document types (employee, compliance, onboarding, facility)
+   - Hierarchical S3 key structure: `employees/{id}/documents/{type}/{timestamp}-{slug}`
+   - Batch operations: `uploadFiles()`, `deleteFiles()`, `listDocumentsByEmployee()`, `listDocumentsByLocation()`
+   - Presigned URL generation with configurable expiry (default 1 hour)
+   - Retry logic with exponential backoff (max 3 retries)
+   - Configuration methods: `reconfigure()`, `testConnection()`, `getBucketInfo()`
+   - Advanced filename slugification with Unicode support
+
+2. **S3 Migration Service** (`server/services/migration/s3MigrationService.ts`):
+   - Bulk migration tool for moving local documents to S3
+   - Methods: `migrateEmployeeDocuments()`, `migrateComplianceDocuments()`, `migrateAllDocuments()`
+   - Progress tracking with console logging and statistics
+   - Error handling and resumability (skips already-migrated documents)
+   - Dry-run mode and validation options
+   - Rollback capability via `rollbackDocument()`
+   - Batch processing (default 15 files per batch)
+
+3. **API Endpoints** (`server/routes.ts`):
+   - 26 new S3 management endpoints
+   - Configuration: GET/POST `/api/admin/s3/config`, POST `/api/admin/s3/test`
+   - Migration: POST `/api/admin/s3/migration/{employee|compliance|onboarding|all}`
+   - Documents: GET `/api/documents/employee/:id`, GET `/api/documents/compliance/:id`
+   - Downloads: GET `/api/documents/:id/presigned-url`, GET `/api/documents/:id/download`
+   - Management: DELETE `/api/documents/:id`, GET `/api/documents/batch/download`
+   - All endpoints with authentication, authorization, and input validation
+
+**Frontend Changes:**
+1. **useDocuments Hook** (`client/src/hooks/useDocuments.ts`):
+   - React Query hook for document management
+   - Functions: `upload`, `deleteDoc`, `download`, `getPresignedUrl`
+   - Automatic cache invalidation after mutations
+   - Download fallback: tries presigned URL first, falls back to direct download
+
+2. **DocumentUploader Component** (`client/src/components/documents/DocumentUploader.tsx`):
+   - Drag-and-drop file upload with visual feedback
+   - Multiple file selection with preview thumbnails
+   - Document type selector and notes field
+   - Per-file upload progress tracking
+   - Client-side validation (file type and size)
+   - Complete data-testid coverage for testing
+
+3. **DocumentList Component** (`client/src/components/documents/DocumentList.tsx`):
+   - Responsive table with striped rows
+   - File type icons and color-coded badges
+   - Search and filter by document type
+   - Sort by name, type, date, or size
+   - Download via presigned URLs with fallback
+   - Delete with confirmation dialog
+   - Empty state and loading skeletons
+
+4. **Page Integrations**:
+   - Added "Documents" tab to employee profile (`client/src/pages/employees/employee-profile.tsx`)
+   - Added compliance documents section to compliance dashboard (`client/src/pages/compliance/compliance-dashboard.tsx`)
+   - S3 configuration already exists in Settings page (no changes needed)
+
+**Bug Fixes:**
+- Fixed `useDocuments` endpoint URL from `/api/employees/:id/documents` to `/api/documents/employee/:id`
+- Fixed route validation: changed `:employeeId` to `:id` to match `validateId()` middleware
+- Added null check for `mimeType` in `getFileIcon()` to prevent runtime errors
+
+**Files Modified:**
+- `server/services/s3Service.ts` (enhanced with 15+ new methods)
+- `server/services/migration/s3MigrationService.ts` (new file, 718 lines)
+- `server/routes.ts` (added 26 S3 endpoints)
+- `client/src/hooks/useDocuments.ts` (new file, 286 lines)
+- `client/src/components/documents/DocumentUploader.tsx` (new file, 439 lines)
+- `client/src/components/documents/DocumentList.tsx` (new file, 435 lines)
+- `client/src/pages/employees/employee-profile.tsx` (added Documents tab)
+- `client/src/pages/compliance/compliance-dashboard.tsx` (added Compliance Documents section)
+- `design_guidelines.md` (new file with BambooHR-inspired design system)
+
+**Benefits:**
+- Complete document lifecycle management (upload, download, delete, migrate)
+- Scalable S3 storage with automatic fallback to local storage
+- Enterprise-grade features: versioning, metadata, tags, batch operations
+- Admin tools for configuration and migration
+- Reusable frontend components with excellent UX
+- Production-ready with comprehensive error handling
+
 ### Qualification Fields Converted to Dropdowns (October 12, 2025)
 **Converted Substance Use Qualification and Mental Health Qualification from text inputs to dropdown select fields.**
 

@@ -78,7 +78,10 @@ export function DocumentList({
   /**
    * Get file icon based on MIME type
    */
-  const getFileIcon = (mimeType: string) => {
+  const getFileIcon = (mimeType: string | null | undefined) => {
+    if (!mimeType) {
+      return <FileIcon className="w-5 h-5 text-gray-500" />;
+    }
     if (mimeType.startsWith('image/')) {
       return <ImageIcon className="w-5 h-5 text-blue-500" />;
     } else if (mimeType.includes('pdf')) {

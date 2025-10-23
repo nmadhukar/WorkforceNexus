@@ -10023,16 +10023,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   /**
-   * GET /api/documents/employee/:employeeId
+   * GET /api/documents/employee/:id
    * List all documents for an employee
    */
-  app.get('/api/documents/employee/:employeeId',
+  app.get('/api/documents/employee/:id',
     requireAuth,
     validateId(),
     handleValidationErrors,
     async (req: AuditRequest, res: Response) => {
       try {
-        const employeeId = parseInt(req.params.employeeId);
+        const employeeId = parseInt(req.params.id);
         
         // Verify employee exists
         const employee = await storage.getEmployee(employeeId);
@@ -10077,17 +10077,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   /**
-   * GET /api/documents/compliance/:locationId
+   * GET /api/documents/compliance/:id
    * List all compliance documents for a location
    */
-  app.get('/api/documents/compliance/:locationId',
+  app.get('/api/documents/compliance/:id',
     requireAuth,
     requireRole(['admin', 'hr']),
     validateId(),
     handleValidationErrors,
     async (req: AuditRequest, res: Response) => {
       try {
-        const locationId = parseInt(req.params.locationId);
+        const locationId = parseInt(req.params.id);
         
         // Verify location exists
         const location = await storage.getLocation(locationId);

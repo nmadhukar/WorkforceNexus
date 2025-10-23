@@ -48,6 +48,7 @@ export interface UploadDocumentOptions {
   notes?: string;
   signedDate?: string;
   employeeId?: number;
+  locationId?: number;
 }
 
 /**
@@ -89,9 +90,9 @@ export function useDocuments(options: UseDocumentsOptions = {}) {
       let url = '';
       
       if (employeeId) {
-        url = `/api/employees/${employeeId}/documents`;
+        url = `/api/documents/employee/${employeeId}`;
       } else if (locationId) {
-        url = `/api/compliance-documents?locationId=${locationId}`;
+        url = `/api/documents/compliance/${locationId}`;
       } else {
         url = '/api/documents';
       }
@@ -139,14 +140,26 @@ export function useDocuments(options: UseDocumentsOptions = {}) {
         formData.append('signedDate', options.signedDate);
       }
       
+      // Determine which ID to use (from options or from hook context)
       const targetEmployeeId = options.employeeId || employeeId;
+      const targetLocationId = options.locationId || locationId;
+      
+      // Add the appropriate ID to FormData
       if (targetEmployeeId) {
         formData.append('employeeId', targetEmployeeId.toString());
       }
+      if (targetLocationId) {
+        formData.append('locationId', targetLocationId.toString());
+      }
 
-      const endpoint = targetEmployeeId 
-        ? `/api/documents/employee/${targetEmployeeId}/upload`
-        : '/api/documents/upload';
+      // Determine upload endpoint based on context
+      let endpoint = '/api/documents/upload';
+      
+      if (targetEmployeeId) {
+        endpoint = `/api/documents/employee/${targetEmployeeId}/upload`;
+      } else if (targetLocationId) {
+        endpoint = `/api/documents/compliance/${targetLocationId}/upload`;
+      }
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -174,6 +187,11 @@ export function useDocuments(options: UseDocumentsOptions = {}) {
       
       if (employeeId) {
         queryClient.invalidateQueries({ queryKey: ['/api/employees', employeeId] });
+      }
+      
+      if (locationId) {
+        queryClient.invalidateQueries({ queryKey: ['/api/compliance-documents', locationId] });
+        queryClient.invalidateQueries({ queryKey: ['/api/compliance/dashboard'] });
       }
     },
     onError: (error: Error) => {
