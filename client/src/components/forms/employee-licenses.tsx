@@ -56,7 +56,7 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
       state: "",
       issueDate: "",
       expirationDate: "",
-      status: "active"
+      status: "pending"
     }
   });
 
@@ -67,7 +67,7 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
       state: "",
       issueDate: "",
       expirationDate: "",
-      status: "active"
+      status: "pending"
     }
   });
 
@@ -93,6 +93,71 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
     onChange({ ...data, stateLicenses: localStateLicenses, deaLicenses: localDeaLicenses });
   }, [localStateLicenses, localDeaLicenses]);
 
+  // Seed State License row from credentials step when present
+  useEffect(() => {
+    const hasCredentialsMedical = !!(
+      data?.medicalLicenseNumber ||
+      data?.medicalLicenseState ||
+      data?.medicalLicenseIssueDate ||
+      data?.medicalLicenseExpirationDate
+    );
+    if (!hasCredentialsMedical) return;
+
+    const derived = {
+      id: "credentials-medical",
+      licenseNumber: data?.medicalLicenseNumber || "",
+      state: data?.medicalLicenseState || "",
+      issueDate: data?.medicalLicenseIssueDate || "",
+      expirationDate: data?.medicalLicenseExpirationDate || "",
+      status: data?.medicalLicenseStatus || "pending",
+      source: "credentials",
+    } as any;
+
+    const existingIndex = localStateLicenses.findIndex(
+      (l: any) => l?.id === "credentials-medical" || l?.source === "credentials"
+    );
+    if (
+      existingIndex >= 0 &&
+      (localStateLicenses[existingIndex]?.licenseNumber !== derived.licenseNumber ||
+        localStateLicenses[existingIndex]?.state !== derived.state ||
+        localStateLicenses[existingIndex]?.issueDate !== derived.issueDate ||
+        localStateLicenses[existingIndex]?.expirationDate !== derived.expirationDate)
+    ) {
+      const updated = [...localStateLicenses];
+      updated[existingIndex] = { ...updated[existingIndex], ...derived };
+      setLocalStateLicenses(updated);
+    } else if (existingIndex === -1) {
+      setLocalStateLicenses([derived, ...localStateLicenses]);
+    }
+  }, [data?.medicalLicenseNumber, data?.medicalLicenseState, data?.medicalLicenseIssueDate, data?.medicalLicenseExpirationDate]);
+
+  // Seed DEA License row from credentials step when present
+  useEffect(() => {
+    const hasDea = !!data?.deaNumber;
+    if (!hasDea) return;
+
+    const derived = {
+      id: "credentials-dea",
+      licenseNumber: data?.deaNumber || "",
+      state: data?.medicalLicenseState || "",
+      issueDate: "",
+      expirationDate: "",
+      status: "pending",
+      source: "credentials",
+    } as any;
+
+    const existingIndex = localDeaLicenses.findIndex(
+      (l: any) => l?.id === "credentials-dea" || l?.source === "credentials"
+    );
+    if (existingIndex >= 0 && localDeaLicenses[existingIndex]?.licenseNumber !== derived.licenseNumber) {
+      const updated = [...localDeaLicenses];
+      updated[existingIndex] = { ...updated[existingIndex], ...derived };
+      setLocalDeaLicenses(updated);
+    } else if (existingIndex === -1) {
+      setLocalDeaLicenses([derived, ...localDeaLicenses]);
+    }
+  }, [data?.deaNumber, data?.medicalLicenseState]);
+
   // Register validation function with parent
   useEffect(() => {
     if (registerValidation) {
@@ -112,31 +177,17 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
     }
   }, [onValidationChange]);
 
-  // Calculate actual status based on expiration date
+  // Determine status for display; prefer explicit user-selected status
   const getActualStatus = (license: any) => {
-    // If no expiration date, return stored status or 'active'
-    if (!license.expirationDate) {
-      return license.status || 'active';
-    }
-
+    if (license.status) return license.status;
+    if (!license.expirationDate) return 'active';
     const currentDate = new Date();
-    currentDate.setHours(0, 0, 0, 0); // Reset time for date-only comparison
+    currentDate.setHours(0, 0, 0, 0);
     const expirationDate = new Date(license.expirationDate as any);
     expirationDate.setHours(0, 0, 0, 0);
-    
-    // Check if expired
-    if (currentDate > expirationDate) {
-      return 'expired';
-    }
-    
-    // Check if expiring soon (within 30 days)
+    if (currentDate > expirationDate) return 'expired';
     const daysUntilExpiration = Math.ceil((expirationDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
-    if (daysUntilExpiration <= 30) {
-      return 'expiring_soon';
-    }
-    
-    // Otherwise return stored status or 'active'
-    return license.status || 'active';
+    return daysUntilExpiration <= 30 ? 'expiring_soon' : 'active';
   };
 
   const getStatusBadge = (status: string) => {
@@ -156,27 +207,8 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
 
   // State License handlers
   const handleStateSubmit = (formData: StateLicenseFormData) => {
-    // Calculate status based on expiration date
-    let calculatedStatus = formData.status;
-    if (formData.expirationDate) {
-      const currentDate = new Date();
-      currentDate.setHours(0, 0, 0, 0);
-      const expirationDate = new Date(formData.expirationDate);
-      expirationDate.setHours(0, 0, 0, 0);
-      
-      if (currentDate > expirationDate) {
-        calculatedStatus = 'expired';
-      } else {
-        const daysUntilExpiration = Math.ceil((expirationDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
-        if (daysUntilExpiration <= 30) {
-          calculatedStatus = 'expiring_soon';
-        } else {
-          calculatedStatus = 'active';
-        }
-      }
-    }
-    
-    const licenseData = { ...formData, status: calculatedStatus };
+    // Respect the status selected by the user; do not auto-override
+    const licenseData = { ...formData } as any;
     
     if (selectedStateLicense) {
       const updated = localStateLicenses.map(lic => 
@@ -198,7 +230,7 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
       state: license.state || "",
       issueDate: formatDateInput(license.issueDate),
       expirationDate: formatDateInput(license.expirationDate),
-      status: license.status || "active"
+      status: license.status || "pending"
     });
     setIsStateDialogOpen(true);
   };
@@ -209,27 +241,8 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
 
   // DEA License handlers
   const handleDeaSubmit = (formData: DeaLicenseFormData) => {
-    // Calculate status based on expiration date
-    let calculatedStatus = formData.status;
-    if (formData.expirationDate) {
-      const currentDate = new Date();
-      currentDate.setHours(0, 0, 0, 0);
-      const expirationDate = new Date(formData.expirationDate);
-      expirationDate.setHours(0, 0, 0, 0);
-      
-      if (currentDate > expirationDate) {
-        calculatedStatus = 'expired';
-      } else {
-        const daysUntilExpiration = Math.ceil((expirationDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
-        if (daysUntilExpiration <= 30) {
-          calculatedStatus = 'expiring_soon';
-        } else {
-          calculatedStatus = 'active';
-        }
-      }
-    }
-    
-    const licenseData = { ...formData, status: calculatedStatus };
+    // Respect the status selected by the user; do not auto-override
+    const licenseData = { ...formData } as any;
     
     if (selectedDeaLicense) {
       const updated = localDeaLicenses.map(lic => 
@@ -251,7 +264,7 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
       state: license.state || "",
       issueDate: formatDateInput(license.issueDate),
       expirationDate: formatDateInput(license.expirationDate),
-      status: license.status || "active"
+      status: license.status || "pending"
     });
     setIsDeaDialogOpen(true);
   };
@@ -276,7 +289,7 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
             <Button
               onClick={() => {
                 setSelectedStateLicense(null);
-                stateForm.reset();
+                stateForm.reset({ licenseNumber: "", state: "", issueDate: "", expirationDate: "", status: "pending" });
                 setIsStateDialogOpen(true);
               }}
               size="sm"
@@ -350,7 +363,7 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
             <Button
               onClick={() => {
                 setSelectedDeaLicense(null);
-                deaForm.reset();
+                deaForm.reset({ licenseNumber: "", state: "", issueDate: "", expirationDate: "", status: "pending" });
                 setIsDeaDialogOpen(true);
               }}
               size="sm"
@@ -421,7 +434,7 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
             </DialogTitle>
           </DialogHeader>
           <Form {...stateForm}>
-            <form onSubmit={stateForm.handleSubmit(handleStateSubmit)} className="space-y-4">
+            <form onSubmit={stateForm.handleSubmit(handleStateSubmit)} className="space-y-4" autoComplete="off">
               <FormField
                 control={stateForm.control}
                 name="licenseNumber"
@@ -429,7 +442,7 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
                   <FormItem>
                     <FormLabel>License Number *</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="Enter license number" data-testid="input-state-number" />
+                      <Input {...field} placeholder="Enter license number" data-testid="input-state-number" autoComplete="off" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -442,7 +455,7 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
                   <FormItem>
                     <FormLabel>State</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g., CA, NY, TX" data-testid="input-state" />
+                      <Input {...field} placeholder="e.g., CA, NY, TX" data-testid="input-state" autoComplete="off" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -456,7 +469,7 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
                     <FormItem>
                       <FormLabel>Issue Date</FormLabel>
                       <FormControl>
-                        <Input {...field} type="date" data-testid="input-state-issue" />
+                        <Input {...field} type="date" data-testid="input-state-issue" autoComplete="off" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -469,7 +482,7 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
                     <FormItem>
                       <FormLabel>Expiration Date</FormLabel>
                       <FormControl>
-                        <Input {...field} type="date" data-testid="input-state-exp" />
+                        <Input {...field} type="date" data-testid="input-state-exp" autoComplete="off" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -525,7 +538,7 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
             </DialogTitle>
           </DialogHeader>
           <Form {...deaForm}>
-            <form onSubmit={deaForm.handleSubmit(handleDeaSubmit)} className="space-y-4">
+            <form onSubmit={deaForm.handleSubmit(handleDeaSubmit)} className="space-y-4" autoComplete="off">
               <FormField
                 control={deaForm.control}
                 name="licenseNumber"
@@ -533,7 +546,7 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
                   <FormItem>
                     <FormLabel>License Number *</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="Enter DEA registration number" data-testid="input-dea-number" />
+                      <Input {...field} placeholder="Enter DEA registration number" data-testid="input-dea-number" autoComplete="off" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -546,7 +559,7 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
                   <FormItem>
                     <FormLabel>State</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g., CA, NY, TX" data-testid="input-dea-state" />
+                      <Input {...field} placeholder="e.g., CA, NY, TX" data-testid="input-dea-state" autoComplete="off" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -560,8 +573,8 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
                     <FormItem>
                       <FormLabel>Issue Date</FormLabel>
                       <FormControl>
-                        <Input {...field} type="date" data-testid="input-dea-issue" />
-                      </FormControl>
+                        <Input {...field} type="date" data-testid="input-dea-issue" autoComplete="off" />
+                      </FormControl>  
                       <FormMessage />
                     </FormItem>
                   )}
@@ -573,7 +586,7 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
                     <FormItem>
                       <FormLabel>Expiration Date</FormLabel>
                       <FormControl>
-                        <Input {...field} type="date" data-testid="input-dea-exp" />
+                        <Input {...field} type="date" data-testid="input-dea-exp" autoComplete="off" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
