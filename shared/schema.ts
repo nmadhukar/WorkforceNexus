@@ -102,7 +102,7 @@ export const employees = pgTable("employees", {
   dlExpirationDate: date("dl_expiration_date"), // Expiration date (tracked for compliance)
   
   // SENSITIVE IDENTIFICATION (Encrypted fields)
-  ssn: varchar("ssn", { length: 20 }), // Social Security Number (AES-256 encrypted)
+  ssn: varchar("ssn", { length: 255 }), // Social Security Number (AES-256 encrypted)
   
   // NATIONAL PROVIDER IDENTIFIER (NPI) - CMS requirement for healthcare providers
   npiNumber: varchar("npi_number", { length: 20 }).unique(), // Unique NPI from NPPES
@@ -112,6 +112,8 @@ export const employees = pgTable("employees", {
   jobTitle: varchar("job_title", { length: 100 }), // Current position/title
   workLocation: varchar("work_location", { length: 100 }), // Primary work location/facility
   qualification: text("qualification"), // Professional qualifications and specialties
+  // Department/discipline classification used by credentials step
+  departments: varchar("departments", { length: 100 }),
   
   // MEDICAL LICENSING INFORMATION
   medicalLicenseNumber: varchar("medical_license_number", { length: 50 }), // State medical license
@@ -119,6 +121,26 @@ export const employees = pgTable("employees", {
   substanceUseQualification: text("substance_use_qualification"), // Substance abuse treatment qualifications
   mentalHealthLicenseNumber: varchar("mental_health_license_number", { length: 50 }), // Mental health license
   mentalHealthQualification: text("mental_health_qualification"), // Mental health specializations
+  // Additional license metadata captured in credentials form
+  medicalLicenseState: varchar("medical_license_state", { length: 50 }),
+  medicalLicenseIssueDate: date("medical_license_issue_date"),
+  medicalLicenseExpirationDate: date("medical_license_expiration_date"),
+  medicalLicenseStatus: varchar("medical_license_status", { length: 50 }),
+
+  substanceUseLicenseState: varchar("substance_use_license_state", { length: 50 }),
+  substanceUseLicenseIssueDate: date("substance_use_license_issue_date"),
+  substanceUseLicenseExpirationDate: date("substance_use_license_expiration_date"),
+  substanceUseLicenseStatus: varchar("substance_use_license_status", { length: 50 }),
+
+  mentalHealthLicenseState: varchar("mental_health_license_state", { length: 50 }),
+  mentalHealthLicenseIssueDate: date("mental_health_license_issue_date"),
+  mentalHealthLicenseExpirationDate: date("mental_health_license_expiration_date"),
+  mentalHealthLicenseStatus: varchar("mental_health_license_status", { length: 50 }),
+
+  // DEA tracking when applicable to selected medical qualifications
+  deaNumber: varchar("dea_number", { length: 50 }),
+  // Granular medical qualification separate from general qualification field
+  medicalQualification: varchar("medical_qualification", { length: 100 }),
   
   // PAYER/BILLING IDENTIFIERS
   medicaidNumber: varchar("medicaid_number", { length: 50 }), // State Medicaid provider number
@@ -132,12 +154,12 @@ export const employees = pgTable("employees", {
   caqhEnabled: boolean("caqh_enabled").default(false), // Whether CAQH profile is active
   caqhReattestationDueDate: date("caqh_reattestation_due_date"), // Next attestation due date
   caqhLoginId: varchar("caqh_login_id", { length: 50 }), // CAQH login username
-  caqhPassword: varchar("caqh_password", { length: 100 }), // CAQH password (AES-256 encrypted)
+  caqhPassword: varchar("caqh_password", { length: 255 }), // CAQH password (AES-256 encrypted)
   
   // NPPES (National Plan and Provider Enumeration System) INTEGRATION
   // Used for NPI management and provider directory updates
   nppesLoginId: varchar("nppes_login_id", { length: 50 }), // NPPES login username
-  nppesPassword: varchar("nppes_password", { length: 100 }), // NPPES password (AES-256 encrypted)
+  nppesPassword: varchar("nppes_password", { length: 255 }), // NPPES password (AES-256 encrypted)
   
   // RECORD MANAGEMENT
   status: varchar("status", { length: 20 }).default("active"), // active | inactive | on_leave | terminated | onboarding
@@ -1101,6 +1123,12 @@ export const insertEmployeeSchema = createInsertSchema(employees, {
   caqhIssueDate: z.coerce.date().nullable().optional(),
   caqhLastAttestationDate: z.coerce.date().nullable().optional(),
   caqhReattestationDueDate: z.coerce.date().nullable().optional(),
+  medicalLicenseIssueDate: z.coerce.date().nullable().optional(),
+  medicalLicenseExpirationDate: z.coerce.date().nullable().optional(),
+  substanceUseLicenseIssueDate: z.coerce.date().nullable().optional(),
+  substanceUseLicenseExpirationDate: z.coerce.date().nullable().optional(),
+  mentalHealthLicenseIssueDate: z.coerce.date().nullable().optional(),
+  mentalHealthLicenseExpirationDate: z.coerce.date().nullable().optional(),
   onboardingCompletedAt: z.coerce.date().nullable().optional(),
   approvedAt: z.coerce.date().nullable().optional()
 }).omit({

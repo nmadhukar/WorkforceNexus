@@ -13,7 +13,9 @@ const personalInfoSchema = z.object({
   lastName: z.string().min(1, "Last name is required"),
   dateOfBirth: z.string().min(1, "Date of birth is required"),
   gender: z.string().optional(),
-  ssn: z.string().min(1, "SSN is required"),
+  ssn: z
+    .string()
+    .regex(/^\d{3}-\d{2}-\d{4}$/, "SSN must be in XXX-XX-XXXX format"),
   personalEmail: z.string().min(1, "Personal email is required").email("Invalid email address"),
   workEmail: z.string().optional().refine(
     (val) => !val || z.string().email().safeParse(val).success,
@@ -239,6 +241,18 @@ export function EmployeePersonalInfo({ data, onChange, onValidationChange, regis
                 <FormControl>
                   <Input
                     {...field}
+                    value={field.value}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D/g, "").slice(0, 9);
+                      const part1 = digits.slice(0, 3);
+                      const part2 = digits.slice(3, 5);
+                      const part3 = digits.slice(5, 9);
+                      const formatted = [part1, part2, part3].filter(Boolean).join("-");
+                      field.onChange(formatted);
+                    }}
+                    inputMode="numeric"
+                    pattern="\\d{3}-\\d{2}-\\d{4}"
+                    title="SSN must be in XXX-XX-XXXX format"
                     placeholder="XXX-XX-XXXX"
                     maxLength={11}
                     data-testid="input-ssn"
