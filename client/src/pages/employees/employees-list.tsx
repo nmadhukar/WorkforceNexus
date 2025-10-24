@@ -862,10 +862,12 @@ export default function EmployeesList() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {invitations.map((invitation) => (
+                        {invitations.map((invitation) => {
+                          console.log(invitation, 'invitation ===========');
+                          return (
                           <TableRow key={invitation.id}>
                             <TableCell className="font-medium">
-                              {invitation.firstName} {invitation.lastName}
+                            <Link href={`/employees/${invitation.employeeId}`}> {invitation.firstName} {invitation.lastName}</Link>
                             </TableCell>
                             <TableCell>{invitation.email}</TableCell>
                             <TableCell>{invitation.position}</TableCell>
@@ -1010,7 +1012,7 @@ export default function EmployeesList() {
                               )}
                             </TableCell>
                           </TableRow>
-                        ))}
+                        )})}
                       </TableBody>
                     </Table>
                   </div>

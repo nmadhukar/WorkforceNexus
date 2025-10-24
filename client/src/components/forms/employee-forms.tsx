@@ -112,7 +112,7 @@ interface SubmissionDetail {
 export function EmployeeForms({ 
   data, 
   onChange, 
-  employeeId,
+  employeeId = 22,
   onboardingId,
   onValidationChange,
   registerValidation
