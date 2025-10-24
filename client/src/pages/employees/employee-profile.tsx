@@ -105,7 +105,7 @@ export default function EmployeeProfile() {
   });
 
   // Fetch the employee's own data if they are an employee
-  const { data: ownEmployeeData } = useQuery({
+  const { data: ownEmployeeData } = useQuery<Partial<Employee>>({
     queryKey: ["/api/employee/profile"],
     enabled: user?.role === "employee"
   });
@@ -419,7 +419,7 @@ export default function EmployeeProfile() {
           </div>
 
           {/* Approval Section - Shows only for pending employees when user is HR/Admin */}
-          {employee.applicationStatus === 'pending' && (user?.role === 'admin' || user?.role === 'hr') && (
+          {((employee as any)?.applicationStatus === 'pending') && (user?.role === 'admin' || user?.role === 'hr') && (
             <Card className="border-warning/50 bg-warning/5">
               <CardHeader className="bg-warning/10">
                 <CardTitle className="flex items-center text-lg">
@@ -433,7 +433,7 @@ export default function EmployeeProfile() {
                     <p className="text-sm text-muted-foreground mb-4">
                       This employee registration is pending approval. Review their information and decide whether to approve or reject their application.
                     </p>
-                    <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex flex-col sm:flex-row gap-3">
                       <Button
                         onClick={() => approveMutation.mutate()}
                         disabled={approveMutation.isPending || rejectMutation.isPending}
@@ -444,7 +444,7 @@ export default function EmployeeProfile() {
                         {approveMutation.isPending ? "Approving..." : "Approve Employee"}
                       </Button>
                       <Button
-                        onClick={() => rejectMutation.mutate()}
+                        onClick={() => rejectMutation.mutate(undefined)}
                         disabled={approveMutation.isPending || rejectMutation.isPending}
                         variant="destructive"
                         data-testid="button-reject-employee"
