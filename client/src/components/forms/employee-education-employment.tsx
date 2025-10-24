@@ -174,6 +174,7 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
       endDate: formatDateInput(education.endDate)
     });
     setIsEducationDialogOpen(true);
+    educationForm.reset();
   };
 
   const handleDeleteEducation = (id: number) => {
@@ -564,7 +565,7 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setIsEducationDialogOpen(false)}
+                  onClick={() => {setIsEducationDialogOpen(false); educationForm.reset();}}
                   data-testid="button-cancel"
                 >
                   Cancel
@@ -659,7 +660,7 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setIsEmploymentDialogOpen(false)}
+                  onClick={() => {setIsEmploymentDialogOpen(false); employmentForm.reset();}}
                   data-testid="button-cancel-emp"
                 >
                   Cancel
