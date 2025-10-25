@@ -5,6 +5,24 @@ This HR management system is designed for healthcare organizations to manage med
 
 ## Recent Changes
 
+### S3 Configuration Fix - Environment Variable Loading (October 25, 2025)
+**Fixed S3 service to properly load AWS credentials from environment variables when database configuration is disabled.**
+
+**Issue:** Documents were saving to local filesystem instead of S3 despite AWS credentials being present
+**Root Cause:** S3 service wasn't loading environment credentials when database config was disabled
+**Solution:** Modified S3 service initialization to:
+- Properly detect and use AWS_S3_BUCKET_NAME environment variable
+- Auto-detect correct AWS region (us-west-2) for bucket
+- Initialize S3 client even when database config is disabled
+- Gracefully handle IAM permission errors with fallback to local storage
+
+**Current Status:**
+- ✅ S3 service properly configured and initialized
+- ✅ Detects bucket 'employeedocs' in region us-west-2
+- ⚠️ AWS IAM permissions need to be configured for bucket access (AccessDenied error)
+- ✅ Documents gracefully fall back to local storage until AWS permissions are fixed
+- 📁 3 existing local documents ready for migration once permissions are resolved
+
 ### Complete S3 Document Storage Implementation (October 23, 2025)
 **Implemented production-ready S3 document storage system with comprehensive frontend/backend integration.**
 
