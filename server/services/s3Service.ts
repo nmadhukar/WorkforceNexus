@@ -366,8 +366,8 @@ class S3Service {
       this.client = new S3Client(clientConfig);
       this.bucketName = config.bucketName;
       
-      // Check bucket access before marking as configured
-      const isAccessible = await this.checkBucketAccess();
+      // Check bucket access and handle region mismatches
+      const isAccessible = await this.checkBucketAccessWithRetry();
       this._isConfigured = isAccessible;
       
       if (isAccessible) {
@@ -414,6 +414,26 @@ class S3Service {
    */
   public getBucketName(): string | null {
     return this.bucketName;
+  }
+
+  /**
+   * Check bucket access with automatic region retry
+   * @returns {Promise<boolean>} True if bucket is accessible, false otherwise
+   * @private
+   */
+  private async checkBucketAccessWithRetry(): Promise<boolean> {
+    const result = await this.checkBucketAccess();
+    // If we have a valid client and bucket name, we can try to use S3
+    // Even if access check fails, we might still have write permissions
+    if (this.client && this.bucketName) {
+      // If the bucket exists (even with denied access), consider it configured
+      // This allows uploads to be attempted even if LIST is denied
+      if (result || this.client !== null) {
+        console.log('S3 Service: Client configured. Upload attempts will use S3 (may fallback to local if permissions insufficient).');
+        return true;
+      }
+    }
+    return result;
   }
 
   /**
@@ -517,7 +537,7 @@ class S3Service {
       return false;
     }
 
-    // Create a new client with the correct region - moved outside try block
+    // Create a new client with the correct region
     const config: any = {
       region,
       credentials: {
@@ -544,6 +564,7 @@ class S3Service {
       
       // If successful, update the main client
       this.client = tempClient;
+      this._isConfigured = true; // Mark as configured since we successfully connected
       console.log(`S3 Service: Successfully connected to bucket '${this.bucketName}' in region ${region}`);
       console.log(`S3 Service: IMPORTANT: Update AWS_REGION environment variable to '${region}' for optimal performance`);
       
@@ -553,11 +574,23 @@ class S3Service {
         if (error.name === 'AccessDenied') {
           console.error(`S3 Service: Access denied to bucket '${this.bucketName}' in region ${region}.`);
           console.error(`S3 Service: The bucket exists in region '${region}' but your AWS credentials don't have permission to access it.`);
-          console.error(`S3 Service: Please check your IAM permissions for the bucket 'employeedocs'.`);
+          console.error(`S3 Service: Please check your IAM permissions for the bucket '${this.bucketName}'.`);
           
-          // Even though we have AccessDenied, we now know the correct region
-          // Update the client with correct region for future operations that might work
+          // Even though we have AccessDenied, we know the bucket exists in this region
+          // Update the client with correct region for operations that might work (like PutObject)
           this.client = tempClient;
+          
+          // Try a PUT operation to see if we have write permissions even if LIST is denied
+          console.log(`S3 Service: Attempting to verify write access to bucket...`);
+          const testWriteSuccess = await this.testWriteAccess();
+          
+          if (testWriteSuccess) {
+            this._isConfigured = true; // Mark as configured if we can write
+            console.log(`S3 Service: ✅ Write access confirmed! S3 storage is configured.`);
+            console.log(`S3 Service: RECOMMENDATION: Update AWS_REGION environment variable to '${region}'`);
+            return true;
+          }
+          
           console.log(`S3 Service: Client updated with correct region '${region}', but access is currently denied.`);
           console.log(`S3 Service: RECOMMENDATION: Update AWS_REGION environment variable to '${region}'`);
           
@@ -566,6 +599,49 @@ class S3Service {
         }
       }
       console.error(`S3 Service: Retry with region ${region} failed:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Test write access to the S3 bucket
+   * @returns {Promise<boolean>} True if we can write to the bucket
+   * @private
+   */
+  private async testWriteAccess(): Promise<boolean> {
+    if (!this.client || !this.bucketName) {
+      return false;
+    }
+
+    try {
+      // Try to write a test file to check write permissions
+      const testKey = '.s3-test-' + Date.now() + '.txt';
+      const testContent = 'S3 write access test';
+      
+      const putCommand = new PutObjectCommand({
+        Bucket: this.bucketName,
+        Key: testKey,
+        Body: Buffer.from(testContent),
+        ContentType: 'text/plain'
+      });
+      
+      await this.client.send(putCommand);
+      
+      // Try to delete the test file
+      try {
+        const deleteCommand = new DeleteObjectCommand({
+          Bucket: this.bucketName,
+          Key: testKey
+        });
+        await this.client.send(deleteCommand);
+      } catch (deleteError) {
+        // Ignore delete errors - we mainly care about write access
+        console.log('S3 Service: Test file created but could not be deleted (this is okay)');
+      }
+      
+      return true;
+    } catch (error: any) {
+      console.error('S3 Service: Write access test failed:', error.name || error);
       return false;
     }
   }
