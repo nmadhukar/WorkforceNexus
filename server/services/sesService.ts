@@ -141,15 +141,19 @@ export class SESService {
       // Try environment credentials first (direct use without decryption)
       // First try SES-specific credentials, then fall back to general AWS credentials
       if (process.env.AWS_SES_ACCESS_KEY_ID && process.env.AWS_SES_SECRET_ACCESS_KEY) {
-        console.log("SES Service: Using SES-specific environment credentials directly");
+        console.log("SES Service [DEBUG]: Using SES-specific environment credentials directly");
+        console.log(`  - Access Key ID: ${process.env.AWS_SES_ACCESS_KEY_ID.substring(0, 10)}...`);
+        console.log(`  - Secret Key: ***SET***`);
         accessKeyId = process.env.AWS_SES_ACCESS_KEY_ID;
         secretAccessKey = process.env.AWS_SES_SECRET_ACCESS_KEY;
-        console.log("SES Service: SES environment credentials loaded successfully");
+        console.log("SES Service [DEBUG]: SES environment credentials loaded successfully");
       } else if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
-        console.log("SES Service: Using general AWS environment credentials as fallback");
+        console.log("SES Service [DEBUG]: Using general AWS environment credentials as fallback");
+        console.log(`  - Access Key ID: ${process.env.AWS_ACCESS_KEY_ID.substring(0, 10)}...`);
+        console.log(`  - Secret Key: ***SET***`);
         accessKeyId = process.env.AWS_ACCESS_KEY_ID;
         secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
-        console.log("SES Service: General AWS credentials loaded successfully");
+        console.log("SES Service [DEBUG]: General AWS credentials loaded successfully");
       } else if (this.config.accessKeyId && this.config.accessKeyId !== '') {
         console.log("SES Service: Attempting to decrypt access key from database...");
         console.log("SES Service: Encrypted access key length:", this.config.accessKeyId.length);
@@ -235,8 +239,16 @@ export class SESService {
 
       // Initialize SES client with timeout configuration
       try {
+        const region = this.config.region || process.env.AWS_SES_REGION || "us-east-1";
+        console.log("SES Service [DEBUG]: Creating SES client with configuration:");
+        console.log(`  - Region: ${region}`);
+        console.log(`  - Access Key ID: ${accessKeyId.substring(0, 10)}...`);
+        console.log(`  - From Email: ${this.config.fromEmail}`);
+        console.log(`  - Request Timeout: 10000ms`);
+        console.log(`  - Connection Timeout: 5000ms`);
+        
         this.client = new SESClient({
-          region: this.config.region || process.env.AWS_SES_REGION || "us-east-1",
+          region: region,
           credentials: {
             accessKeyId,
             secretAccessKey
@@ -248,7 +260,7 @@ export class SESService {
         });
         
         this.initialized = true;
-        console.log("SES Service: Initialized successfully with region:", this.config.region || process.env.AWS_SES_REGION || "us-east-1");
+        console.log(`SES Service [DEBUG]: ✅ Initialized successfully with region: ${region}`);
         return true;
         
       } catch (clientError) {
@@ -1032,7 +1044,13 @@ HR Management System
 
       // Use simple email format without display name to avoid permission issues
       const sourceEmail = this.config.fromEmail || 'admin@atcemr.com';
-      console.log(`SES Service: Using source email: ${sourceEmail}`);
+      console.log(`SES Service [DEBUG]: Preparing to send email:`);
+      console.log(`  - From: ${sourceEmail}`);
+      console.log(`  - To: ${options.to}`);
+      console.log(`  - Subject: ${options.subject}`);
+      console.log(`  - Has HTML body: ${!!options.bodyHtml}`);
+      console.log(`  - Has text body: ${!!options.bodyText}`);
+      console.log(`  - Reply-To: ${options.replyTo || 'not set'}`);
       
       const params = {
         Source: sourceEmail, // Use just the email address without display name
@@ -1062,6 +1080,7 @@ HR Management System
         ...(options.replyTo && { ReplyToAddresses: [options.replyTo] })
       };
 
+      console.log("SES Service [DEBUG]: Sending email via AWS SES...");
       const command = new SendEmailCommand(params);
       
       // Add promise timeout wrapper to prevent hanging
@@ -1072,9 +1091,20 @@ HR Management System
       
       const response = await Promise.race([sendEmailPromise, timeoutPromise]);
       
-      console.log(`SES Service: Email sent successfully to ${options.to}`);
+      console.log(`SES Service [DEBUG]: ✅ Email sent successfully!`);
+      console.log(`  - To: ${options.to}`);
+      console.log(`  - Message ID: ${response.MessageId}`);
+      console.log(`  - Request ID: ${response.$metadata?.requestId}`);
       return { success: true, messageId: response.MessageId };
     } catch (error: any) {
+      console.log("SES Service [DEBUG]: Email send failed with error:");
+      console.log(`  - Error Name: ${error.name}`);
+      console.log(`  - Error Code: ${error.Code}`);
+      console.log(`  - Error Message: ${error.message}`);
+      console.log(`  - HTTP Status: ${error.$metadata?.httpStatusCode}`);
+      console.log(`  - Request ID: ${error.$metadata?.requestId}`);
+      console.log(`  - Error Type: ${error.$fault}`);
+      
       console.error("SES Service: Failed to send email", error);
       return { 
         success: false, 
