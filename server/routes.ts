@@ -1869,21 +1869,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Handle S3 stored documents
         if (document.storageType === 's3' && document.storageKey) {
-          // Generate a signed URL for direct download from S3
-          const signedUrl = await s3Service.getSignedUrl(document.storageKey, 3600);
+          // Stream from S3 through the server to avoid CORS issues
+          const downloadResult = await s3Service.downloadFile(document.storageKey, 's3');
           
-          if (signedUrl) {
-            // Redirect to the signed URL for download
-            return res.redirect(signedUrl);
+          if (downloadResult.success && downloadResult.data) {
+            res.setHeader('Content-Type', downloadResult.contentType || 'application/octet-stream');
+            res.setHeader('Content-Disposition', `attachment; filename="${document.fileName || 'document'}"`);
+            res.setHeader('Content-Length', downloadResult.data.length.toString());
+            return res.send(downloadResult.data);
           } else {
-            // Fallback: Download from S3 and stream to client
-            const downloadResult = await s3Service.downloadFile(document.storageKey, 's3');
-            
-            if (downloadResult.success && downloadResult.data) {
-              res.setHeader('Content-Type', downloadResult.contentType || 'application/octet-stream');
-              res.setHeader('Content-Disposition', `attachment; filename="${document.fileName || 'document'}"`);
-              return res.send(downloadResult.data);
-            }
+            console.error('Failed to download from S3:', document.storageKey);
+            return res.status(404).json({ error: 'Document file not found in storage' });
           }
         }
         

@@ -259,17 +259,7 @@ export function useDocuments(options: UseDocumentsOptions = {}) {
   // Download document
   const download = async (documentId: number, fileName?: string) => {
     try {
-      // Try to get presigned URL first
-      try {
-        const url = await getPresignedUrl(documentId);
-        window.open(url, '_blank');
-        return;
-      } catch (presignedError) {
-        // Fallback to direct download endpoint
-        console.warn('Presigned URL failed, using direct download:', presignedError);
-      }
-
-      // Direct download fallback
+      // Use direct download endpoint (streams through server, avoids CORS issues)
       const url = `/api/documents/${documentId}/download`;
       const link = document.createElement('a');
       link.href = url;
