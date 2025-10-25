@@ -321,11 +321,20 @@ class S3Service {
   private loadConfigFromEnv(): S3Config | null {
     const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
     const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
-    const region = process.env.AWS_REGION || 'us-east-1';
+    // Force us-east-1 for debugging as requested
+    const region = 'us-east-1';
     const bucketName = process.env.AWS_S3_BUCKET_NAME;
     const endpoint = process.env.AWS_S3_ENDPOINT;
 
+    console.log('S3 Service [DEBUG]: Loading environment configuration:');
+    console.log(`  - Access Key ID: ${accessKeyId ? accessKeyId.substring(0, 10) + '...' : 'NOT SET'}`);
+    console.log(`  - Secret Key: ${secretAccessKey ? '***SET***' : 'NOT SET'}`); 
+    console.log(`  - Region: ${region}`);
+    console.log(`  - Bucket Name: ${bucketName || 'NOT SET'}`);
+    console.log(`  - Endpoint: ${endpoint || 'default AWS endpoint'}`);
+
     if (!accessKeyId || !secretAccessKey || !bucketName) {
+      console.log('S3 Service [DEBUG]: Missing required environment variables');
       return null;
     }
 
@@ -353,6 +362,12 @@ class S3Service {
     }
 
     try {
+      console.log('S3 Service [DEBUG]: Initializing S3 client with configuration:');
+      console.log(`  - Region: ${config.region}`);
+      console.log(`  - Bucket: ${config.bucketName}`);
+      console.log(`  - Endpoint: ${config.endpoint || 'default AWS endpoint'}`);
+      console.log(`  - Force Path Style: true`);
+      
       const clientConfig: any = {
         region: config.region,
         credentials: config.credentials,
@@ -365,6 +380,8 @@ class S3Service {
 
       this.client = new S3Client(clientConfig);
       this.bucketName = config.bucketName;
+      
+      console.log('S3 Service [DEBUG]: S3 client created, checking bucket access...');
       
       // Check bucket access and handle region mismatches
       const isAccessible = await this.checkBucketAccessWithRetry();
@@ -442,19 +459,32 @@ class S3Service {
    */
   public async checkBucketAccess(): Promise<boolean> {
     if (!this.client || !this.bucketName) {
+      console.log('S3 Service [DEBUG]: No client or bucket name configured');
       return false;
     }
 
     try {
+      console.log(`S3 Service [DEBUG]: Checking access to bucket: ${this.bucketName}`);
+      
       // Try to list objects with a limit of 1 to check bucket access
       const command = new ListObjectsV2Command({
         Bucket: this.bucketName,
         MaxKeys: 1
       });
       
+      console.log('S3 Service [DEBUG]: Sending ListObjectsV2Command...');
       await this.client.send(command);
+      console.log('S3 Service [DEBUG]: ✅ Bucket access check successful');
       return true;
     } catch (error: any) {
+      console.log('S3 Service [DEBUG]: Bucket access check failed with error:');
+      console.log(`  - Error Name: ${error.name}`);
+      console.log(`  - Error Code: ${error.Code}`);
+      console.log(`  - Error Message: ${error.message}`);
+      console.log(`  - HTTP Status: ${error.$metadata?.httpStatusCode}`);
+      console.log(`  - Request ID: ${error.RequestId}`);
+      console.log(`  - Extended Request ID: ${error.$metadata?.extendedRequestId}`);
+      
       if (error instanceof S3ServiceException) {
         console.error(`S3 Service: Bucket access check failed - ${error.name}: ${error.message}`);
         
@@ -790,6 +820,14 @@ class S3Service {
     metadata?: Record<string, string>,
     tags?: Record<string, string>
   ): Promise<UploadResult & { versionId?: string }> {
+    console.log('S3 Service [DEBUG]: uploadFile called with:');
+    console.log(`  - Key: ${key}`);
+    console.log(`  - Content Type: ${contentType}`);
+    console.log(`  - Buffer Size: ${buffer.length} bytes`);
+    console.log(`  - Is Configured: ${this.isConfigured()}`);
+    console.log(`  - Has Client: ${!!this.client}`);
+    console.log(`  - Bucket Name: ${this.bucketName}`);
+    
     // Use S3 if configured
     if (this.isConfigured() && this.client && this.bucketName) {
       try {
@@ -803,8 +841,19 @@ class S3Service {
           StorageClass: 'STANDARD_IA' // Use infrequent access for cost optimization
         };
 
+        console.log('S3 Service [DEBUG]: Sending PutObjectCommand with:');
+        console.log(`  - Bucket: ${params.Bucket}`);
+        console.log(`  - Key: ${params.Key}`);
+        console.log(`  - Content Type: ${params.ContentType}`);
+        console.log(`  - Server Side Encryption: ${params.ServerSideEncryption}`);
+        console.log(`  - Storage Class: ${params.StorageClass}`);
+        
         const command = new PutObjectCommand(params);
         const response = await this.client.send(command);
+        
+        console.log('S3 Service [DEBUG]: ✅ Upload successful!');
+        console.log(`  - ETag: ${response.ETag}`);
+        console.log(`  - Version ID: ${response.VersionId || 'N/A'}`);
         
         // Add tags if provided
         if (tags && Object.keys(tags).length > 0) {
@@ -835,10 +884,20 @@ class S3Service {
           etag: response.ETag,
           versionId: response.VersionId
         };
-      } catch (error) {
+      } catch (error: any) {
+        console.log('S3 Service [DEBUG]: Upload failed with error:');
+        console.log(`  - Error Name: ${error.name}`);
+        console.log(`  - Error Code: ${error.Code}`);
+        console.log(`  - Error Message: ${error.message}`);
+        console.log(`  - HTTP Status: ${error.$metadata?.httpStatusCode}`);
+        console.log(`  - Request ID: ${error.RequestId}`);
+        console.log(`  - Extended Request ID: ${error.$metadata?.extendedRequestId}`);
+        
         console.error('S3 Service: Upload failed, falling back to local storage:', error);
         // Fall through to local storage fallback
       }
+    } else {
+      console.log('S3 Service [DEBUG]: S3 not configured, using local storage');
     }
 
     // Fallback to local storage
