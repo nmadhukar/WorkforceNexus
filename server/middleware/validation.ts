@@ -53,7 +53,6 @@ export const validateEmployee = (): ValidationChain[] => [
  * - Continuing education
  */
 export const validateEducation = (): ValidationChain[] => [
-  body('employeeId').isInt().withMessage('Employee ID must be an integer'),
   body('schoolInstitution').optional().isLength({ min: 1 }).withMessage('School institution cannot be empty'),
   body('degree').optional().isLength({ min: 1 }).withMessage('Degree cannot be empty')
 ];
@@ -71,14 +70,12 @@ export const validateEducation = (): ValidationChain[] => [
  * - Expiration dates for compliance tracking
  */
 export const validateLicense = (): ValidationChain[] => [
-  body('employeeId').isInt().withMessage('Employee ID must be an integer'),
   body('licenseNumber').notEmpty().withMessage('License number is required'),
-  body('state').optional().isLength({ min: 2, max: 2 }).withMessage('State must be 2 characters'),
+  body('state').optional().matches(/^[A-Z]{2}$/).withMessage('State must be a 2-letter uppercase code'),
   body('expirationDate').optional().isDate().withMessage('Valid expiration date required')
 ];
 
 export const validateDocument = (): ValidationChain[] => [
-  body('employeeId').isInt().withMessage('Employee ID must be an integer'),
   body('documentType').notEmpty().withMessage('Document type is required')
 ];
 
@@ -111,8 +108,17 @@ export const validateId = (): ValidationChain[] => [
 export const validateEmployment = (): ValidationChain[] => [
   body('employer').optional().isLength({ min: 1 }).withMessage('Employer cannot be empty'),
   body('position').optional().isLength({ min: 1 }).withMessage('Position cannot be empty'),
-  body('startDate').optional().isDate().withMessage('Valid start date required'),
-  body('endDate').optional().isDate().withMessage('Valid end date required')
+  // Accept YYYY-MM-DD or ISO strings and coerce to date
+  body('startDate')
+    .optional({ checkFalsy: true })
+    .customSanitizer((v) => (typeof v === 'string' ? v.split('T')[0] : v))
+    .isDate()
+    .withMessage('Valid start date required'),
+  body('endDate')
+    .optional({ checkFalsy: true })
+    .customSanitizer((v) => (typeof v === 'string' ? v.split('T')[0] : v))
+    .isDate()
+    .withMessage('Valid end date required')
 ];
 
 // Peer Reference validation
@@ -342,9 +348,8 @@ export const validateLicenseType = (): ValidationChain[] => [
 // Responsible Person validation
 export const validateResponsiblePerson = (): ValidationChain[] => [
   body('email').notEmpty().isEmail().withMessage('Valid email is required'),
-  body('employeeId').optional().isInt({ min: 1 }).withMessage('Employee ID must be a positive integer'),
-  body('firstName').optional().if((value: any, { req }: any) => !req.body.employeeId).notEmpty().withMessage('First name required when not linked to employee'),
-  body('lastName').optional().if((value: any, { req }: any) => !req.body.employeeId).notEmpty().withMessage('Last name required when not linked to employee'),
+  body('firstName').optional().notEmpty().withMessage('First name is required'),
+  body('lastName').optional().notEmpty().withMessage('Last name is required'),
   body('preferredContactMethod').optional().isIn(['email', 'phone', 'sms']).withMessage('Invalid contact method'),
   body('status').optional().isIn(['active', 'inactive', 'on_leave']).withMessage('Invalid status')
 ];

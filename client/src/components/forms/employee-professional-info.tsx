@@ -40,19 +40,38 @@ export function EmployeeProfessionalInfo({ data, onChange, onValidationChange, r
     mode: "onSubmit",
     reValidateMode: "onChange",
     defaultValues: {
-      jobTitle: data.jobTitle || "",
-      workLocation: data.workLocation || "",
-      status: data.status || "active",
-      npiNumber: data.npiNumber || "",
-      enumerationDate: data.enumerationDate || "",
-      workPhone: data.workPhone || "",
-      qualification: data.qualification || "",
-      caqhLoginId: data.caqhLoginId || "",
-      caqhPassword: data.caqhPassword || "",
-      nppesLoginId: data.nppesLoginId || "",
-      nppesPassword: data.nppesPassword || "",
+      jobTitle: "",
+      workLocation: "",
+      status: "active",
+      npiNumber: "",
+      enumerationDate: "",
+      workPhone: "",
+      qualification: "",
+      caqhLoginId: "",
+      caqhPassword: "",
+      nppesLoginId: "",
+      nppesPassword: "",
     },
   });
+
+  // Update form values when data changes
+  useEffect(() => {
+    if (data && (data.jobTitle || data.workLocation)) {
+      form.reset({
+        jobTitle: data.jobTitle || "",
+        workLocation: data.workLocation || "",
+        status: data.status || "active",
+        npiNumber: data.npiNumber || "",
+        enumerationDate: data.enumerationDate || "",
+        workPhone: data.workPhone || "",
+        qualification: data.qualification || "",
+        caqhLoginId: data.caqhLoginId || "",
+        caqhPassword: data.caqhPassword || "",
+        nppesLoginId: data.nppesLoginId || "",
+        nppesPassword: data.nppesPassword || "",
+      });
+    }
+  }, [data, form]);
 
   // Watch and propagate changes to parent
   useEffect(() => {
