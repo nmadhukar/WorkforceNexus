@@ -206,7 +206,13 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
   };
 
   // State License handlers
-  const handleStateSubmit = (formData: StateLicenseFormData) => {
+  const handleStateSubmit = async (formData: StateLicenseFormData) => {
+    const isValid = await stateForm.trigger();
+    if (!isValid) {
+      console.log('State license form validation failed');
+      return;
+    }
+    
     // Respect the status selected by the user; do not auto-override
     const licenseData = { ...formData } as any;
     
@@ -240,7 +246,13 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
   };
 
   // DEA License handlers
-  const handleDeaSubmit = (formData: DeaLicenseFormData) => {
+  const handleDeaSubmit = async (formData: DeaLicenseFormData) => {
+    const isValid = await deaForm.trigger();
+    if (!isValid) {
+      console.log('DEA license form validation failed');
+      return;
+    }
+    
     // Respect the status selected by the user; do not auto-override
     const licenseData = { ...formData } as any;
     
@@ -396,8 +408,6 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
                     <TableCell>{license.state || "-"}</TableCell>
                     <TableCell>{formatDateDisplay(license.issueDate)}</TableCell>
                     <TableCell>{formatDateDisplay(license.expirationDate)}</TableCell>
-                    <TableCell>{formatDateDisplay(license.issueDate)}</TableCell>
-                    <TableCell>{formatDateDisplay(license.expirationDate)}</TableCell>
                     <TableCell>{getStatusBadge(getActualStatus(license))}</TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -455,7 +465,18 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
                   <FormItem>
                     <FormLabel>State</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g., CA, NY, TX" data-testid="input-state" autoComplete="off" />
+                      <Input 
+                        {...field} 
+                        placeholder="e.g., CA, NY, TX" 
+                        data-testid="input-state" 
+                        autoComplete="off" 
+                        maxLength={2}
+                        onChange={(e) => {
+                          const value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+                          field.onChange(value);
+                        }}
+                        onBlur={field.onBlur}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -559,7 +580,18 @@ export function EmployeeLicenses({ data, onChange, employeeId, onValidationChang
                   <FormItem>
                     <FormLabel>State</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g., CA, NY, TX" data-testid="input-dea-state" autoComplete="off" />
+                      <Input 
+                        {...field} 
+                        placeholder="e.g., CA, NY, TX" 
+                        data-testid="input-dea-state" 
+                        autoComplete="off" 
+                        maxLength={2}
+                        onChange={(e) => {
+                          const value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+                          field.onChange(value);
+                        }}
+                        onBlur={field.onBlur}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

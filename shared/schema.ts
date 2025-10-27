@@ -1163,7 +1163,8 @@ export const insertEmploymentSchema = createInsertSchema(employments, {
 export const insertPeerReferenceSchema = createInsertSchema(peerReferences).omit({ id: true });
 export const insertStateLicenseSchema = createInsertSchema(stateLicenses, {
   issueDate: z.coerce.date().nullable().optional(),
-  expirationDate: z.coerce.date().nullable().optional()
+  expirationDate: z.coerce.date().nullable().optional(),
+  state: z.string().max(2).regex(/^[A-Z]{2}$/).optional().or(z.literal("")).transform(val => val || null)
 }).omit({ id: true }).refine((data) => {
   if (data.expirationDate && data.issueDate) {
     return new Date(data.expirationDate) >= new Date(data.issueDate);
@@ -1172,7 +1173,8 @@ export const insertStateLicenseSchema = createInsertSchema(stateLicenses, {
 }, { message: "Expiration date cannot be before issue date", path: ["expirationDate"] });
 export const insertDeaLicenseSchema = createInsertSchema(deaLicenses, {
   issueDate: z.coerce.date().nullable().optional(),
-  expirationDate: z.coerce.date().nullable().optional()
+  expirationDate: z.coerce.date().nullable().optional(),
+  state: z.string().max(2).regex(/^[A-Z]{2}$/).optional().or(z.literal("")).transform(val => val || null)
 }).omit({ id: true }).refine((data) => {
   if (data.expirationDate && data.issueDate) {
     return new Date(data.expirationDate) >= new Date(data.issueDate);

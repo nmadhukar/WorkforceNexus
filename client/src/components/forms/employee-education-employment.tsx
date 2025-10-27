@@ -149,7 +149,13 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
   }, [localEducations, localEmployments, onValidationChange]);
 
   // Education handlers
-  const handleEducationSubmit = (formData: EducationFormData) => {
+  const handleEducationSubmit = async (formData: EducationFormData) => {
+    const isValid = await educationForm.trigger();
+    if (!isValid) {
+      console.log('Education form validation failed');
+      return;
+    }
+    
     if (selectedEducation) {
       const updatedEducations = localEducations.map(edu =>
         edu.id === selectedEducation.id ? { ...edu, ...formData } : edu
@@ -182,7 +188,13 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
   };
 
   // Employment handlers
-  const handleEmploymentSubmit = (formData: EmploymentFormData) => {
+  const handleEmploymentSubmit = async (formData: EmploymentFormData) => {
+    const isValid = await employmentForm.trigger();
+    if (!isValid) {
+      console.log('Employment form validation failed');
+      return;
+    }
+    
     if (selectedEmployment) {
       const updatedEmployments = localEmployments.map(emp =>
         emp.id === selectedEmployment.id ? { ...emp, ...formData } : emp

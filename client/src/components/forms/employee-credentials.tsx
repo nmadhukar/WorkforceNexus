@@ -16,17 +16,17 @@ const credentialsSchema = z.object({
   deaNumber: z.string().optional(),
   enumerationDate: z.string().optional(),
   medicalLicenseNumber: z.string().optional(),
-  medicalLicenseState: z.string().optional(),
+  medicalLicenseState: z.string().max(2).regex(/^[A-Z]{0,2}$/, "State must be a 2-letter code").optional().or(z.literal("")),
   medicalLicenseIssueDate: z.string().optional(),
   medicalLicenseExpirationDate: z.string().optional(),
   medicalLicenseStatus: z.string().optional(),
   substanceUseLicenseNumber: z.string().optional(),
-  substanceUseLicenseState: z.string().optional(),
+  substanceUseLicenseState: z.string().max(2).regex(/^[A-Z]{0,2}$/, "State must be a 2-letter code").optional().or(z.literal("")),
   substanceUseLicenseIssueDate: z.string().optional(),
   substanceUseLicenseExpirationDate: z.string().optional(),
   substanceUseLicenseStatus: z.string().optional(),
   mentalHealthLicenseNumber: z.string().optional(),
-  mentalHealthLicenseState: z.string().optional(),
+  mentalHealthLicenseState: z.string().max(2).regex(/^[A-Z]{0,2}$/, "State must be a 2-letter code").optional().or(z.literal("")),
   mentalHealthLicenseIssueDate: z.string().optional(),
   mentalHealthLicenseExpirationDate: z.string().optional(),
   mentalHealthLicenseStatus: z.string().optional(),
@@ -81,37 +81,74 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
     mode: "onSubmit",
     reValidateMode: "onChange",
     defaultValues: {
-      departments: data.departments || "",
-      npiNumber: data.npiNumber || "",
-      deaNumber: data.deaNumber || "",
-      medicalQualification: data.medicalQualification || "",
-      enumerationDate: data.enumerationDate || "",
-      medicalLicenseNumber: data.medicalLicenseNumber || "",
-      medicalLicenseState: data.medicalLicenseState || "",
-      medicalLicenseIssueDate: data.medicalLicenseIssueDate || "",
-      medicalLicenseExpirationDate: data.medicalLicenseExpirationDate || "",
-      medicalLicenseStatus: data.medicalLicenseStatus || "pending",
-      substanceUseLicenseNumber: data.substanceUseLicenseNumber || "",
-      substanceUseLicenseState: data.substanceUseLicenseState || "",
-      substanceUseLicenseIssueDate: data.substanceUseLicenseIssueDate || "",
-      substanceUseLicenseExpirationDate: data.substanceUseLicenseExpirationDate || "",
-      substanceUseLicenseStatus: data.substanceUseLicenseStatus || "pending",
-      mentalHealthLicenseNumber: data.mentalHealthLicenseNumber || "",
-      mentalHealthLicenseState: data.mentalHealthLicenseState || "",
-      mentalHealthLicenseIssueDate: data.mentalHealthLicenseIssueDate || "",
-      mentalHealthLicenseExpirationDate: data.mentalHealthLicenseExpirationDate || "",
-      mentalHealthLicenseStatus: data.mentalHealthLicenseStatus || "pending",
-      substanceUseQualification: data.substanceUseQualification || "",
-      mentalHealthQualification: data.mentalHealthQualification || "",
-      medicaidNumber: data.medicaidNumber || "",
-      medicarePtanNumber: data.medicarePtanNumber || "",
-      caqhProviderId: data.caqhProviderId || "",
-      caqhIssueDate: data.caqhIssueDate || "",
-      caqhLastAttestationDate: data.caqhLastAttestationDate || "",
-      caqhReattestationDueDate: data.caqhReattestationDueDate || "",
-      caqhEnabled: data.caqhEnabled || false,
+      departments: "",
+      npiNumber: "",
+      deaNumber: "",
+      medicalQualification: "",
+      enumerationDate: "",
+      medicalLicenseNumber: "",
+      medicalLicenseState: "",
+      medicalLicenseIssueDate: "",
+      medicalLicenseExpirationDate: "",
+      medicalLicenseStatus: "pending",
+      substanceUseLicenseNumber: "",
+      substanceUseLicenseState: "",
+      substanceUseLicenseIssueDate: "",
+      substanceUseLicenseExpirationDate: "",
+      substanceUseLicenseStatus: "pending",
+      mentalHealthLicenseNumber: "",
+      mentalHealthLicenseState: "",
+      mentalHealthLicenseIssueDate: "",
+      mentalHealthLicenseExpirationDate: "",
+      mentalHealthLicenseStatus: "pending",
+      substanceUseQualification: "",
+      mentalHealthQualification: "",
+      medicaidNumber: "",
+      medicarePtanNumber: "",
+      caqhProviderId: "",
+      caqhIssueDate: "",
+      caqhLastAttestationDate: "",
+      caqhReattestationDueDate: "",
+      caqhEnabled: false,
     },
   });
+
+  // Update form values when data changes
+  useEffect(() => {
+    if (data) {
+      form.reset({
+        departments: data.departments || "",
+        npiNumber: data.npiNumber || "",
+        deaNumber: data.deaNumber || "",
+        medicalQualification: data.medicalQualification || "",
+        enumerationDate: data.enumerationDate || "",
+        medicalLicenseNumber: data.medicalLicenseNumber || "",
+        medicalLicenseState: data.medicalLicenseState || "",
+        medicalLicenseIssueDate: data.medicalLicenseIssueDate || "",
+        medicalLicenseExpirationDate: data.medicalLicenseExpirationDate || "",
+        medicalLicenseStatus: data.medicalLicenseStatus || "pending",
+        substanceUseLicenseNumber: data.substanceUseLicenseNumber || "",
+        substanceUseLicenseState: data.substanceUseLicenseState || "",
+        substanceUseLicenseIssueDate: data.substanceUseLicenseIssueDate || "",
+        substanceUseLicenseExpirationDate: data.substanceUseLicenseExpirationDate || "",
+        substanceUseLicenseStatus: data.substanceUseLicenseStatus || "pending",
+        mentalHealthLicenseNumber: data.mentalHealthLicenseNumber || "",
+        mentalHealthLicenseState: data.mentalHealthLicenseState || "",
+        mentalHealthLicenseIssueDate: data.mentalHealthLicenseIssueDate || "",
+        mentalHealthLicenseExpirationDate: data.mentalHealthLicenseExpirationDate || "",
+        mentalHealthLicenseStatus: data.mentalHealthLicenseStatus || "pending",
+        substanceUseQualification: data.substanceUseQualification || "",
+        mentalHealthQualification: data.mentalHealthQualification || "",
+        medicaidNumber: data.medicaidNumber || "",
+        medicarePtanNumber: data.medicarePtanNumber || "",
+        caqhProviderId: data.caqhProviderId || "",
+        caqhIssueDate: data.caqhIssueDate || "",
+        caqhLastAttestationDate: data.caqhLastAttestationDate || "",
+        caqhReattestationDueDate: data.caqhReattestationDueDate || "",
+        caqhEnabled: data.caqhEnabled || false,
+      });
+    }
+  }, [data, form]);
   const medicalQualificationArray = ["physician", "physician-assistant", "clinical-nurse-specialist", "certified-nurse-practitioner"];
 
   // Watch form values and update parent on valid changes
@@ -412,7 +449,17 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
                 <FormItem>
                   <FormLabel>State</FormLabel>
                   <FormControl>
-                      <Input {...field} placeholder="e.g., CA, NY, TX" data-testid="input-medical-state" />
+                      <Input 
+                        {...field} 
+                        placeholder="e.g., CA, NY, TX" 
+                        data-testid="input-medical-state" 
+                        maxLength={2}
+                        onChange={(e) => {
+                          const value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+                          field.onChange(value);
+                        }}
+                        onBlur={field.onBlur}
+                      />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -496,7 +543,17 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
                 <FormItem>
                   <FormLabel>State</FormLabel>
                   <FormControl>
-                      <Input {...field} placeholder="e.g., CA, NY, TX" data-testid="input-substance-state" />
+                      <Input 
+                        {...field} 
+                        placeholder="e.g., CA, NY, TX" 
+                        data-testid="input-substance-state" 
+                        maxLength={2}
+                        onChange={(e) => {
+                          const value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+                          field.onChange(value);
+                        }}
+                        onBlur={field.onBlur}
+                      />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -608,7 +665,17 @@ export function EmployeeCredentials({ data, onChange, onValidationChange, regist
                 <FormItem>
                   <FormLabel>State</FormLabel>
                   <FormControl>
-                      <Input {...field} placeholder="e.g., CA, NY, TX" data-testid="input-mental-state" />
+                      <Input 
+                        {...field} 
+                        placeholder="e.g., CA, NY, TX" 
+                        data-testid="input-mental-state" 
+                        maxLength={2}
+                        onChange={(e) => {
+                          const value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+                          field.onChange(value);
+                        }}
+                        onBlur={field.onBlur}
+                      />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

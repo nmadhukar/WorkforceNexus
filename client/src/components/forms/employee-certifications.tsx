@@ -154,7 +154,13 @@ export function EmployeeCertifications({ data, onChange, employeeId, onValidatio
     return expDate.getTime() - now.getTime() < thirtyDays && expDate.getTime() > now.getTime();
   };
 
-  const handleSubmit = (formData: CertificationFormData) => {
+  const handleSubmit = async (formData: CertificationFormData) => {
+    const isValid = await form.trigger();
+    if (!isValid) {
+      console.log('Certification form validation failed');
+      return;
+    }
+    
     if (selectedCertification) {
       const updated = localCertifications.map(cert => 
         cert.id === selectedCertification.id ? { ...cert, ...formData } : cert
@@ -188,7 +194,13 @@ export function EmployeeCertifications({ data, onChange, employeeId, onValidatio
     resolver: zodResolver(referenceSchema),
     defaultValues: { referenceName: "", contactInfo: "", relationship: "", comments: "" }
   });
-  const handleReferenceSubmit = (formData: z.infer<typeof referenceSchema>) => {
+  const handleReferenceSubmit = async (formData: z.infer<typeof referenceSchema>) => {
+    const isValid = await referenceForm.trigger();
+    if (!isValid) {
+      console.log('Reference form validation failed');
+      return;
+    }
+    
     if (selectedReference) {
       const updated = localReferences.map(ref => ref.id === selectedReference.id ? { ...ref, ...formData } : ref);
       setLocalReferences(updated);
@@ -218,7 +230,13 @@ export function EmployeeCertifications({ data, onChange, employeeId, onValidatio
     resolver: zodResolver(contactSchema),
     defaultValues: { name: "", relationship: "", phone: "", email: "" }
   });
-  const handleContactSubmit = (formData: z.infer<typeof contactSchema>) => {
+  const handleContactSubmit = async (formData: z.infer<typeof contactSchema>) => {
+    const isValid = await contactForm.trigger();
+    if (!isValid) {
+      console.log('Contact form validation failed');
+      return;
+    }
+    
     if (selectedContact) {
       const updated = localContacts.map(contact => contact.id === selectedContact.id ? { ...contact, ...formData } : contact);
       setLocalContacts(updated);
