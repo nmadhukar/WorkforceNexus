@@ -134,6 +134,7 @@ export default function EmployeeForm() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
+  const currentStepRef = useRef(currentStep);
   const [canProceed, setCanProceed] = useState(true);
   const [proceedBlockedMessage, setProceedBlockedMessage] = useState<string | undefined>(undefined);
   const [formData, setFormData] = useState<EmployeeFormData>({
@@ -180,6 +181,11 @@ export default function EmployeeForm() {
       });
     }
   }, [employee]);
+
+  // Update ref when step changes
+  useEffect(() => {
+    currentStepRef.current = currentStep;
+  }, [currentStep]);
 
   // Reset gating when step changes; individual steps can override via onValidationChange
   useEffect(() => {
@@ -493,8 +499,15 @@ export default function EmployeeForm() {
   const handleNext = async () => {
     const validate = currentStepValidatorRef.current;
     if (validate) {
-      const isValid = await validate();
-      if (!isValid) return;
+      try {
+        const isValid = await validate();
+        if (!isValid) {
+          return;
+        }
+      } catch (error) {
+        return;
+      }
+    } else {
     }
     if (currentStep < 13) {
       setCurrentStep(currentStep + 1);
@@ -518,6 +531,18 @@ export default function EmployeeForm() {
     setFormData(prev => ({ ...prev, ...data }));
   }, []);
 
+  /**
+   * Memoized validation registration function to prevent unnecessary re-renders
+   */
+  const registerStepValidation = useCallback(<T extends () => boolean | Promise<boolean>>(fn: T) => {
+    const stepNumber = currentStepRef.current;
+    currentStepValidatorRef.current = async () => {
+      const result = fn();
+      const isValid = !!(await Promise.resolve(result));
+      return isValid;
+    };
+  }, []);
+
   const steps = [
     {
       title: "Personal Info",
@@ -525,7 +550,7 @@ export default function EmployeeForm() {
         <EmployeePersonalInfo
           data={formData}
           onChange={updateFormData}
-          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
+          registerValidation={registerStepValidation}
           data-testid="step-personal-info"
         />
       )
@@ -536,7 +561,7 @@ export default function EmployeeForm() {
         <EmployeeProfessionalInfo
           data={formData}
           onChange={updateFormData}
-          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
+          registerValidation={registerStepValidation}
           data-testid="step-professional-info"
         />
       )
@@ -547,7 +572,7 @@ export default function EmployeeForm() {
         <EmployeeCredentials
           data={formData}
           onChange={updateFormData}
-          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
+          registerValidation={registerStepValidation}
           data-testid="step-credentials"
         />
       )
@@ -570,7 +595,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
-          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
+          registerValidation={registerStepValidation}
           data-testid="step-education-employment"
         />
       )
@@ -582,7 +607,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
-          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
+          registerValidation={registerStepValidation}
           data-testid="step-licenses"
         />
       )
@@ -594,7 +619,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
-          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
+          registerValidation={registerStepValidation}
           data-testid="step-certifications"
         />
       )
@@ -618,7 +643,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
-          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
+          registerValidation={registerStepValidation}
           onValidationChange={(isValid) => {
             setCanProceed(!!isValid);
             setProceedBlockedMessage(isValid ? undefined : "Please upload all required documents to continue");
@@ -634,7 +659,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
-          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
+          registerValidation={registerStepValidation}
           data-testid="step-training-payer"
         />
       )
@@ -646,7 +671,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
-          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
+          registerValidation={registerStepValidation}
           data-testid="step-forms"
         />
       )
@@ -658,7 +683,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
-          registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
+          registerValidation={registerStepValidation}
           data-testid="step-incidents"
         />
       )

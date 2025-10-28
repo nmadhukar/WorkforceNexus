@@ -15,7 +15,11 @@ const personalInfoSchema = z.object({
   gender: z.string().optional(),
   ssn: z
     .string()
-    .regex(/^\d{3}-\d{2}-\d{4}$/, "SSN must be in XXX-XX-XXXX format"),
+    .min(1, "SSN is required")
+    .refine(
+      (val) => /^\d{3}-\d{2}-\d{4}$/.test(val),
+      { message: "SSN must be in XXX-XX-XXXX format" }
+    ),
   personalEmail: z.string().min(1, "Personal email is required").email("Invalid email address"),
   workEmail: z.string().optional().refine(
     (val) => !val || z.string().email().safeParse(val).success,
@@ -49,7 +53,7 @@ export function EmployeePersonalInfo({ data, onChange, onValidationChange, regis
   const form = useForm<PersonalInfoFormData>({
     resolver: zodResolver(personalInfoSchema),
     mode: "onSubmit",
-    reValidateMode: "onChange",
+    reValidateMode: "onBlur",
     defaultValues: {
       firstName: "",
       middleName: "",
@@ -100,7 +104,7 @@ export function EmployeePersonalInfo({ data, onChange, onValidationChange, regis
         dlStateIssued: data.dlStateIssued || "",
         dlIssueDate: data.dlIssueDate || "",
         dlExpirationDate: data.dlExpirationDate || "",
-      });
+      }, { keepErrors: true });
     }
   }, [data, form]);
 
@@ -131,19 +135,7 @@ export function EmployeePersonalInfo({ data, onChange, onValidationChange, regis
     };
   }, [form, onChange]);
 
-  // Register validation function with parent
-  useEffect(() => {
-    if (registerValidation) {
-      registerValidation(async () => {
-        // Trigger validation on all fields
-        const isValid = await form.trigger();
-        // Return validation result
-        return isValid;
-      });
-    }
-  }, [form, registerValidation]);
-
-  // Expose validation function to parent; do not show messages until asked
+  // Register validation function with parent - single registration
   useEffect(() => {
     if (registerValidation) {
       registerValidation(async () => {
