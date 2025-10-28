@@ -151,13 +151,13 @@ interface DocusealAPITemplate {
  * @description
  * - User Management: Create/delete user accounts with role-based access control
  * - S3 Storage Configuration: Object storage setup with AWS S3 or compatible services
- * - SES Email Configuration: Amazon SES setup for system email notifications
+ * - Email Configuration: Mailtrap setup for system email notifications
  * - DocuSeal Integration: Document signing service configuration and template management
  * - System Settings: Global preferences for notifications, alerts, and automation
  * - Role-based access control: Different features available based on user role (admin/hr/viewer)
  * - Real-time configuration testing with connection validation
  * - Database migration tools for storage configuration changes
- * - Email verification workflow for SES setup
+ * - Email verification workflow for email setup
  * - Template synchronization with DocuSeal service
  * - Advanced configuration options with environment variable support
  * - Comprehensive error handling and user feedback
@@ -195,9 +195,7 @@ export default function Settings() {
   const [docusealSyncLoading, setDocusealSyncLoading] = useState(false);
   const [docusealTemplateDialogOpen, setDocusealTemplateDialogOpen] = useState(false);
   const [sesFormData, setSesFormData] = useState({
-    accessKeyId: "",
-    secretAccessKey: "",
-    region: "us-east-1",
+    token: "",
     fromEmail: "",
     fromName: "HR Management System",
     enabled: true
@@ -439,7 +437,7 @@ export default function Settings() {
     onSuccess: () => {
       toast({
         title: "Success",
-        description: "SES configuration saved successfully"
+        description: "Mailtrap configuration saved successfully"
       });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/ses-config"] });
       setSesConfigDialogOpen(false);
@@ -609,9 +607,7 @@ export default function Settings() {
     // Pre-fill form with current configuration if exists
     if (sesConfig && sesConfig.configured) {
       setSesFormData({
-        accessKeyId: "", // Don't pre-fill sensitive data
-        secretAccessKey: "", // Don't pre-fill sensitive data
-        region: sesConfig.region || "us-east-1",
+        token: "", // Don't pre-fill sensitive data
         fromEmail: sesConfig.fromEmail || "",
         fromName: sesConfig.fromName || "HR Management System",
         enabled: sesConfig.enabled
@@ -621,7 +617,12 @@ export default function Settings() {
   };
 
   const handleSaveSesConfig = () => {
-    updateSesConfigMutation.mutate(sesFormData);
+    // Send token as accessKeyId for backward compatibility
+    const configData = {
+      ...sesFormData,
+      accessKeyId: sesFormData.token, // For backward compatibility
+    };
+    updateSesConfigMutation.mutate(configData as any);
   };
 
   const handleTestSesEmail = () => {
@@ -1592,13 +1593,13 @@ export default function Settings() {
           </Card>
         )}
 
-        {/* Email Configuration (AWS SES) - Admin and HR users */}
+        {/* Email Configuration (Mailtrap) - Admin and HR users */}
         {(isAdmin || user?.role === 'hr') && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
                 <Mail className="w-5 h-5 mr-2" />
-                Email Configuration (AWS SES)
+                Email Configuration (Mailtrap)
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -1617,7 +1618,7 @@ export default function Settings() {
                         <XCircle className="w-5 h-5 text-destructive mr-2" />
                       )}  
                       <span className="font-medium">
-                        SES Email {sesConfig?.configured ? 'Configured' : 'Not Configured'}
+                        Mailtrap Email {sesConfig?.configured ? 'Configured' : 'Not Configured'}
                       </span>
                     </div>
                     
@@ -1629,8 +1630,8 @@ export default function Settings() {
                             <span className="font-medium">{sesConfig?.fromEmail || 'Not set'}</span>
                           </div>
                           <div>
-                            <span className="text-muted-foreground">Region:</span>{' '}
-                            <span className="font-medium">{sesConfig?.region || 'Not set'}</span>
+                            <span className="text-muted-foreground">From Name:</span>{' '}
+                            <span className="font-medium">{sesConfig?.fromName || 'HR Management System'}</span>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1667,11 +1668,7 @@ export default function Settings() {
                       <Label className="text-base font-medium mb-2">Configuration Details</Label>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm mt-2">
                         <div className="p-2 bg-muted/30 rounded">
-                          <span className="text-muted-foreground">Access Key ID:</span>{' '}
-                          <span className="font-mono text-xs">****</span>
-                        </div>
-                        <div className="p-2 bg-muted/30 rounded">
-                          <span className="text-muted-foreground">Secret Access Key:</span>{' '}
+                          <span className="text-muted-foreground">API Token:</span>{' '}
                           <span className="font-mono text-xs">****</span>
                         </div>
                         <div className="p-2 bg-muted/30 rounded">
@@ -1690,7 +1687,7 @@ export default function Settings() {
                       data-testid="button-configure-ses"
                     >
                       <SettingsIcon className="w-4 h-4 mr-2" />
-                      {sesConfig?.configured ? 'Update Configuration' : 'Configure SES'}
+                      {sesConfig?.configured ? 'Update Configuration' : 'Configure Mailtrap'}
                     </Button>
                     
                     {sesConfig?.configured && (
@@ -1724,7 +1721,7 @@ export default function Settings() {
                     <div className="mt-4 p-4 bg-muted/30 rounded-lg">
                       <p className="text-sm font-medium mb-2">Email sending is not configured.</p>
                       <p className="text-sm text-muted-foreground">
-                        Configure AWS SES to enable email invitations and notifications.
+                        Configure Mailtrap to enable email invitations and notifications.
                       </p>
                     </div>
                   )}
@@ -2011,40 +2008,22 @@ export default function Settings() {
         <Dialog open={sesConfigDialogOpen} onOpenChange={setSesConfigDialogOpen}>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Configure AWS SES Email</DialogTitle>
+              <DialogTitle>Configure Mailtrap Email</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div>
-                <Label htmlFor="ses-region">AWS Region</Label>
+                <Label htmlFor="ses-token">Mailtrap API Token</Label>
                 <Input
-                  id="ses-region"
-                  value={sesFormData.region}
-                  onChange={(e) => setSesFormData(prev => ({ ...prev, region: e.target.value }))}
-                  placeholder="e.g., us-east-1"
-                  data-testid="input-ses-region"
-                />
-              </div>
-              <div>
-                <Label htmlFor="ses-access-key">AWS Access Key ID</Label>
-                <Input
-                  id="ses-access-key"
+                  id="ses-token"
                   type="password"
-                  value={sesFormData.accessKeyId}
-                  onChange={(e) => setSesFormData(prev => ({ ...prev, accessKeyId: e.target.value }))}
-                  placeholder="Enter AWS Access Key ID"
-                  data-testid="input-ses-access-key"
+                  value={sesFormData.token}
+                  onChange={(e) => setSesFormData(prev => ({ ...prev, token: e.target.value }))}
+                  placeholder="Enter Mailtrap API Token"
+                  data-testid="input-ses-token"
                 />
-              </div>
-              <div>
-                <Label htmlFor="ses-secret-key">AWS Secret Access Key</Label>
-                <Input
-                  id="ses-secret-key"
-                  type="password"
-                  value={sesFormData.secretAccessKey}
-                  onChange={(e) => setSesFormData(prev => ({ ...prev, secretAccessKey: e.target.value }))}
-                  placeholder="Enter AWS Secret Access Key"
-                  data-testid="input-ses-secret-key"
-                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Get your API token from Mailtrap settings under API Tokens
+                </p>
               </div>
               <div>
                 <Label htmlFor="ses-from-email">From Email Address</Label>
@@ -2078,7 +2057,7 @@ export default function Settings() {
               </div>
               <Button
                 onClick={handleSaveSesConfig}
-                disabled={updateSesConfigMutation.isPending || !sesFormData.accessKeyId || !sesFormData.secretAccessKey || !sesFormData.fromEmail}
+                disabled={updateSesConfigMutation.isPending || !sesFormData.token || !sesFormData.fromEmail}
                 className="w-full"
                 data-testid="button-save-ses-config"
               >
@@ -2096,7 +2075,7 @@ export default function Settings() {
             </DialogHeader>
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Enter an email address to send a test email and verify your SES configuration is working.
+                Enter an email address to send a test email and verify your Mailtrap configuration is working.
               </p>
               <div>
                 <Label htmlFor="test-email">Test Email Address</Label>
