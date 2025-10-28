@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -13,7 +13,13 @@ const personalInfoSchema = z.object({
   lastName: z.string().min(1, "Last name is required"),
   dateOfBirth: z.string().min(1, "Date of birth is required"),
   gender: z.string().optional(),
-  ssn: z.string().min(1, "SSN is required"),
+  ssn: z
+    .string()
+    .min(1, "SSN is required")
+    .refine(
+      (val) => /^\d{3}-\d{2}-\d{4}$/.test(val),
+      { message: "SSN must be in XXX-XX-XXXX format" }
+    ),
   personalEmail: z.string().min(1, "Personal email is required").email("Invalid email address"),
   workEmail: z.string().optional().refine(
     (val) => !val || z.string().email().safeParse(val).success,
@@ -25,6 +31,13 @@ const personalInfoSchema = z.object({
   homeCity: z.string().optional(),
   homeState: z.string().optional(),
   homeZip: z.string().optional(),
+  birthCity: z.string().optional(),
+  birthState: z.string().optional(),
+  birthCountry: z.string().optional(),
+  driversLicenseNumber: z.string().optional(),
+  dlStateIssued: z.string().optional(),
+  dlIssueDate: z.string().optional(),
+  dlExpirationDate: z.string().optional(),
 });
 
 type PersonalInfoFormData = z.infer<typeof personalInfoSchema>;
@@ -39,63 +52,98 @@ interface EmployeePersonalInfoProps {
 export function EmployeePersonalInfo({ data, onChange, onValidationChange, registerValidation }: EmployeePersonalInfoProps) {
   const form = useForm<PersonalInfoFormData>({
     resolver: zodResolver(personalInfoSchema),
+    mode: "onSubmit",
+    reValidateMode: "onBlur",
     defaultValues: {
-      firstName: data.firstName || "",
-      middleName: data.middleName || "",
-      lastName: data.lastName || "",
-      dateOfBirth: data.dateOfBirth || "",
-      gender: data.gender || "",
-      ssn: data.ssn || "",
-      personalEmail: data.personalEmail || "",
-      workEmail: data.workEmail || "",
-      cellPhone: data.cellPhone || "",
-      homeAddress1: data.homeAddress1 || "",
-      homeAddress2: data.homeAddress2 || "",
-      homeCity: data.homeCity || "",
-      homeState: data.homeState || "",
-      homeZip: data.homeZip || "",
+      firstName: "",
+      middleName: "",
+      lastName: "",
+      dateOfBirth: "",
+      gender: "",
+      ssn: "",
+      personalEmail: "",
+      workEmail: "",
+      cellPhone: "",
+      homeAddress1: "",
+      homeAddress2: "",
+      homeCity: "",
+      homeState: "",
+      homeZip: "",
+      birthCity: "",
+      birthState: "",
+      birthCountry: "",
+      driversLicenseNumber: "",
+      dlStateIssued: "",
+      dlIssueDate: "",
+      dlExpirationDate: "",
     },
   });
 
-  // Watch form values and update parent on valid changes
+  // Update form values when data changes
   useEffect(() => {
-    const subscription = form.watch((value) => {
-      // Update parent with current form values to maintain backward compatibility
-      onChange(value);
+    if (data && (data.firstName || data.lastName)) {
+      form.reset({
+        firstName: data.firstName || "",
+        middleName: data.middleName || "",
+        lastName: data.lastName || "",
+        dateOfBirth: data.dateOfBirth || "",
+        gender: data.gender || "",
+        ssn: data.ssn || "",
+        personalEmail: data.personalEmail || "",
+        workEmail: data.workEmail || "",
+        cellPhone: data.cellPhone || "",
+        homeAddress1: data.homeAddress1 || "",
+        homeAddress2: data.homeAddress2 || "",
+        homeCity: data.homeCity || "",
+        homeState: data.homeState || "",
+        homeZip: data.homeZip || "",
+        birthCity: data.birthCity || "",
+        birthState: data.birthState || "",
+        birthCountry: data.birthCountry || "",
+        driversLicenseNumber: data.driversLicenseNumber || "",
+        dlStateIssued: data.dlStateIssued || "",
+        dlIssueDate: data.dlIssueDate || "",
+        dlExpirationDate: data.dlExpirationDate || "",
+      }, { keepErrors: true });
+    }
+  }, [data, form]);
+
+  // Debounced propagation of only the changed field to the parent to avoid thrash
+  const debounceTimerRef = useRef<number | undefined>(undefined);
+  const pendingDeltaRef = useRef<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    const subscription = form.watch((values, { name }) => {
+      if (!name) return;
+      const delta: Record<string, unknown> = { [name]: (values as any)[name] };
+      pendingDeltaRef.current = { ...(pendingDeltaRef.current || {}), ...delta };
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+      }
+      debounceTimerRef.current = window.setTimeout(() => {
+        if (pendingDeltaRef.current) {
+          onChange(pendingDeltaRef.current);
+          pendingDeltaRef.current = null;
+        }
+      }, 150);
     });
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+      }
+    };
   }, [form, onChange]);
 
-  // Register validation function with parent
+  // Register validation function with parent - single registration
   useEffect(() => {
     if (registerValidation) {
       registerValidation(async () => {
-        // Trigger validation on all fields
-        const isValid = await form.trigger();
-        // Return validation result
+        const isValid = await form.trigger(undefined, { shouldFocus: true });
         return isValid;
       });
     }
   }, [form, registerValidation]);
-
-  // Report validation state changes to parent
-  useEffect(() => {
-    if (onValidationChange) {
-      const subscription = form.watch(() => {
-        // Trigger validation and report state
-        form.trigger().then((isValid) => {
-          onValidationChange(isValid);
-        });
-      });
-      
-      // Initial validation check
-      form.trigger().then((isValid) => {
-        onValidationChange(isValid);
-      });
-      
-      return () => subscription.unsubscribe();
-    }
-  }, [form, onValidationChange]);
 
   return (
     <Form {...form}>
@@ -214,6 +262,18 @@ export function EmployeePersonalInfo({ data, onChange, onValidationChange, regis
                 <FormControl>
                   <Input
                     {...field}
+                    value={field.value}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D/g, "").slice(0, 9);
+                      const part1 = digits.slice(0, 3);
+                      const part2 = digits.slice(3, 5);
+                      const part3 = digits.slice(5, 9);
+                      const formatted = [part1, part2, part3].filter(Boolean).join("-");
+                      field.onChange(formatted);
+                    }}
+                    inputMode="numeric"
+                    pattern="\\d{3}-\\d{2}-\\d{4}"
+                    title="SSN must be in XXX-XX-XXXX format"
                     placeholder="XXX-XX-XXXX"
                     maxLength={11}
                     data-testid="input-ssn"
@@ -307,7 +367,6 @@ export function EmployeePersonalInfo({ data, onChange, onValidationChange, regis
                 </FormItem>
               )}
             />
-            
             <FormField
               control={form.control}
               name="homeAddress2"
@@ -325,7 +384,6 @@ export function EmployeePersonalInfo({ data, onChange, onValidationChange, regis
                 </FormItem>
               )}
             />
-            
             <FormField
               control={form.control}
               name="homeCity"
@@ -361,7 +419,6 @@ export function EmployeePersonalInfo({ data, onChange, onValidationChange, regis
                 </FormItem>
               )}
             />
-            
             <FormField
               control={form.control}
               name="homeZip"
@@ -374,6 +431,109 @@ export function EmployeePersonalInfo({ data, onChange, onValidationChange, regis
                       placeholder="12345"
                       data-testid="input-home-zip"
                     />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </div>
+        {/* Birth Information */}
+        <div className="space-y-4">
+          <h4 className="text-md font-semibold text-foreground">Birth Information</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <FormField
+              control={form.control}
+              name="birthCity"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Birth City</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Enter birth city" data-testid="input-birth-city" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="birthState"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Birth State</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Enter birth state" data-testid="input-birth-state" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="birthCountry"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Birth Country</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Enter birth country" data-testid="input-birth-country" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </div>
+        {/* Driver's License */}
+        <div className="space-y-4">
+          <h4 className="text-md font-semibold text-foreground">Driver's License</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <FormField
+              control={form.control}
+              name="driversLicenseNumber"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>License Number</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Enter license number" data-testid="input-drivers-license-number" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="dlStateIssued"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>State Issued</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Enter state" data-testid="input-dl-state-issued" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="dlIssueDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Issue Date</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="date" data-testid="input-dl-issue-date" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="dlExpirationDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Expiration Date</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="date" data-testid="input-dl-expiration-date" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

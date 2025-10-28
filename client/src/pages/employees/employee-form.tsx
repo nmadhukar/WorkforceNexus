@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/main-layout";
@@ -134,6 +134,9 @@ export default function EmployeeForm() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
+  const currentStepRef = useRef(currentStep);
+  const [canProceed, setCanProceed] = useState(true);
+  const [proceedBlockedMessage, setProceedBlockedMessage] = useState<string | undefined>(undefined);
   const [formData, setFormData] = useState<EmployeeFormData>({
     firstName: "",
     lastName: "",
@@ -151,6 +154,7 @@ export default function EmployeeForm() {
     payerEnrollments: [],
     incidentLogs: []
   });
+  const currentStepValidatorRef = useRef<(() => Promise<boolean>) | null>(null);
 
   const isEdit = params.id !== undefined;
   
@@ -178,6 +182,17 @@ export default function EmployeeForm() {
     }
   }, [employee]);
 
+  // Update ref when step changes
+  useEffect(() => {
+    currentStepRef.current = currentStep;
+  }, [currentStep]);
+
+  // Reset gating when step changes; individual steps can override via onValidationChange
+  useEffect(() => {
+    setCanProceed(true);
+    setProceedBlockedMessage(undefined);
+  }, [currentStep]);
+
   const createMutation = useMutation({
     mutationFn: async (data: EmployeeFormData) => {
       // Extract entity data from form
@@ -199,8 +214,16 @@ export default function EmployeeForm() {
       // Add educations
       if (educations && educations.length > 0) {
         for (const education of educations) {
+          // Remove temporary id and source fields, keep only valid data
+          const { id, source, employeeId: _, ...validEducation } = education;
+          // Convert dates to proper format if they exist (YYYY-MM-DD for date fields)
+          const cleanEducation: any = {
+            ...validEducation,
+            startDate: education.startDate ? new Date(education.startDate).toISOString().split('T')[0] : undefined,
+            endDate: education.endDate ? new Date(education.endDate).toISOString().split('T')[0] : undefined,
+          };
           promises.push(
-            apiRequest("POST", `/api/employees/${employeeId}/educations`, education)
+            apiRequest("POST", `/api/employees/${employeeId}/educations`, cleanEducation)
           );
         }
       }
@@ -208,8 +231,16 @@ export default function EmployeeForm() {
       // Add employments
       if (employments && employments.length > 0) {
         for (const employment of employments) {
+          // Remove temporary id field, keep only valid data
+          const { id, employeeId: _, ...validEmployment } = employment;
+          // Convert dates to proper format if they exist (YYYY-MM-DD for date fields)
+          const cleanEmployment: any = {
+            ...validEmployment,
+            startDate: employment.startDate ? new Date(employment.startDate).toISOString().split('T')[0] : undefined,
+            endDate: employment.endDate ? new Date(employment.endDate).toISOString().split('T')[0] : undefined
+          };
           promises.push(
-            apiRequest("POST", `/api/employees/${employeeId}/employments`, employment)
+            apiRequest("POST", `/api/employees/${employeeId}/employments`, cleanEmployment)
           );
         }
       }
@@ -217,8 +248,16 @@ export default function EmployeeForm() {
       // Add state licenses
       if (stateLicenses && stateLicenses.length > 0) {
         for (const license of stateLicenses) {
+          // Remove temporary id and source fields, keep only valid data
+          const { id, source, employeeId: _, ...validLicense } = license;
+          // Convert dates to proper format if they exist
+          const cleanLicense: any = {
+            ...validLicense,
+            issueDate: license.issueDate ? new Date(license.issueDate).toISOString().split('T')[0] : undefined,
+            expirationDate: license.expirationDate ? new Date(license.expirationDate).toISOString().split('T')[0] : undefined,
+          };
           promises.push(
-            apiRequest("POST", `/api/employees/${employeeId}/state-licenses`, license)
+            apiRequest("POST", `/api/employees/${employeeId}/state-licenses`, cleanLicense)
           );
         }
       }
@@ -226,8 +265,16 @@ export default function EmployeeForm() {
       // Add DEA licenses
       if (deaLicenses && deaLicenses.length > 0) {
         for (const license of deaLicenses) {
+          // Remove temporary id and source fields, keep only valid data
+          const { id, source, employeeId: _, ...validLicense } = license;
+          // Convert dates to proper format if they exist
+          const cleanLicense: any = {
+            ...validLicense,
+            issueDate: license.issueDate ? new Date(license.issueDate).toISOString().split('T')[0] : undefined,
+            expirationDate: license.expirationDate ? new Date(license.expirationDate).toISOString().split('T')[0] : undefined,
+          };
           promises.push(
-            apiRequest("POST", `/api/employees/${employeeId}/dea-licenses`, license)
+            apiRequest("POST", `/api/employees/${employeeId}/dea-licenses`, cleanLicense)
           );
         }
       }
@@ -235,8 +282,14 @@ export default function EmployeeForm() {
       // Add board certifications
       if (boardCertifications && boardCertifications.length > 0) {
         for (const cert of boardCertifications) {
+          const { id, source, employeeId: _, ...validCert } = cert;
+          const cleanCert: any = {
+            ...validCert,
+            issueDate: cert.issueDate ? new Date(cert.issueDate).toISOString().split('T')[0] : undefined,
+            expirationDate: cert.expirationDate ? new Date(cert.expirationDate).toISOString().split('T')[0] : undefined
+          };
           promises.push(
-            apiRequest("POST", `/api/employees/${employeeId}/board-certifications`, cert)
+            apiRequest("POST", `/api/employees/${employeeId}/board-certifications`, cleanCert)
           );
         }
       }
@@ -244,8 +297,9 @@ export default function EmployeeForm() {
       // Add peer references
       if (peerReferences && peerReferences.length > 0) {
         for (const ref of peerReferences) {
+          const { id, source, employeeId: _, comments, ...validRef } = ref;
           promises.push(
-            apiRequest("POST", `/api/employees/${employeeId}/peer-references`, ref)
+            apiRequest("POST", `/api/employees/${employeeId}/peer-references`, validRef)
           );
         }
       }
@@ -253,8 +307,9 @@ export default function EmployeeForm() {
       // Add emergency contacts
       if (emergencyContacts && emergencyContacts.length > 0) {
         for (const contact of emergencyContacts) {
+          const { id, source, employeeId: _, ...validContact } = contact;
           promises.push(
-            apiRequest("POST", `/api/employees/${employeeId}/emergency-contacts`, contact)
+            apiRequest("POST", `/api/employees/${employeeId}/emergency-contacts`, validContact)
           );
         }
       }
@@ -262,8 +317,14 @@ export default function EmployeeForm() {
       // Add tax forms
       if (taxForms && taxForms.length > 0) {
         for (const form of taxForms) {
+          const { id, employeeId: _, ...validForm } = form;
+          const cleanForm: any = {
+            ...validForm,
+            effectiveDate: form.effectiveDate ? new Date(form.effectiveDate).toISOString().split('T')[0] : undefined,
+            endDate: form.endDate ? new Date(form.endDate).toISOString().split('T')[0] : undefined
+          };
           promises.push(
-            apiRequest("POST", `/api/employees/${employeeId}/tax-forms`, form)
+            apiRequest("POST", `/api/employees/${employeeId}/tax-forms`, cleanForm)
           );
         }
       }
@@ -271,8 +332,14 @@ export default function EmployeeForm() {
       // Add trainings
       if (trainings && trainings.length > 0) {
         for (const training of trainings) {
+          const { id, employeeId: _, ...validTraining } = training;
+          const cleanTraining: any = {
+            ...validTraining,
+            completionDate: training.completionDate ? new Date(training.completionDate).toISOString().split('T')[0] : undefined,
+            expirationDate: training.expirationDate ? new Date(training.expirationDate).toISOString().split('T')[0] : undefined
+          };
           promises.push(
-            apiRequest("POST", `/api/employees/${employeeId}/trainings`, training)
+            apiRequest("POST", `/api/employees/${employeeId}/trainings`, cleanTraining)
           );
         }
       }
@@ -280,8 +347,14 @@ export default function EmployeeForm() {
       // Add payer enrollments
       if (payerEnrollments && payerEnrollments.length > 0) {
         for (const enrollment of payerEnrollments) {
+          const { id, employeeId: _, ...validEnrollment } = enrollment;
+          const cleanEnrollment: any = {
+            ...validEnrollment,
+            effectiveDate: enrollment.effectiveDate ? new Date(enrollment.effectiveDate).toISOString().split('T')[0] : undefined,
+            terminationDate: enrollment.terminationDate ? new Date(enrollment.terminationDate).toISOString().split('T')[0] : undefined
+          };
           promises.push(
-            apiRequest("POST", `/api/employees/${employeeId}/payer-enrollments`, enrollment)
+            apiRequest("POST", `/api/employees/${employeeId}/payer-enrollments`, cleanEnrollment)
           );
         }
       }
@@ -289,14 +362,33 @@ export default function EmployeeForm() {
       // Add incident logs
       if (incidentLogs && incidentLogs.length > 0) {
         for (const incident of incidentLogs) {
+          const { id, employeeId: _, ...validIncident } = incident;
+          const cleanIncident: any = {
+            ...validIncident,
+            incidentDate: incident.incidentDate ? new Date(incident.incidentDate).toISOString().split('T')[0] : undefined
+          };
           promises.push(
-            apiRequest("POST", `/api/employees/${employeeId}/incident-logs`, incident)
+            apiRequest("POST", `/api/employees/${employeeId}/incident-logs`, cleanIncident)
           );
         }
       }
       
-      // Wait for all entities to be created
-      await Promise.all(promises);
+      // Wait for all entities to be created with error handling
+      const results = await Promise.allSettled(promises);
+      
+      // Check for any failures
+      const failed = results.filter(r => r.status === 'rejected');
+      if (failed.length > 0) {
+        const errors = failed.map((r, idx) => {
+          if (r.status === 'rejected') {
+            const err = r.reason as any;
+            return `${idx + 1}: ${err?.message || 'Unknown error'}`;
+          }
+          return '';
+        }).filter(Boolean);
+        
+        throw new Error(`Failed to create ${failed.length} related record(s):\n${errors.join('\n')}`);
+      }
       
       return newEmployee;
     },
@@ -308,17 +400,63 @@ export default function EmployeeForm() {
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
       navigate("/employees");
     },
-    onError: (error) => {
+    onError: (error: any) => {
+      console.error('Error creating employee:', error);
+      const errorMessage = error?.response?.data?.details 
+        ? `Validation errors:\n${JSON.stringify(error.response.data.details, null, 2)}`
+        : error.message || 'Failed to create employee';
+      
       toast({
         title: "Error",
-        description: error.message,
-        variant: "destructive"
+        description: errorMessage,
+        variant: "destructive",
+        duration: 10000
       });
     }
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: EmployeeFormData) => apiRequest("PUT", `/api/employees/${params.id}`, data),
+    mutationFn: async (data: EmployeeFormData) => {
+      // Filter out related entities - they're managed separately via their own endpoints
+      const {
+        educations, employments, stateLicenses, deaLicenses,
+        boardCertifications, peerReferences, emergencyContacts,
+        taxForms, trainings, payerEnrollments, incidentLogs,
+        ...employeeData
+      } = data;
+      
+      // Remove non-employee fields
+      const updateData: any = {};
+      const allowedFields = [
+        'firstName', 'middleName', 'lastName', 'dateOfBirth', 'ssn',
+        'personalEmail', 'workEmail', 'cellPhone', 'workPhone',
+        'homeAddress1', 'homeAddress2', 'homeCity', 'homeState', 'homeZip',
+        'gender', 'birthCity', 'birthState', 'birthCountry',
+        'jobTitle', 'workLocation', 'qualification', 'department',
+        'npiNumber', 'enumerationDate',
+        'medicalQualification', 'medicalLicenseNumber', 'medicalLicenseState',
+        'medicalLicenseIssueDate', 'medicalLicenseExpirationDate', 'medicalLicenseStatus',
+        'substanceUseLicenseNumber', 'substanceUseLicenseState',
+        'substanceUseLicenseIssueDate', 'substanceUseLicenseExpirationDate', 'substanceUseLicenseStatus',
+        'substanceUseQualification', 'mentalHealthLicenseNumber', 'mentalHealthLicenseState',
+        'mentalHealthLicenseIssueDate', 'mentalHealthLicenseExpirationDate', 'mentalHealthLicenseStatus',
+        'mentalHealthQualification', 'medicaidNumber', 'medicarePtanNumber',
+        'deaNumber',
+        'caqhProviderId', 'caqhIssueDate', 'caqhLastAttestationDate', 'caqhEnabled', 'caqhReattestationDueDate',
+        'caqhLoginId', 'caqhPassword', 'nppesLoginId', 'nppesPassword',
+        'driversLicenseNumber', 'dlStateIssued', 'dlIssueDate', 'dlExpirationDate',
+        'status', 'applicationStatus', 'onboardingStatus', 'invitationId',
+        'userId', 'onboardingCompletedAt', 'approvedAt', 'approvedBy'
+      ];
+      
+      for (const field of allowedFields) {
+        if (field in employeeData) {
+          updateData[field as keyof typeof employeeData] = employeeData[field as keyof typeof employeeData];
+        }
+      }
+      
+      return apiRequest("PUT", `/api/employees/${params.id}`, updateData);
+    },
     onSuccess: () => {
       toast({
         title: "Success",
@@ -327,11 +465,17 @@ export default function EmployeeForm() {
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
       navigate("/employees");
     },
-    onError: (error) => {
+    onError: (error: any) => {
+      console.error('Error updating employee:', error);
+      const errorMessage = error?.response?.data?.details 
+        ? `Validation errors:\n${JSON.stringify(error.response.data.details, null, 2)}`
+        : error.message || 'Failed to update employee';
+      
       toast({
         title: "Error",
-        description: error.message,
-        variant: "destructive"
+        description: errorMessage,
+        variant: "destructive",
+        duration: 10000
       });
     }
   });
@@ -352,7 +496,19 @@ export default function EmployeeForm() {
    * Advances to the next step in the form
    * @description Validates current step before advancing (if validation implemented)
    */
-  const handleNext = () => {
+  const handleNext = async () => {
+    const validate = currentStepValidatorRef.current;
+    if (validate) {
+      try {
+        const isValid = await validate();
+        if (!isValid) {
+          return;
+        }
+      } catch (error) {
+        return;
+      }
+    } else {
+    }
     if (currentStep < 13) {
       setCurrentStep(currentStep + 1);
     }
@@ -371,9 +527,21 @@ export default function EmployeeForm() {
    * Updates form data with partial data from step components
    * @param {Partial<EmployeeFormData>} data - Partial form data to merge
    */
-  const updateFormData = (data: Partial<EmployeeFormData>) => {
+  const updateFormData = useCallback((data: Partial<EmployeeFormData>) => {
     setFormData(prev => ({ ...prev, ...data }));
-  };
+  }, []);
+
+  /**
+   * Memoized validation registration function to prevent unnecessary re-renders
+   */
+  const registerStepValidation = useCallback(<T extends () => boolean | Promise<boolean>>(fn: T) => {
+    const stepNumber = currentStepRef.current;
+    currentStepValidatorRef.current = async () => {
+      const result = fn();
+      const isValid = !!(await Promise.resolve(result));
+      return isValid;
+    };
+  }, []);
 
   const steps = [
     {
@@ -382,6 +550,7 @@ export default function EmployeeForm() {
         <EmployeePersonalInfo
           data={formData}
           onChange={updateFormData}
+          registerValidation={registerStepValidation}
           data-testid="step-personal-info"
         />
       )
@@ -392,6 +561,7 @@ export default function EmployeeForm() {
         <EmployeeProfessionalInfo
           data={formData}
           onChange={updateFormData}
+          registerValidation={registerStepValidation}
           data-testid="step-professional-info"
         />
       )
@@ -402,20 +572,22 @@ export default function EmployeeForm() {
         <EmployeeCredentials
           data={formData}
           onChange={updateFormData}
+          registerValidation={registerStepValidation}
           data-testid="step-credentials"
         />
       )
     },
-    {
-      title: "Additional Info",
-      component: (
-        <EmployeeAdditionalInfo
-          data={formData}
-          onChange={updateFormData}
-          data-testid="step-additional-info"
-        />
-      )
-    },
+    // {
+    //   title: "Additional Info",
+    //   component: (
+    //     <EmployeeAdditionalInfo
+    //       data={formData}
+    //       onChange={updateFormData}
+    //       registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
+    //       data-testid="step-additional-info"
+    //     />
+    //   )
+    // },
     {
       title: "Education & Employment",
       component: (
@@ -423,6 +595,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
+          registerValidation={registerStepValidation}
           data-testid="step-education-employment"
         />
       )
@@ -434,6 +607,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
+          registerValidation={registerStepValidation}
           data-testid="step-licenses"
         />
       )
@@ -445,21 +619,23 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
+          registerValidation={registerStepValidation}
           data-testid="step-certifications"
         />
       )
     },
-    {
-      title: "References & Contacts",
-      component: (
-        <EmployeeReferencesContacts
-          data={formData}
-          onChange={updateFormData}
-          employeeId={isEdit ? parseInt(params.id!) : undefined}
-          data-testid="step-references-contacts"
-        />
-      )
-    },
+    // {
+    //   title: "References & Contacts",
+    //   component: (
+    //     <EmployeeReferencesContacts
+    //       data={formData}
+    //       onChange={updateFormData}
+    //       employeeId={isEdit ? parseInt(params.id!) : undefined}
+    //       registerValidation={(fn) => { currentStepValidatorRef.current = async () => !!(await Promise.resolve(fn())); }}
+    //       data-testid="step-references-contacts"
+    //     />
+    //   )
+    // },
     {
       title: "Documents Submission",
       component: (
@@ -467,6 +643,11 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
+          registerValidation={registerStepValidation}
+          onValidationChange={(isValid) => {
+            setCanProceed(!!isValid);
+            setProceedBlockedMessage(isValid ? undefined : "Please upload all required documents to continue");
+          }}
           data-testid="step-documents-submission"
         />
       )
@@ -478,6 +659,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
+          registerValidation={registerStepValidation}
           data-testid="step-training-payer"
         />
       )
@@ -489,6 +671,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
+          registerValidation={registerStepValidation}
           data-testid="step-forms"
         />
       )
@@ -500,6 +683,7 @@ export default function EmployeeForm() {
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : undefined}
+          registerValidation={registerStepValidation}
           data-testid="step-incidents"
         />
       )
@@ -614,7 +798,9 @@ export default function EmployeeForm() {
             onPrevious={handlePrevious}
             onSubmit={handleSubmit}
             isSubmitting={createMutation.isPending || updateMutation.isPending}
-            canNext={true} // Add validation logic here
+            canNext={true}
+            canProceed={canProceed}
+            proceedBlockedMessage={proceedBlockedMessage}
             data-testid="multi-step-form"
           />
         </div>

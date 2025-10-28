@@ -8,10 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Edit, Trash2, BookOpen, DollarSign } from "lucide-react";
+import { Plus, Edit, Trash2, BookOpen, DollarSign, AlertTriangle } from "lucide-react";
 
 const trainingSchema = z.object({
   trainingName: z.string().min(1, "Training name is required"),
@@ -47,6 +48,9 @@ export function EmployeeTrainingPayer({ data, onChange, employeeId, onValidation
   const [selectedPayer, setSelectedPayer] = useState<any>(null);
   const [localTrainings, setLocalTrainings] = useState<any[]>(data.trainings || []);
   const [localPayers, setLocalPayers] = useState<any[]>(data.payerEnrollments || []);
+  const [requiresCpi, setRequiresCpi] = useState<boolean>(false);
+  const [requiresCpr, setRequiresCpr] = useState<boolean>(false);
+  const [requiresCrisis, setRequiresCrisis] = useState<boolean>(false);
 
   const trainingForm = useForm<TrainingFormData>({
     resolver: zodResolver(trainingSchema),
@@ -71,12 +75,12 @@ export function EmployeeTrainingPayer({ data, onChange, employeeId, onValidation
   });
 
   // Fetch existing data if in update mode
-  const { data: trainings = [] } = useQuery({
+  const { data: trainings = [] } = useQuery<any[]>({
     queryKey: ["/api/employees", employeeId, "trainings"],
     enabled: !!employeeId
   });
 
-  const { data: payerEnrollments = [] } = useQuery({
+  const { data: payerEnrollments = [] } = useQuery<any[]>({
     queryKey: ["/api/employees", employeeId, "payer-enrollments"],
     enabled: !!employeeId
   });
@@ -92,23 +96,39 @@ export function EmployeeTrainingPayer({ data, onChange, employeeId, onValidation
     onChange({ ...data, trainings: localTrainings, payerEnrollments: localPayers });
   }, [localTrainings, localPayers]);
 
+  // Helper: normalize names for robust comparison
+  const normalizeName = (name: string) => (name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const TARGET_CPI = normalizeName("CPI Training");
+  const TARGET_CPR = normalizeName("CPR Training");
+  const TARGET_CRISIS = normalizeName("Crisis Prevention/De-Escalation");
+
+  const hasTrainingByTarget = (target: string) =>
+    localTrainings.some(t => normalizeName(t.trainingName) === target);
+
+  const hasCpi = hasTrainingByTarget(TARGET_CPI);
+  const hasCpr = hasTrainingByTarget(TARGET_CPR);
+  const hasCrisis = hasTrainingByTarget(TARGET_CRISIS);
+
+  const computeIsValid = () => {
+    if (requiresCpi && !hasCpi) return false;
+    if (requiresCpr && !hasCpr) return false;
+    if (requiresCrisis && !hasCrisis) return false;
+    return true;
+  };
+
   // Register validation function with parent
   useEffect(() => {
     if (registerValidation) {
-      registerValidation(async () => {
-        // Training and payer enrollment are optional, so always valid
-        return true;
-      });
+      registerValidation(async () => computeIsValid());
     }
-  }, [registerValidation]);
+  }, [registerValidation, requiresCpi, requiresCpr, requiresCrisis, localTrainings]);
 
-  // Report validation state to parent - training and payers are optional
+  // Report validation state to parent for gating Next button
   useEffect(() => {
     if (onValidationChange) {
-      // Always valid since these are optional
-      onValidationChange(true);
+      onValidationChange(computeIsValid());
     }
-  }, [onValidationChange]);
+  }, [onValidationChange, requiresCpi, requiresCpr, requiresCrisis, localTrainings]);
 
   const isExpiringSoon = (date: string) => {
     if (!date) return false;
@@ -197,6 +217,70 @@ export function EmployeeTrainingPayer({ data, onChange, employeeId, onValidation
 
   return (
     <div className="space-y-6">
+      {/* Required Trainings Toggles */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                Required Trainings
+              </CardTitle>
+              <CardDescription>Mark any trainings the employee must have; if Yes, add them below.</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">CPI Training required?</label>
+              <Select value={requiresCpi ? "yes" : "no"} onValueChange={(v) => setRequiresCpi(v === "yes")}> 
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="no">No</SelectItem>
+                  <SelectItem value="yes">Yes</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">CPR Training required?</label>
+              <Select value={requiresCpr ? "yes" : "no"} onValueChange={(v) => setRequiresCpr(v === "yes")}> 
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="no">No</SelectItem>
+                  <SelectItem value="yes">Yes</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Crisis Prevention/De-Escalation required?</label>
+              <Select value={requiresCrisis ? "yes" : "no"} onValueChange={(v) => setRequiresCrisis(v === "yes")}> 
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="no">No</SelectItem>
+                  <SelectItem value="yes">Yes</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Missing requirements hint */}
+          {!computeIsValid() && (
+            <Alert className="border-amber-200 bg-amber-50">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-amber-800">
+                Please add all required training entries below before proceeding.
+              </AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Training Section */}
       <Card>
         <CardHeader>

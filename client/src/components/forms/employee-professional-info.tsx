@@ -12,13 +12,17 @@ const professionalInfoSchema = z.object({
   jobTitle: z.string().min(1, "Job title is required"),
   workLocation: z.string().min(1, "Work location is required"),
   status: z.string().optional().default("active"),
-  npiNumber: z.string().optional().refine(
-    (val) => !val || val.length === 0 || /^\d{10}$/.test(val),
-    "NPI number must be exactly 10 digits"
-  ),
+  // npiNumber: z.string().optional().refine(
+  //   (val) => !val || val.length === 0 || /^\d{10}$/.test(val),
+  //   "NPI number must be exactly 10 digits"
+  // ),
   enumerationDate: z.string().optional(),
   workPhone: z.string().optional(),
   qualification: z.string().optional(),
+  caqhLoginId: z.string().optional(),
+  caqhPassword: z.string().optional(),
+  nppesLoginId: z.string().optional(),
+  nppesPassword: z.string().optional(),
 });
 
 type ProfessionalInfoFormData = z.infer<typeof professionalInfoSchema>;
@@ -33,56 +37,60 @@ interface EmployeeProfessionalInfoProps {
 export function EmployeeProfessionalInfo({ data, onChange, onValidationChange, registerValidation }: EmployeeProfessionalInfoProps) {
   const form = useForm<ProfessionalInfoFormData>({
     resolver: zodResolver(professionalInfoSchema),
+    mode: "onSubmit",
+    reValidateMode: "onChange",
     defaultValues: {
-      jobTitle: data.jobTitle || "",
-      workLocation: data.workLocation || "",
-      status: data.status || "active",
-      npiNumber: data.npiNumber || "",
-      enumerationDate: data.enumerationDate || "",
-      workPhone: data.workPhone || "",
-      qualification: data.qualification || "",
+      jobTitle: "",
+      workLocation: "",
+      status: "active",
+      // npiNumber: "",
+      enumerationDate: "",
+      workPhone: "",
+      qualification: "",
+      caqhLoginId: "",
+      caqhPassword: "",
+      nppesLoginId: "",
+      nppesPassword: "",
     },
   });
 
-  // Watch form values and update parent on valid changes
+  // Update form values when data changes
+  useEffect(() => {
+    if (data && (data.jobTitle || data.workLocation)) {
+      form.reset({
+        jobTitle: data.jobTitle || "",
+        workLocation: data.workLocation || "",
+        status: data.status || "active",
+        // npiNumber: data.npiNumber || "",
+        enumerationDate: data.enumerationDate || "",
+        workPhone: data.workPhone || "",
+        qualification: data.qualification || "",
+        caqhLoginId: data.caqhLoginId || "",
+        caqhPassword: data.caqhPassword || "",
+        nppesLoginId: data.nppesLoginId || "",
+        nppesPassword: data.nppesPassword || "",
+      });
+    }
+  }, [data, form]);
+
+  // Watch and propagate changes to parent
   useEffect(() => {
     const subscription = form.watch((value) => {
-      // Update parent with current form values to maintain backward compatibility
       onChange(value);
     });
     return () => subscription.unsubscribe();
   }, [form, onChange]);
 
-  // Register validation function with parent
+  // Register validation for Next click
   useEffect(() => {
     if (registerValidation) {
       registerValidation(async () => {
-        // Trigger validation on all fields
-        const isValid = await form.trigger();
-        // Return validation result
-        return isValid;
+        return await form.trigger(undefined, { shouldFocus: true });
       });
     }
   }, [form, registerValidation]);
 
-  // Report validation state changes to parent
-  useEffect(() => {
-    if (onValidationChange) {
-      const subscription = form.watch(() => {
-        // Trigger validation and report state
-        form.trigger().then((isValid) => {
-          onValidationChange(isValid);
-        });
-      });
-      
-      // Initial validation check
-      form.trigger().then((isValid) => {
-        onValidationChange(isValid);
-      });
-      
-      return () => subscription.unsubscribe();
-    }
-  }, [form, onValidationChange]);
+  // No live validation reporting
 
   return (
     <Form {...form}>
@@ -157,7 +165,7 @@ export function EmployeeProfessionalInfo({ data, onChange, onValidationChange, r
             )}
           />
           
-          <FormField
+          {/* <FormField
             control={form.control}
             name="npiNumber"
             render={({ field }) => (
@@ -211,9 +219,8 @@ export function EmployeeProfessionalInfo({ data, onChange, onValidationChange, r
                 <FormMessage />
               </FormItem>
             )}
-          />
+          /> */}
         </div>
-
         <FormField
           control={form.control}
           name="qualification"
@@ -232,6 +239,66 @@ export function EmployeeProfessionalInfo({ data, onChange, onValidationChange, r
             </FormItem>
           )}
         />
+         <div className="space-y-4">
+          <h4 className="text-md font-semibold text-foreground">Login Credentials</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <FormField
+              control={form.control}
+              name="caqhLoginId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>CAQH Login ID</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Enter CAQH login ID" data-testid="input-caqh-login-id" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="caqhPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>CAQH Password</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="password" placeholder="Enter CAQH password" data-testid="input-caqh-password" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="nppesLoginId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>NPPES Login ID</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="Enter NPPES login ID" data-testid="input-nppes-login-id" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="nppesPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>NPPES Password</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="password" placeholder="Enter NPPES password" data-testid="input-nppes-password" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        </div>
       </div>
     </Form>
   );

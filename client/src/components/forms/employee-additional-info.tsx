@@ -4,11 +4,22 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { insertEmployeeSchema } from "@shared/schema";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
-// Use the full insertEmployeeSchema since it already has all the date validation rules
-const additionalInfoSchema = insertEmployeeSchema;
+// Validate only fields present on this step
+const additionalInfoSchema = z.object({
+  caqhLoginId: z.string().optional(),
+  caqhPassword: z.string().optional(),
+  nppesLoginId: z.string().optional(),
+  nppesPassword: z.string().optional(),
+  // birthCity: z.string().optional(),
+  // birthState: z.string().optional(),
+  // birthCountry: z.string().optional(),
+  // driversLicenseNumber: z.string().optional(),
+  // dlStateIssued: z.string().optional(),
+  // dlIssueDate: z.string().optional(),
+  // dlExpirationDate: z.string().optional()
+});
 
 type AdditionalInfoFormData = z.infer<typeof additionalInfoSchema>;
 
@@ -22,63 +33,63 @@ interface EmployeeAdditionalInfoProps {
 export function EmployeeAdditionalInfo({ data, onChange, onValidationChange, registerValidation }: EmployeeAdditionalInfoProps) {
   const form = useForm<AdditionalInfoFormData>({
     resolver: zodResolver(additionalInfoSchema),
+    mode: "onSubmit",
+    reValidateMode: "onChange",
     defaultValues: {
       caqhLoginId: data.caqhLoginId || "",
       caqhPassword: data.caqhPassword || "",
       nppesLoginId: data.nppesLoginId || "",
       nppesPassword: data.nppesPassword || "",
-      birthCity: data.birthCity || "",
-      birthState: data.birthState || "",
-      birthCountry: data.birthCountry || "",
-      driversLicenseNumber: data.driversLicenseNumber || "",
-      dlStateIssued: data.dlStateIssued || "",
-      dlIssueDate: data.dlIssueDate || "",
-      dlExpirationDate: data.dlExpirationDate || ""
+      // birthCity: data.birthCity || "",
+      // birthState: data.birthState || "",
+      // birthCountry: data.birthCountry || "",
+      // driversLicenseNumber: data.driversLicenseNumber || "",
+      // dlStateIssued: data.dlStateIssued || "",
+      // dlIssueDate: data.dlIssueDate || "",
+      // dlExpirationDate: data.dlExpirationDate || ""
     }
   });
 
-  // Watch form values and update parent when they change
-  const watchedValues = form.watch();
+  // Debounced delta-only updates to parent
+  const debounceTimerRef = useRef<number | undefined>(undefined);
+  const pendingDeltaRef = useRef<Record<string, unknown> | null>(null);
   useEffect(() => {
-    onChange(watchedValues);
-  }, [watchedValues, onChange]);
+    const subscription = form.watch((values, { name }) => {
+      if (!name) return;
+      const delta: Record<string, unknown> = { [name]: (values as any)[name] };
+      pendingDeltaRef.current = { ...(pendingDeltaRef.current || {}), ...delta };
+      if (debounceTimerRef.current) {
+        window.clearTimeout(debounceTimerRef.current);
+      }
+      debounceTimerRef.current = window.setTimeout(() => {
+        if (pendingDeltaRef.current) {
+          onChange(pendingDeltaRef.current);
+          pendingDeltaRef.current = null;
+        }
+      }, 150);
+    });
+    return () => {
+      subscription.unsubscribe();
+      if (debounceTimerRef.current) window.clearTimeout(debounceTimerRef.current);
+    };
+  }, [form, onChange]);
 
-  // Register validation function with parent
+  // Register validation for Next click; show messages and focus first invalid
   useEffect(() => {
     if (registerValidation) {
       registerValidation(async () => {
-        // Trigger validation on all fields
-        const isValid = await form.trigger();
-        // Return validation result
-        return isValid;
+        return await form.trigger(undefined, { shouldFocus: true });
       });
     }
   }, [form, registerValidation]);
 
-  // Report validation state changes to parent
-  useEffect(() => {
-    if (onValidationChange) {
-      const subscription = form.watch(() => {
-        // Trigger validation and report state
-        form.trigger().then((isValid) => {
-          onValidationChange(isValid);
-        });
-      });
-      
-      // Initial validation check
-      form.trigger().then((isValid) => {
-        onValidationChange(isValid);
-      });
-      
-      return () => subscription.unsubscribe();
-    }
-  }, [form, onValidationChange]);
+  // No live validation reporting for this step
 
   return (
     <Form {...form}>
       <div className="space-y-6">
         {/* Login Credentials */}
-        <div className="space-y-4">
+        {/* <div className="space-y-4">
           <h4 className="text-md font-semibold text-foreground">Login Credentials</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <FormField
@@ -137,10 +148,10 @@ export function EmployeeAdditionalInfo({ data, onChange, onValidationChange, reg
               )}
             />
           </div>
-        </div>
+        </div> */}
 
         {/* Birth Information */}
-        <div className="space-y-4">
+        {/* <div className="space-y-4">
           <h4 className="text-md font-semibold text-foreground">Birth Information</h4>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <FormField
@@ -185,10 +196,10 @@ export function EmployeeAdditionalInfo({ data, onChange, onValidationChange, reg
               )}
             />
           </div>
-        </div>
+        </div> */}
 
         {/* Driver's License */}
-        <div className="space-y-4">
+        {/* <div className="space-y-4">
           <h4 className="text-md font-semibold text-foreground">Driver's License</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <FormField
@@ -247,7 +258,8 @@ export function EmployeeAdditionalInfo({ data, onChange, onValidationChange, reg
               )}
             />
           </div>
-        </div>
+        </div> */}
+        
       </div>
     </Form>
   );

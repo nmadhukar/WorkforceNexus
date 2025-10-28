@@ -155,6 +155,9 @@ export function EmployeeDocumentsSubmission({
   const allRequiredDocumentsUploaded = requiredDocumentsCount > 0 && uploadedRequiredCount === requiredDocumentsCount;
   const documentsUploadProgress = requiredDocumentsCount > 0 ? (uploadedRequiredCount / requiredDocumentsCount) * 100 : 0;
 
+  // Determine if user can proceed from this step
+  const canProceedDocuments = requiredDocumentsCount === 0 || allRequiredDocumentsUploaded;
+
   useEffect(() => {
     onChange({ 
       ...data, 
@@ -164,6 +167,16 @@ export function EmployeeDocumentsSubmission({
       requiredDocumentsCount
     });
   }, [documentUploads, allRequiredDocumentsUploaded, uploadedRequiredCount, requiredDocumentsCount]);
+
+  // Expose validation to parent and live validity for gating Next button
+  useEffect(() => {
+    if (registerValidation) {
+      registerValidation(async () => canProceedDocuments);
+    }
+    if (onValidationChange) {
+      onValidationChange(canProceedDocuments);
+    }
+  }, [registerValidation, onValidationChange, canProceedDocuments]);
 
   // Merge required documents with uploads
   const documentsTableData = requiredDocumentTypes.map((docType: RequiredDocumentType) => {

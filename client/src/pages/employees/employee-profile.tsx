@@ -1,5 +1,6 @@
 import { useParams, useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState } from "react";
 import { MainLayout } from "@/components/layout/main-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -47,7 +58,10 @@ import {
   MapPinned,
   FileCheck,
   UserPlus,
-  FileSignature
+  FileSignature,
+  Upload,
+  CheckCircle2,
+  X
 } from "lucide-react";
 import type { Employee } from "@/lib/types";
 import { EducationsManager } from "@/components/entity-managers/educations-manager";
@@ -107,7 +121,7 @@ export default function EmployeeProfile() {
   });
 
   // Fetch the employee's own data if they are an employee
-  const { data: ownEmployeeData } = useQuery({
+  const { data: ownEmployeeData } = useQuery<Partial<Employee>>({
     queryKey: ["/api/employee/profile"],
     enabled: user?.role === "employee"
   });
@@ -115,6 +129,21 @@ export default function EmployeeProfile() {
   const { data: employee, isLoading, error } = useQuery<Employee>({
     queryKey: ["/api/employees", employeeId],
     enabled: !!employeeId
+  });
+
+  // State for approval modal
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const [uploadedDocuments, setUploadedDocuments] = useState<Record<string, File | null>>({
+    hrDocuments: null,
+    cpiTraining: null,
+    cprTraining: null,
+    crisisPrevention: null,
+    bciFbiCheck: null,
+    federalExclusions: null,
+    stateExclusions: null,
+    samGovExclusion: null,
+    leie: null,
+    urineDrugScreen: null,
   });
 
   // Approval mutation
@@ -126,6 +155,7 @@ export default function EmployeeProfile() {
         description: "Employee approved successfully"
       });
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId] });
+      setShowApprovalModal(false);
     },
     onError: (error) => {
       toast({
@@ -306,6 +336,56 @@ export default function EmployeeProfile() {
     console.log('Exporting employee data...');
   };
 
+  /**
+   * Handles file upload for approval documents
+   * @param {string} documentKey - The key identifying which document is being uploaded
+   * @param {React.ChangeEvent<HTMLInputElement>} event - The file input change event
+   */
+  const handleFileUpload = (documentKey: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    setUploadedDocuments(prev => ({
+      ...prev,
+      [documentKey]: file
+    }));
+  };
+
+  /**
+   * Removes an uploaded file
+   * @param {string} documentKey - The key identifying which document to remove
+   */
+  const handleRemoveFile = (documentKey: string) => {
+    setUploadedDocuments(prev => ({
+      ...prev,
+      [documentKey]: null
+    }));
+  };
+
+  /**
+   * Checks if all required documents are uploaded
+   * @returns {boolean} True if all 10 documents are uploaded
+   */
+  const areAllDocumentsUploaded = () => {
+    return Object.values(uploadedDocuments).every(file => file !== null);
+  };
+
+  /**
+   * Handles the approval process with documents
+   */
+  const handleApprovalSubmit = () => {
+    if (!areAllDocumentsUploaded()) {
+      toast({
+        title: "Missing Documents",
+        description: "Please upload all required documents before approving the employee.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // For now, just call the existing approve mutation
+    // Later this will upload documents first
+    approveMutation.mutate();
+  };
+
   return (
     <TooltipProvider>
       <MainLayout>
@@ -421,7 +501,7 @@ export default function EmployeeProfile() {
           </div>
 
           {/* Approval Section - Shows only for pending employees when user is HR/Admin */}
-          {employee.applicationStatus === 'pending' && (user?.role === 'admin' || user?.role === 'hr') && (
+          {((employee as any)?.applicationStatus === 'pending') && (user?.role === 'admin' || user?.role === 'hr') && (
             <Card className="border-warning/50 bg-warning/5">
               <CardHeader className="bg-warning/10">
                 <CardTitle className="flex items-center text-lg">
@@ -435,18 +515,18 @@ export default function EmployeeProfile() {
                     <p className="text-sm text-muted-foreground mb-4">
                       This employee registration is pending approval. Review their information and decide whether to approve or reject their application.
                     </p>
-                    <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex flex-col sm:flex-row gap-3">
                       <Button
-                        onClick={() => approveMutation.mutate()}
+                        onClick={() => setShowApprovalModal(true)}
                         disabled={approveMutation.isPending || rejectMutation.isPending}
                         className="bg-green-600 hover:bg-green-700"
                         data-testid="button-approve-employee"
                       >
                         <UserCheck className="w-4 h-4 mr-2" />
-                        {approveMutation.isPending ? "Approving..." : "Approve Employee"}
+                        Approve Employee
                       </Button>
                       <Button
-                        onClick={() => rejectMutation.mutate()}
+                        onClick={() => rejectMutation.mutate(undefined)}
                         disabled={approveMutation.isPending || rejectMutation.isPending}
                         variant="destructive"
                         data-testid="button-reject-employee"
@@ -872,6 +952,164 @@ export default function EmployeeProfile() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Approval Documents Modal */}
+        <Dialog open={showApprovalModal} onOpenChange={setShowApprovalModal}>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+            <DialogHeader>
+              <DialogTitle className="flex items-center text-2xl">
+                <UserCheck className="w-6 h-6 mr-2 text-green-600" />
+                Employee Approval - Required Documents
+              </DialogTitle>
+              <DialogDescription className="space-y-2">
+                <p className="font-medium text-destructive">
+                  ⚠️ All 10 documents are mandatory for compliance and must be uploaded before approval.
+                </p>
+                <p>
+                  Please upload all required documents to proceed with employee approval.
+                </p>
+              </DialogDescription>
+            </DialogHeader>
+
+            <ScrollArea className="h-[450px] pr-4">
+              <div className="space-y-3 py-2">
+                {/* Document Upload Items */}
+                {[
+                  { key: 'hrDocuments', label: 'HR Documents needed', icon: FileText },
+                  { key: 'cpiTraining', label: 'CPI Training', icon: GraduationCap },
+                  { key: 'cprTraining', label: 'CPR Training', icon: Activity },
+                  { key: 'crisisPrevention', label: 'Crisis Prevention/De-Escalation', icon: Shield },
+                  { key: 'bciFbiCheck', label: 'BCI/FBI Check', icon: Shield },
+                  { key: 'federalExclusions', label: 'Federal Exclusions', icon: AlertTriangle },
+                  { key: 'stateExclusions', label: 'State Exclusions', icon: AlertTriangle },
+                  { key: 'samGovExclusion', label: 'SAM.gov Exclusion', icon: FileCheck },
+                  { key: 'leie', label: 'LEIE', icon: FileCheck },
+                  { key: 'urineDrugScreen', label: 'Urine Drug Screen', icon: Stethoscope },
+                ].map((doc, index) => {
+                  const Icon = doc.icon;
+                  const file = uploadedDocuments[doc.key];
+                  
+                  return (
+                    <Card key={doc.key} className="border hover:border-primary/50 transition-colors">
+                      <CardContent className="p-3">
+                        <div className="flex items-start gap-3">
+                          <div className="mt-0.5">
+                            <Icon className="w-4 h-4 text-primary" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <Label htmlFor={`doc-${doc.key}`} className="text-sm font-semibold cursor-pointer flex items-center gap-1.5">
+                              {index + 1}. {doc.label}
+                              <span className="text-destructive text-xs">*</span>
+                            </Label>
+                            {file ? (
+                              <div className="mt-1.5 flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded-md">
+                                <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                                <span className="text-xs text-green-700 truncate flex-1">
+                                  {file.name}
+                                </span>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-5 w-5 p-0 hover:bg-green-100"
+                                  onClick={() => handleRemoveFile(doc.key)}
+                                >
+                                  <X className="w-3 h-3 text-green-600" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="mt-1.5">
+                                <Label
+                                  htmlFor={`doc-${doc.key}`}
+                                  className="flex items-center justify-center gap-2 p-2 border-2 border-dashed border-muted-foreground/25 rounded-md hover:border-primary/50 hover:bg-primary/5 transition-colors cursor-pointer"
+                                >
+                                  <Upload className="w-3.5 h-3.5 text-muted-foreground" />
+                                  <span className="text-xs text-muted-foreground">
+                                    Click to upload
+                                  </span>
+                                </Label>
+                              </div>
+                            )}
+                            <Input
+                              id={`doc-${doc.key}`}
+                              type="file"
+                              className="hidden"
+                              onChange={(e) => handleFileUpload(doc.key, e)}
+                              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                            />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+
+                {/* Upload Summary */}
+                <Card className={`border-2 ${areAllDocumentsUploaded() ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {areAllDocumentsUploaded() ? (
+                          <CheckCircle2 className="w-5 h-5 text-green-600" />
+                        ) : (
+                          <AlertTriangle className="w-5 h-5 text-amber-600" />
+                        )}
+                        <span className="font-medium">Upload Progress</span>
+                      </div>
+                      <Badge 
+                        variant={areAllDocumentsUploaded() ? "default" : "secondary"}
+                        className={`text-base px-3 py-1 ${
+                          areAllDocumentsUploaded() 
+                            ? 'bg-green-600 hover:bg-green-700' 
+                            : 'bg-amber-600 text-white hover:bg-amber-700'
+                        }`}
+                      >
+                        {Object.values(uploadedDocuments).filter(Boolean).length} / 10 {areAllDocumentsUploaded() ? 'Complete ✓' : 'Required'}
+                      </Badge>
+                    </div>
+                    {!areAllDocumentsUploaded() && (
+                      <p className="text-sm text-amber-700 mt-2 flex items-center gap-1">
+                        <AlertTriangle className="w-4 h-4" />
+                        Please upload all remaining documents to proceed
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </ScrollArea>
+
+            <DialogFooter className="flex-col sm:flex-row gap-2 pt-4 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowApprovalModal(false)}
+                disabled={approveMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Button
+                      type="button"
+                      onClick={handleApprovalSubmit}
+                      disabled={!areAllDocumentsUploaded() || approveMutation.isPending}
+                      className="bg-green-600 hover:bg-green-700 disabled:opacity-50"
+                    >
+                      <UserCheck className="w-4 h-4 mr-2" />
+                      {approveMutation.isPending ? "Approving..." : "Complete Approval"}
+                    </Button>
+                  </div>
+                </TooltipTrigger>
+                {!areAllDocumentsUploaded() && (
+                  <TooltipContent>
+                    <p>Please upload all 10 required documents first</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </MainLayout>
     </TooltipProvider>
   );
