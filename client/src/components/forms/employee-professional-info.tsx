@@ -12,10 +12,10 @@ const professionalInfoSchema = z.object({
   jobTitle: z.string().min(1, "Job title is required"),
   workLocation: z.string().min(1, "Work location is required"),
   status: z.string().optional().default("active"),
-  npiNumber: z.string().optional().refine(
-    (val) => !val || val.length === 0 || /^\d{10}$/.test(val),
-    "NPI number must be exactly 10 digits"
-  ),
+  // npiNumber: z.string().optional().refine(
+  //   (val) => !val || val.length === 0 || /^\d{10}$/.test(val),
+  //   "NPI number must be exactly 10 digits"
+  // ),
   enumerationDate: z.string().optional(),
   workPhone: z.string().optional(),
   qualification: z.string().optional(),
@@ -43,7 +43,7 @@ export function EmployeeProfessionalInfo({ data, onChange, onValidationChange, r
       jobTitle: "",
       workLocation: "",
       status: "active",
-      npiNumber: "",
+      // npiNumber: "",
       enumerationDate: "",
       workPhone: "",
       qualification: "",
@@ -61,7 +61,7 @@ export function EmployeeProfessionalInfo({ data, onChange, onValidationChange, r
         jobTitle: data.jobTitle || "",
         workLocation: data.workLocation || "",
         status: data.status || "active",
-        npiNumber: data.npiNumber || "",
+        // npiNumber: data.npiNumber || "",
         enumerationDate: data.enumerationDate || "",
         workPhone: data.workPhone || "",
         qualification: data.qualification || "",
