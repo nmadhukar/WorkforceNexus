@@ -1,0 +1,51 @@
+{
+  "backup_date": "2025-10-28",
+  "backup_reason": "Database schema sync - removing obsolete tables and columns",
+  "backed_up_data": {
+    "docuseal_required_templates": [
+      {
+        "id": 1,
+        "template_id": "tpl_w4_2024",
+        "template_name": "W-4 Tax Form",
+        "description": "Employee tax withholding form for 2024",
+        "is_required": true,
+        "sort_order": 1,
+        "created_at": "2025-09-27T01:44:22.740122",
+        "updated_at": "2025-09-27T01:44:22.740122"
+      },
+      {
+        "id": 2,
+        "template_id": "tpl_i9_verification",
+        "template_name": "I-9 Employment Verification",
+        "description": "Verification of employment eligibility",
+        "is_required": true,
+        "sort_order": 2,
+        "created_at": "2025-09-27T01:44:22.740122",
+        "updated_at": "2025-09-27T01:44:22.740122"
+      },
+      {
+        "id": 3,
+        "template_id": "tpl_nda_agreement",
+        "template_name": "NDA Agreement",
+        "description": "Non-disclosure agreement for confidential information",
+        "is_required": true,
+        "sort_order": 3,
+        "created_at": "2025-09-27T01:44:22.740122",
+        "updated_at": "2025-09-27T01:44:22.740122"
+      }
+    ],
+    "form_submissions_columns": [
+      {
+        "id": 1,
+        "reminder_count": 0,
+        "error_message": null,
+        "webhook_events": null
+      }
+    ]
+  },
+  "notes": {
+    "session_table": "The session table is managed by connect-pg-simple and should remain outside of Drizzle ORM control. It will be preserved automatically.",
+    "docuseal_required_templates": "This is an obsolete table. The new docuseal_templates table has a different structure and purpose. These records were not migrated as they don't map to the new schema.",
+    "form_submissions_columns": "These columns (reminder_count, error_message, webhook_events) were removed as they contained minimal data and are no longer used."
+  }
+}
