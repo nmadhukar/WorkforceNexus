@@ -631,6 +631,261 @@ HR Management System
       fromEmail: this.fromEmail || undefined
     };
   }
+
+  /**
+   * Get configuration status (for compatibility with SES endpoints)
+   * 
+   * @async
+   * @method getConfigurationStatus
+   * @returns {Promise<object>} Configuration status
+   */
+  async getConfigurationStatus(): Promise<{
+    configured: boolean;
+    enabled: boolean;
+    verified: boolean;
+    fromEmail?: string;
+    region?: string;
+  }> {
+    try {
+      const configs = await db.select().from(sesConfigurations);
+      
+      if (configs.length === 0) {
+        return { configured: false, enabled: false, verified: false };
+      }
+
+      const config = configs[0];
+      return {
+        configured: true,
+        enabled: config.enabled || false,
+        verified: true, // Mailtrap doesn't require verification like SES
+        fromEmail: config.fromEmail,
+        region: 'global' // Mailtrap is global, no specific region
+      };
+    } catch (error) {
+      console.error("Mailtrap Service: Failed to get configuration status", error);
+      return { configured: false, enabled: false, verified: false };
+    }
+  }
+
+  /**
+   * Verify email address (not required for Mailtrap, but kept for compatibility)
+   * 
+   * @async
+   * @method verifyEmailAddress
+   * @param {string} email - Email address to verify
+   * @returns {Promise<boolean>} Always returns true for Mailtrap
+   * 
+   * @description
+   * Mailtrap doesn't require email verification like AWS SES does.
+   * This method exists for API compatibility but always returns true.
+   */
+  async verifyEmailAddress(email: string): Promise<boolean> {
+    console.log(`Mailtrap Service: Email verification not required for ${email} (Mailtrap automatically handles this)`);
+    return true;
+  }
+
+  /**
+   * Generate HTML email template for password reset
+   * 
+   * @private
+   * @method generatePasswordResetEmailHtml
+   * @param {Object} data - Template data for password reset email
+   * @param {string} data.userName - User's full name
+   * @param {string} data.resetLink - Password reset link with token
+   * @param {string} data.email - User's email address
+   * @param {string} data.expiresIn - Human-readable expiration time
+   * @returns {string} Complete HTML email template
+   */
+  private generatePasswordResetEmailHtml(data: { userName: string; resetLink: string; email: string; expiresIn: string }): string {
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%); color: white; padding: 30px; border-radius: 10px 10px 0 0; }
+            .content { background: white; padding: 30px; border: 1px solid #E5E7EB; border-radius: 0 0 10px 10px; }
+            .button { display: inline-block; padding: 12px 30px; background: #2563EB; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; }
+            .button:hover { background: #1D4ED8; }
+            .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #E5E7EB; color: #6B7280; font-size: 14px; }
+            .security-notice { background: #FEF2F2; border: 1px solid #FCA5A5; padding: 15px; border-radius: 6px; margin: 20px 0; }
+            .expiry-warning { background: #FEF8E1; border: 1px solid #FDDC69; padding: 15px; border-radius: 6px; margin: 20px 0; }
+            .link-text { word-break: break-all; color: #2563EB; text-decoration: underline; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1 style="margin: 0; font-size: 28px;">Password Reset Request</h1>
+              <p style="margin: 10px 0 0 0; opacity: 0.9;">HR Management System</p>
+            </div>
+            <div class="content">
+              <h2>Hello ${data.userName},</h2>
+              
+              <p>
+                We received a request to reset the password for your HR Management System account associated with 
+                <strong>${data.email}</strong>.
+              </p>
+              
+              <div class="security-notice">
+                <strong>🔒 Security Notice</strong><br>
+                If you didn't request this password reset, please ignore this email and your password will remain unchanged. 
+                Your account is safe and no action is needed.
+              </div>
+              
+              <p>To reset your password, click the button below:</p>
+              
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${data.resetLink}" class="button">Reset Your Password</a>
+              </div>
+              
+              <div class="expiry-warning">
+                <strong>⏰ Important:</strong> This password reset link will expire ${data.expiresIn}. 
+                After that, you'll need to request a new reset link.
+              </div>
+              
+              <p style="font-size: 14px; color: #6B7280;">
+                Or copy and paste this link into your browser:
+                <br>
+                <span class="link-text">${data.resetLink}</span>
+              </p>
+              
+              <div class="footer">
+                <h4>Security Tips:</h4>
+                <ul>
+                  <li>Never share your password with anyone</li>
+                  <li>Choose a strong, unique password</li>
+                  <li>Enable two-factor authentication if available</li>
+                  <li>Report suspicious activity to your administrator</li>
+                </ul>
+                <p>
+                  If you continue to have problems accessing your account, please contact your HR department or 
+                  system administrator for assistance.
+                </p>
+                <p style="font-style: italic;">
+                  This is an automated message. Please do not reply to this email.
+                </p>
+              </div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Generate plain text email template for password reset
+   * 
+   * @private
+   * @method generatePasswordResetEmailText
+   * @param {Object} data - Template data for password reset email
+   * @param {string} data.userName - User's full name
+   * @param {string} data.resetLink - Password reset link with token
+   * @param {string} data.email - User's email address
+   * @param {string} data.expiresIn - Human-readable expiration time
+   * @returns {string} Complete plain text email template
+   */
+  private generatePasswordResetEmailText(data: { userName: string; resetLink: string; email: string; expiresIn: string }): string {
+    return `
+Hello ${data.userName},
+
+We received a request to reset the password for your HR Management System account associated with ${data.email}.
+
+SECURITY NOTICE:
+If you didn't request this password reset, please ignore this email and your password will remain unchanged. Your account is safe and no action is needed.
+
+To reset your password, visit the following link:
+${data.resetLink}
+
+IMPORTANT: This password reset link will expire ${data.expiresIn}. After that, you'll need to request a new reset link.
+
+Security Tips:
+- Never share your password with anyone
+- Choose a strong, unique password
+- Enable two-factor authentication if available
+- Report suspicious activity to your administrator
+
+If you continue to have problems accessing your account, please contact your HR department or system administrator for assistance.
+
+This is an automated message. Please do not reply to this email.
+
+Best regards,
+HR Management System
+    `.trim();
+  }
+
+  /**
+   * Send password reset email to user
+   * 
+   * @async
+   * @method sendPasswordResetEmail
+   * @param {string} email - Recipient email address
+   * @param {string} resetToken - Password reset token
+   * @param {string} userName - User's full name for personalization
+   * @param {string} resetUrl - Base URL for password reset page
+   * @returns {Promise<{success: boolean; messageId?: string; error?: string}>} Send result
+   * 
+   * @description
+   * Sends a password reset email to a user with a secure reset link.
+   * The email includes:
+   * - Professional HTML and text templates
+   * - Security notices about the request
+   * - Expiration warning (24 hours)
+   * - Clear instructions for resetting password
+   */
+  async sendPasswordResetEmail(
+    email: string,
+    resetToken: string,
+    userName: string,
+    resetUrl: string
+  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    try {
+      // Generate the complete reset link
+      const resetLink = `${resetUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
+      const expiresIn = "in 24 hours";
+      
+      const subject = "Password Reset Request - HR Management System";
+      
+      const bodyHtml = this.generatePasswordResetEmailHtml({
+        userName,
+        resetLink,
+        email,
+        expiresIn
+      });
+      
+      const bodyText = this.generatePasswordResetEmailText({
+        userName,
+        resetLink,
+        email,
+        expiresIn
+      });
+      
+      const result = await this.sendEmail({
+        to: email,
+        subject,
+        bodyText,
+        bodyHtml
+      });
+      
+      // Log the attempt for debugging
+      if (!result.success) {
+        console.error(`Password reset email failed for ${email}:`, result.error);
+      } else {
+        console.log(`Password reset email sent successfully to ${email} (Message ID: ${result.messageId})`);
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Error sending password reset email:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to send password reset email'
+      };
+    }
+  }
 }
 
 // Create and export singleton instance

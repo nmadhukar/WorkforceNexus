@@ -1100,8 +1100,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Send password reset email
         try {
-          // Import SES service dynamically
-          const { sesService } = await import('./services/sesService');
+          // Import Mailtrap service dynamically
+          const { mailtrapService } = await import('./services/mailtrapService');
           
           // Generate full name for personalization
           const userName = user.username;
@@ -1110,7 +1110,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const baseUrl = getBaseUrl(req);
           
           // Send the password reset email
-          const emailResult = await sesService.sendPasswordResetEmail(
+          const emailResult = await mailtrapService.sendPasswordResetEmail(
             email,
             resetToken,
             userName,
@@ -3348,74 +3348,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   /**
-   * AWS SES Email Configuration Routes
+   * Email Configuration Routes (Mailtrap)
    * 
    * @description
-   * Endpoints for managing AWS SES configuration for email notifications.
+   * Endpoints for managing email configuration for notifications.
    * Supports configuration management, testing, and invitation sending.
    */
 
   /**
    * GET /api/admin/ses-config
-   * Get current SES configuration status
+   * Get current email configuration status
    */
   app.get('/api/admin/ses-config',
     requireAuth,
     requireRole(['admin', 'hr']),
     async (req: AuditRequest, res: Response) => {
       try {
-        const { sesService } = await import('./services/sesService');
-        const status = await sesService.getConfigurationStatus();
+        const { mailtrapService } = await import('./services/mailtrapService');
+        const status = await mailtrapService.getConfigurationStatus();
         res.json(status);
       } catch (error) {
-        console.error('Error fetching SES configuration:', error);
-        res.status(500).json({ error: 'Failed to fetch SES configuration' });
+        console.error('Error fetching email configuration:', error);
+        res.status(500).json({ error: 'Failed to fetch email configuration' });
       }
     }
   );
 
   /**
    * POST /api/admin/ses-config
-   * Save or update SES configuration
+   * Save or update email configuration (Mailtrap)
    */
   app.post('/api/admin/ses-config',
     requireAuth,
     requireRole(['admin', 'hr']),
     [
-      body('region').notEmpty().withMessage('AWS Region is required'),
-      body('accessKeyId').notEmpty().withMessage('AWS Access Key ID is required'),
-      body('secretAccessKey').notEmpty().withMessage('AWS Secret Access Key is required'),
+      body('token').optional(), // Mailtrap API Token (optional for backward compatibility)
+      // Keep region/accessKeyId/secretAccessKey optional for backward compatibility
+      body('region').optional(),
+      body('accessKeyId').optional(), // Will store the token here for compatibility
+      body('secretAccessKey').optional(),
       body('fromEmail').isEmail().withMessage('Valid from email is required'),
       body('fromName').optional()
     ],
     handleValidationErrors,
     async (req: AuditRequest, res: Response) => {
       try {
-        const { sesService } = await import('./services/sesService');
+        const { mailtrapService } = await import('./services/mailtrapService');
+        // Handle both token field and accessKeyId field for backward compatibility
+        const token = req.body.token || req.body.accessKeyId || '';
         const config = {
-          ...req.body,
+          token: token, // Mailtrap uses token instead of AWS keys
+          fromEmail: req.body.fromEmail,
+          fromName: req.body.fromName,
+          enabled: req.body.enabled !== undefined ? req.body.enabled : true,
           updatedBy: req.user!.id
         };
         
-        const success = await sesService.saveConfiguration(config);
+        const success = await mailtrapService.saveConfiguration(config);
         
         if (success) {
           await logAudit(req, 1, null, { configured: true });
           
-          res.json({ message: 'SES configuration saved successfully' });
+          res.json({ message: 'Email configuration saved successfully' });
         } else {
-          res.status(400).json({ error: 'Failed to save SES configuration' });
+          res.status(400).json({ error: 'Failed to save email configuration' });
         }
       } catch (error) {
-        console.error('Error saving SES configuration:', error);
-        res.status(500).json({ error: 'Failed to save SES configuration' });
+        console.error('Error saving email configuration:', error);
+        res.status(500).json({ error: 'Failed to save email configuration' });
       }
     }
   );
 
   /**
    * POST /api/admin/ses-config/test
-   * Test SES configuration by sending a test email
+   * Test email configuration by sending a test email
    */
   app.post('/api/admin/ses-config/test',
     requireAuth,
@@ -3426,8 +3433,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     handleValidationErrors,
     async (req: AuditRequest, res: Response) => {
       try {
-        const { sesService } = await import('./services/sesService');
-        const result = await sesService.testConfiguration(req.body.testEmail);
+        const { mailtrapService } = await import('./services/mailtrapService');
+        const result = await mailtrapService.testConfiguration(req.body.testEmail);
         
         if (result.success) {
           res.json({ 
@@ -3441,15 +3448,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
       } catch (error) {
-        console.error('Error testing SES configuration:', error);
-        res.status(500).json({ error: 'Failed to test SES configuration' });
+        console.error('Error testing email configuration:', error);
+        res.status(500).json({ error: 'Failed to test email configuration' });
       }
     }
   );
 
   /**
    * POST /api/admin/ses-config/verify
-   * Verify an email address with AWS SES
+   * Verify an email address (compatibility endpoint for Mailtrap)
    */
   app.post('/api/admin/ses-config/verify',
     requireAuth,
@@ -3460,16 +3467,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     handleValidationErrors,
     async (req: AuditRequest, res: Response) => {
       try {
-        const { sesService } = await import('./services/sesService');
-        const success = await sesService.verifyEmailAddress(req.body.email);
+        const { mailtrapService } = await import('./services/mailtrapService');
+        const success = await mailtrapService.verifyEmailAddress(req.body.email);
         
         if (success) {
           res.json({ 
-            message: 'Verification email sent',
-            details: 'Please check your email and follow the AWS verification link'
+            message: 'Email address verified',
+            details: 'Mailtrap does not require email verification, address is ready to use'
           });
         } else {
-          res.status(400).json({ error: 'Failed to send verification email' });
+          res.status(400).json({ error: 'Failed to verify email address' });
         }
       } catch (error) {
         console.error('Error verifying email address:', error);
@@ -3480,8 +3487,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   /**
    * POST /api/admin/ses-config/verify-email
-   * Verify an email address with AWS SES (alternative endpoint)
-   * This endpoint specifically verifies admin@atcemr.com for sending
+   * Verify an email address (alternative endpoint, compatibility for Mailtrap)
+   * This endpoint exists for backward compatibility
    */
   app.post('/api/admin/ses-config/verify-email',
     requireAuth,
@@ -3489,24 +3496,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     handleValidationErrors,
     async (req: AuditRequest, res: Response) => {
       try {
-        const { sesService } = await import('./services/sesService');
+        const { mailtrapService } = await import('./services/mailtrapService');
         
         // Default to admin@atcemr.com if no email provided
         const emailToVerify = req.body.email || 'admin@atcemr.com';
         
         console.log(`Attempting to verify email address: ${emailToVerify}`);
-        const success = await sesService.verifyEmailAddress(emailToVerify);
+        const success = await mailtrapService.verifyEmailAddress(emailToVerify);
         
         if (success) {
           res.json({ 
-            message: `Verification request sent for ${emailToVerify}`,
-            details: 'Please check the email inbox and follow the AWS verification link',
+            message: `Email address ${emailToVerify} is verified`,
+            details: 'Mailtrap does not require email verification, address is ready to use',
             email: emailToVerify
           });
         } else {
           res.status(400).json({ 
-            error: `Failed to send verification email to ${emailToVerify}`,
-            details: 'The email may already be verified or there might be an AWS configuration issue'
+            error: `Failed to verify email ${emailToVerify}`,
+            details: 'There might be an email configuration issue'
           });
         }
       } catch (error: any) {
@@ -5072,14 +5079,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`Invitation link generated: ${invitationLink}`);
         
         // Send invitation email
-        const { sesService } = await import('./services/sesService');
+        const { mailtrapService } = await import('./services/mailtrapService');
         console.log('Attempting to send invitation email to:', email);
         
-        // Check if SES is initialized
-        const isInitialized = await sesService.initialize();
-        console.log('SES Service initialized:', isInitialized);
+        // Check if Mailtrap is initialized
+        const isInitialized = await mailtrapService.initialize();
+        console.log('Mailtrap Service initialized:', isInitialized);
         
-        const emailResult = await sesService.sendInvitationEmail(
+        const emailResult = await mailtrapService.sendInvitationEmail(
           {
             to: email,
             firstName,
@@ -6531,8 +6538,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const daysRemaining = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
         
         // Send email with timeout handling
-        const { sesService } = await import('./services/sesService');
-        const emailResult = await sesService.sendInvitationEmail(
+        const { mailtrapService } = await import('./services/mailtrapService');
+        const emailResult = await mailtrapService.sendInvitationEmail(
           {
             to: invitation.email,
             firstName: invitation.firstName,
