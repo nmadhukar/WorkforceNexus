@@ -401,6 +401,21 @@ export const sesConfigurations = pgTable("ses_configurations", {
 });
 
 /**
+ * SESSION TABLE (managed by connect-pg-simple)
+ *
+ * Defining this prevents Drizzle Push from proposing to drop the existing
+ * session table created by the session store. We do not use it directly, but
+ * keeping it in the schema ensures non-destructive diffs.
+ */
+export const session = pgTable("session", {
+  sid: varchar("sid", { length: 255 }).primaryKey(),
+  sess: jsonb("sess").notNull(),
+  expire: timestamp("expire", { precision: 6 }).notNull()
+}, (table) => ({
+  expireIdx: index("idx_session_expire").on(table.expire)
+}));
+
+/**
  * EMAIL REMINDERS TABLE
  * 
  * Tracks all email reminders sent for invitation follow-ups.

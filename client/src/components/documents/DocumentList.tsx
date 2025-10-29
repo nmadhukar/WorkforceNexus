@@ -157,7 +157,7 @@ export function DocumentList({
     if (propOnDownload) {
       propOnDownload(doc.id, doc.fileName);
     } else {
-      download(doc.id, doc.fileName);
+      download(doc.id, doc.fileName, doc.mimeType);
     }
   };
 
