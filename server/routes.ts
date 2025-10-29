@@ -1722,6 +1722,339 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
+  /**
+   * GET /api/employees/:id/approval-checklist
+   * Get approval checklist for an employee
+   * @route GET /api/employees/:id/approval-checklist
+   * @group Employees - Employee approval checklist operations
+   * @security session, apikey
+   * @returns {object} 200 - Approval checklist data
+   * @returns {object} 404 - Checklist not found (returns default values)
+   */
+  app.get('/api/employees/:id/approval-checklist',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('read:employees'),
+    validateId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.id);
+        
+        // Check if employee exists
+        const employee = await storage.getEmployee(employeeId);
+        if (!employee) {
+          return res.status(404).json({ error: 'Employee not found' });
+        }
+        
+        // Get checklist
+        const checklist = await storage.getEmployeeApprovalChecklist(employeeId);
+        
+        // If no checklist exists, return default values
+        if (!checklist) {
+          return res.json({
+            employeeId,
+            cpiTraining: 'no',
+            cprTraining: 'no',
+            crisisPrevention: 'no',
+            federalExclusions: 'no',
+            stateExclusions: 'no',
+            samGovExclusion: 'no',
+            urineDrugScreen: 'no',
+            bciFbiCheck: 'no',
+            laptopSetup: 'no',
+            emailSetup: 'no',
+            emrSetup: 'no',
+            phoneSetup: 'no'
+          });
+        }
+        
+        res.json(checklist);
+      } catch (error) {
+        console.error('Error fetching approval checklist:', error);
+        res.status(500).json({ error: 'Failed to fetch approval checklist' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/employees/:id/approval-checklist
+   * Create or update approval checklist for an employee
+   * @route POST /api/employees/:id/approval-checklist
+   * @group Employees - Employee approval checklist operations
+   * @security session, apikey
+   * @param {object} body - Checklist data (all yes/no fields)
+   * @returns {object} 200 - Created/updated checklist
+   */
+  app.post('/api/employees/:id/approval-checklist',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:employees'),
+    requireRole(['admin', 'hr']),
+    auditMiddleware('employee_approval_checklists'),
+    validateId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.id);
+        
+        // Check if employee exists
+        const employee = await storage.getEmployee(employeeId);
+        if (!employee) {
+          return res.status(404).json({ error: 'Employee not found' });
+        }
+        
+        // Get checklist data from request
+        const checklistData = {
+          employeeId,
+          cpiTraining: req.body.cpiTraining || 'no',
+          cprTraining: req.body.cprTraining || 'no',
+          crisisPrevention: req.body.crisisPrevention || 'no',
+          federalExclusions: req.body.federalExclusions || 'no',
+          stateExclusions: req.body.stateExclusions || 'no',
+          samGovExclusion: req.body.samGovExclusion || 'no',
+          urineDrugScreen: req.body.urineDrugScreen || 'no',
+          bciFbiCheck: req.body.bciFbiCheck || 'no',
+          laptopSetup: req.body.laptopSetup || 'no',
+          emailSetup: req.body.emailSetup || 'no',
+          emrSetup: req.body.emrSetup || 'no',
+          phoneSetup: req.body.phoneSetup || 'no',
+          createdBy: req.user?.id,
+          updatedBy: req.user?.id
+        };
+        
+        // Check if checklist already exists
+        const existingChecklist = await storage.getEmployeeApprovalChecklist(employeeId);
+        
+        let checklist;
+        if (existingChecklist) {
+          // Update existing checklist
+          checklist = await storage.updateEmployeeApprovalChecklist(employeeId, checklistData);
+        } else {
+          // Create new checklist
+          checklist = await storage.createEmployeeApprovalChecklist(checklistData);
+        }
+        
+        await logAudit(req, checklist.id, existingChecklist, checklist);
+        
+        res.json(checklist);
+      } catch (error) {
+        console.error('Error saving approval checklist:', error);
+        res.status(500).json({ error: 'Failed to save approval checklist' });
+      }
+    }
+  );
+
+  /**
+   * PUT /api/employees/:id/approval-checklist
+   * Update approval checklist for an employee
+   * @route PUT /api/employees/:id/approval-checklist
+   * @group Employees - Employee approval checklist operations
+   * @security session, apikey
+   * @param {object} body - Partial checklist data to update
+   * @returns {object} 200 - Updated checklist
+   * @returns {object} 404 - Checklist not found
+   */
+  app.put('/api/employees/:id/approval-checklist',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:employees'),
+    requireRole(['admin', 'hr']),
+    auditMiddleware('employee_approval_checklists'),
+    validateId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.id);
+        
+        // Check if employee exists
+        const employee = await storage.getEmployee(employeeId);
+        if (!employee) {
+          return res.status(404).json({ error: 'Employee not found' });
+        }
+        
+        // Check if checklist exists
+        const existingChecklist = await storage.getEmployeeApprovalChecklist(employeeId);
+        if (!existingChecklist) {
+          return res.status(404).json({ error: 'Approval checklist not found. Use POST to create one first.' });
+        }
+        
+        // Update checklist with only provided fields
+        const updateData = {
+          ...req.body,
+          updatedBy: req.user?.id
+        };
+        
+        const updatedChecklist = await storage.updateEmployeeApprovalChecklist(employeeId, updateData);
+        
+        await logAudit(req, updatedChecklist.id, existingChecklist, updatedChecklist);
+        
+        res.json(updatedChecklist);
+      } catch (error) {
+        console.error('Error updating approval checklist:', error);
+        res.status(500).json({ error: 'Failed to update approval checklist' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/employees/:id/approval-documents
+   * Upload approval documents during employee approval process
+   * @route POST /api/employees/:id/approval-documents
+   * @group Employees - Employee approval document upload
+   * @security session, apikey
+   * @param {files} documents - Array of document files to upload
+   * @param {string} body.documentTypes - JSON string array of document type names
+   * @param {string} body.selections - JSON string of yes/no selections
+   * @returns {object} 200 - Upload results
+   */
+  app.post('/api/employees/:id/approval-documents',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:employees'),
+    requireRole(['admin', 'hr']),
+    upload.array('documents', 15), // Support up to 15 files
+    validateId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.id);
+        
+        // Check if employee exists
+        const employee = await storage.getEmployee(employeeId);
+        if (!employee) {
+          return res.status(404).json({ error: 'Employee not found' });
+        }
+        
+        // Get uploaded files
+        const files = req.files as Express.Multer.File[];
+        if (!files || files.length === 0) {
+          return res.status(400).json({ error: 'No files uploaded' });
+        }
+        
+        // Parse document types from request
+        let documentTypes: string[] = [];
+        try {
+          documentTypes = JSON.parse(req.body.documentTypes || '[]');
+        } catch (e) {
+          return res.status(400).json({ error: 'Invalid documentTypes format' });
+        }
+        
+        // Validate that we have a document type for each file
+        if (documentTypes.length !== files.length) {
+          return res.status(400).json({ 
+            error: 'Number of document types must match number of files' 
+          });
+        }
+        
+        // Get selections (optional, for audit purposes)
+        let selections: Record<string, string> = {};
+        try {
+          selections = JSON.parse(req.body.selections || '{}');
+        } catch (e) {
+          console.warn('Failed to parse selections:', e);
+        }
+        
+        // Check if S3 is enabled
+        const s3Config = await storage.getS3Configuration();
+        const s3Enabled = s3Config?.enabled && 
+                         s3Config.accessKeyId && 
+                         s3Config.secretAccessKey && 
+                         s3Config.bucketName;
+        const storageType = s3Enabled ? 's3' : 'local';
+        
+        // Process each file
+        const uploadedDocuments = [];
+        const errors = [];
+        
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const documentType = documentTypes[i];
+          
+          try {
+            let s3Key = null;
+            let s3Etag = null;
+            
+            // Upload to S3 if enabled
+            if (storageType === 's3' && s3Config) {
+              s3Key = `employees/${employeeId}/approval/${documentType}-${Date.now()}-${file.originalname}`;
+              
+              // Read file as buffer for S3 upload
+              const fs = await import('fs/promises');
+              const fileBuffer = await fs.readFile(file.path);
+              
+              const uploadResult = await s3Service.uploadFile(
+                fileBuffer,
+                s3Key,
+                file.mimetype
+              );
+              
+              s3Etag = uploadResult.etag?.replace(/"/g, '') || null;
+            }
+            
+            // Create document record
+            const document = await storage.createDocument({
+              employeeId,
+              documentType,
+              documentName: `${documentType} - Approval Document`,
+              fileName: file.originalname,
+              fileSize: file.size,
+              filePath: storageType === 's3' ? s3Key : file.path,
+              storageType,
+              storageKey: s3Key,
+              mimeType: file.mimetype,
+              s3Etag,
+              notes: `Uploaded during employee approval process. Selections: ${JSON.stringify(selections)}`
+            });
+            
+            uploadedDocuments.push(document);
+            
+            // Log audit
+            await storage.createAudit({
+              tableName: 'documents',
+              recordId: document.id,
+              action: 'CREATE',
+              changedBy: req.user?.id || null,
+              oldData: null,
+              newData: document
+            });
+            
+          } catch (error) {
+            console.error(`Error uploading document ${documentType}:`, error);
+            errors.push({
+              documentType,
+              fileName: file.originalname,
+              error: error instanceof Error ? error.message : 'Upload failed'
+            });
+          }
+        }
+        
+        // Return results
+        res.json({
+          success: true,
+          uploaded: uploadedDocuments.length,
+          failed: errors.length,
+          storageType,
+          documents: uploadedDocuments.map(doc => ({
+            id: doc.id,
+            documentType: doc.documentType,
+            fileName: doc.fileName,
+            fileSize: doc.fileSize,
+            storageType: doc.storageType
+          })),
+          errors: errors.length > 0 ? errors : undefined
+        });
+        
+      } catch (error) {
+        console.error('Error uploading approval documents:', error);
+        res.status(500).json({ 
+          error: 'Failed to upload documents',
+          details: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+  );
+
   // Education routes - accessible via API key or session
   app.get('/api/employees/:id/educations', 
     apiKeyAuth,

@@ -1503,6 +1503,44 @@ export const employeeDocumentUploads = pgTable("employee_document_uploads", {
   uploadedAtIdx: index("idx_doc_uploads_uploaded").on(table.uploadedAt)
 }));
 
+/**
+ * EMPLOYEE APPROVAL CHECKLISTS TABLE
+ * 
+ * Stores approval checklist data for employees during the approval process.
+ * Tracks yes/no selections for various onboarding requirements including
+ * training completion, background checks, and system setup items.
+ */
+export const employeeApprovalChecklists = pgTable("employee_approval_checklists", {
+  id: serial("id").primaryKey(), // Auto-incrementing primary key
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }).notNull().unique(), // Foreign key to employees (one per employee)
+  
+  // Optional Training Fields
+  cpiTraining: varchar("cpi_training", { length: 3 }).default("no").notNull(), // yes | no
+  cprTraining: varchar("cpr_training", { length: 3 }).default("no").notNull(), // yes | no
+  crisisPrevention: varchar("crisis_prevention", { length: 3 }).default("no").notNull(), // yes | no
+  
+  // Required Background Checks & Screenings
+  federalExclusions: varchar("federal_exclusions", { length: 3 }).default("no").notNull(), // yes | no
+  stateExclusions: varchar("state_exclusions", { length: 3 }).default("no").notNull(), // yes | no
+  samGovExclusion: varchar("sam_gov_exclusion", { length: 3 }).default("no").notNull(), // yes | no
+  urineDrugScreen: varchar("urine_drug_screen", { length: 3 }).default("no").notNull(), // yes | no
+  bciFbiCheck: varchar("bci_fbi_check", { length: 3 }).default("no").notNull(), // yes | no
+  
+  // Equipment & System Setup
+  laptopSetup: varchar("laptop_setup", { length: 3 }).default("no").notNull(), // yes | no
+  emailSetup: varchar("email_setup", { length: 3 }).default("no").notNull(), // yes | no
+  emrSetup: varchar("emr_setup", { length: 3 }).default("no").notNull(), // yes | no
+  phoneSetup: varchar("phone_setup", { length: 3 }).default("no").notNull(), // yes | no
+  
+  // Metadata
+  createdAt: timestamp("created_at").defaultNow().notNull(), // Record creation timestamp
+  updatedAt: timestamp("updated_at").defaultNow().notNull(), // Last update timestamp
+  createdBy: integer("created_by").references(() => users.id), // User who created the checklist
+  updatedBy: integer("updated_by").references(() => users.id) // User who last updated the checklist
+}, (table) => ({
+  employeeIdx: index("idx_approval_checklist_employee").on(table.employeeId)
+}));
+
 // =====================
 // COMPLIANCE TRACKING SCHEMAS
 // =====================
@@ -1637,3 +1675,27 @@ export type InsertRequiredDocumentType = z.infer<typeof insertRequiredDocumentTy
 // Types for employee document uploads
 export type EmployeeDocumentUpload = typeof employeeDocumentUploads.$inferSelect;
 export type InsertEmployeeDocumentUpload = z.infer<typeof insertEmployeeDocumentUploadSchema>;
+
+// Insert schemas for employee approval checklists
+export const insertEmployeeApprovalChecklistSchema = createInsertSchema(employeeApprovalChecklists).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+}).extend({
+  cpiTraining: z.enum(["yes", "no"]).default("no"),
+  cprTraining: z.enum(["yes", "no"]).default("no"),
+  crisisPrevention: z.enum(["yes", "no"]).default("no"),
+  federalExclusions: z.enum(["yes", "no"]).default("no"),
+  stateExclusions: z.enum(["yes", "no"]).default("no"),
+  samGovExclusion: z.enum(["yes", "no"]).default("no"),
+  urineDrugScreen: z.enum(["yes", "no"]).default("no"),
+  bciFbiCheck: z.enum(["yes", "no"]).default("no"),
+  laptopSetup: z.enum(["yes", "no"]).default("no"),
+  emailSetup: z.enum(["yes", "no"]).default("no"),
+  emrSetup: z.enum(["yes", "no"]).default("no"),
+  phoneSetup: z.enum(["yes", "no"]).default("no")
+});
+
+// Types for employee approval checklists
+export type EmployeeApprovalChecklist = typeof employeeApprovalChecklists.$inferSelect;
+export type InsertEmployeeApprovalChecklist = z.infer<typeof insertEmployeeApprovalChecklistSchema>;

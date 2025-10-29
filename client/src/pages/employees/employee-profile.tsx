@@ -1,6 +1,6 @@
 import { useParams, useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/layout/main-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -133,18 +134,73 @@ export default function EmployeeProfile() {
 
   // State for approval modal
   const [showApprovalModal, setShowApprovalModal] = useState(false);
+
+  // Fetch existing approval checklist
+  const { data: existingChecklist } = useQuery<any>({
+    queryKey: ["/api/employees", employeeId, "approval-checklist"],
+    enabled: !!employeeId && showApprovalModal,
+  });
+  const [isUploadingDocuments, setIsUploadingDocuments] = useState(false);
+  
+  // Radio button selections (default to 'no')
+  const [approvalSelections, setApprovalSelections] = useState<Record<string, 'yes' | 'no'>>({
+    cpiTraining: 'no',
+    cprTraining: 'no',
+    crisisPrevention: 'no',
+    federalExclusions: 'no',
+    stateExclusions: 'no',
+    samGovExclusion: 'no',
+    urineDrugScreen: 'no',
+    bciFbiCheck: 'no',
+    laptopSetup: 'no',
+    emailSetup: 'no',
+    emrSetup: 'no',
+    phoneSetup: 'no',
+  });
+
+  // Uploaded documents (only for 'yes' selections that need uploads)
   const [uploadedDocuments, setUploadedDocuments] = useState<Record<string, File | null>>({
-    hrDocuments: null,
     cpiTraining: null,
     cprTraining: null,
     crisisPrevention: null,
-    bciFbiCheck: null,
     federalExclusions: null,
     stateExclusions: null,
     samGovExclusion: null,
-    leie: null,
     urineDrugScreen: null,
+    bciFbiCheck: null,
   });
+
+  // Document type mapping for API
+  const documentTypeLabels: Record<string, string> = {
+    cpiTraining: 'CPI_Training',
+    cprTraining: 'CPR_Training',
+    crisisPrevention: 'Crisis_Prevention_De_Escalation',
+    bciFbiCheck: 'BCI_FBI_Check',
+    federalExclusions: 'Federal_Exclusions',
+    stateExclusions: 'State_Exclusions',
+    samGovExclusion: 'SAM_Gov_Exclusion',
+    urineDrugScreen: 'Urine_Drug_Screen',
+  };
+
+  // Load existing checklist data when modal opens
+  useEffect(() => {
+    if (existingChecklist && showApprovalModal) {
+      setApprovalSelections({
+        cpiTraining: existingChecklist.cpiTraining || 'no',
+        cprTraining: existingChecklist.cprTraining || 'no',
+        crisisPrevention: existingChecklist.crisisPrevention || 'no',
+        federalExclusions: existingChecklist.federalExclusions || 'no',
+        stateExclusions: existingChecklist.stateExclusions || 'no',
+        samGovExclusion: existingChecklist.samGovExclusion || 'no',
+        urineDrugScreen: existingChecklist.urineDrugScreen || 'no',
+        bciFbiCheck: existingChecklist.bciFbiCheck || 'no',
+        laptopSetup: existingChecklist.laptopSetup || 'no',
+        emailSetup: existingChecklist.emailSetup || 'no',
+        emrSetup: existingChecklist.emrSetup || 'no',
+        phoneSetup: existingChecklist.phoneSetup || 'no',
+      });
+    }
+  }, [existingChecklist, showApprovalModal]);
 
   // Approval mutation
   const approveMutation = useMutation({
@@ -337,6 +393,26 @@ export default function EmployeeProfile() {
   };
 
   /**
+   * Handles radio button selection changes
+   * @param {string} key - The field key
+   * @param {'yes' | 'no'} value - Selected value
+   */
+  const handleSelectionChange = (key: string, value: 'yes' | 'no') => {
+    setApprovalSelections(prev => ({
+      ...prev,
+      [key]: value
+    }));
+    
+    // Clear uploaded file if user selects 'no'
+    if (value === 'no' && uploadedDocuments.hasOwnProperty(key)) {
+      setUploadedDocuments(prev => ({
+        ...prev,
+        [key]: null
+      }));
+    }
+  };
+
+  /**
    * Handles file upload for approval documents
    * @param {string} documentKey - The key identifying which document is being uploaded
    * @param {React.ChangeEvent<HTMLInputElement>} event - The file input change event
@@ -361,29 +437,269 @@ export default function EmployeeProfile() {
   };
 
   /**
-   * Checks if all required documents are uploaded
-   * @returns {boolean} True if all 10 documents are uploaded
+   * Checks if all 5 required background check documents are uploaded
+   * @returns {boolean} True if all 5 mandatory docs are "yes" with documents uploaded
    */
-  const areAllDocumentsUploaded = () => {
-    return Object.values(uploadedDocuments).every(file => file !== null);
+  const areAllRequiredBackgroundChecksComplete = () => {
+    const mandatoryFields = ['federalExclusions', 'stateExclusions', 'samGovExclusion', 'urineDrugScreen', 'bciFbiCheck'];
+    
+    // ALL 5 must be 'yes' AND have documents uploaded
+    for (const field of mandatoryFields) {
+      const selection = approvalSelections[field];
+      const hasDocument = uploadedDocuments[field];
+      
+      if (selection !== 'yes' || !hasDocument) {
+        return false;
+      }
+    }
+    
+    return true;
+  };
+
+  /**
+   * Checks if any field marked "yes" is missing its document
+   * @returns {boolean} True if all "yes" selections have documents
+   */
+  const areAllSelectedDocumentsValid = () => {
+    // Check all fields that need documents (training + background checks)
+    const fieldsWithDocs = ['cpiTraining', 'cprTraining', 'crisisPrevention', 'federalExclusions', 'stateExclusions', 'samGovExclusion', 'urineDrugScreen', 'bciFbiCheck'];
+    
+    for (const field of fieldsWithDocs) {
+      // If 'yes' is selected, document must be uploaded
+      if (approvalSelections[field] === 'yes' && !uploadedDocuments[field]) {
+        return false;
+      }
+    }
+    
+    return true;
+  };
+
+  /**
+   * Uploads approval documents to the server
+   */
+  const uploadApprovalDocuments = async (): Promise<boolean> => {
+    try {
+      setIsUploadingDocuments(true);
+      
+      // Collect all documents that need to be uploaded (where 'yes' is selected)
+      const docsToUpload: { key: string; file: File }[] = [];
+      
+      Object.entries(uploadedDocuments).forEach(([key, file]) => {
+        if (file && approvalSelections[key] === 'yes') {
+          docsToUpload.push({ key, file });
+        }
+      });
+      
+      if (docsToUpload.length === 0) {
+        return true; // No documents to upload
+      }
+      
+      // Create FormData for multipart upload
+      const formData = new FormData();
+      
+      // Add all files and their types
+      const documentTypes: string[] = [];
+      docsToUpload.forEach(({ key, file }) => {
+        formData.append('documents', file);
+        documentTypes.push(documentTypeLabels[key]);
+      });
+      
+      // Add metadata
+      formData.append('documentTypes', JSON.stringify(documentTypes));
+      formData.append('selections', JSON.stringify(approvalSelections));
+      
+      // Upload documents using fetch
+      const response = await fetch(`/api/employees/${employeeId}/approval-documents`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to upload documents');
+      }
+      
+      const result = await response.json();
+      
+      toast({
+        title: "Documents Uploaded",
+        description: `Successfully uploaded ${result.uploaded} document(s).`,
+      });
+      
+      return true;
+    } catch (error) {
+      console.error('Error uploading documents:', error);
+      toast({
+        title: "Upload Failed",
+        description: error instanceof Error ? error.message : "Failed to upload documents",
+        variant: "destructive"
+      });
+      return false;
+    } finally {
+      setIsUploadingDocuments(false);
+    }
   };
 
   /**
    * Handles the approval process with documents
    */
-  const handleApprovalSubmit = () => {
-    if (!areAllDocumentsUploaded()) {
+  const handleApprovalSubmit = async () => {
+    // Validate that any field marked "yes" has a document
+    if (!areAllSelectedDocumentsValid()) {
       toast({
-        title: "Missing Documents",
-        description: "Please upload all required documents before approving the employee.",
+        title: "Missing Required Information",
+        description: "Please upload documents for all fields marked 'Yes'.",
         variant: "destructive"
       });
       return;
     }
     
-    // For now, just call the existing approve mutation
-    // Later this will upload documents first
-    approveMutation.mutate();
+    // Upload documents first (if any)
+    const uploadSuccess = await uploadApprovalDocuments();
+    
+    if (!uploadSuccess) {
+      toast({
+        title: "Upload Failed",
+        description: "Documents must be uploaded before saving. Please try again.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // Save checklist data to database
+    try {
+      await apiRequest("POST", `/api/employees/${employeeId}/approval-checklist`, approvalSelections);
+      
+      // Check if all 5 required background checks are complete
+      const allBackgroundChecksComplete = areAllRequiredBackgroundChecksComplete();
+      
+      if (allBackgroundChecksComplete) {
+        // All 5 required documents uploaded → Approve employee
+        toast({
+          title: "Checklist Saved",
+          description: "All required documents uploaded. Approving employee...",
+        });
+        
+        // Approve the employee
+        approveMutation.mutate();
+      } else {
+        // Not all required documents → Just save, don't approve
+        toast({
+          title: "Checklist Saved",
+          description: "Checklist saved successfully. Employee not approved yet - missing required background checks.",
+          variant: "default"
+        });
+        
+        // Close modal and refresh data
+        setShowApprovalModal(false);
+        queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId] });
+      }
+      
+    } catch (error) {
+      console.error('Error saving checklist:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save checklist data. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Helper function to render approval field with radio buttons and optional upload
+  const renderApprovalField = (
+    key: string,
+    label: string,
+    icon: any,
+    isMandatory: boolean,
+    needsUpload: boolean,
+    index: number
+  ) => {
+    const Icon = icon;
+    const selection = approvalSelections[key];
+    const file = uploadedDocuments[key];
+
+    return (
+      <Card key={key} className="border hover:border-primary/50 transition-colors">
+        <CardContent className="p-4">
+          <div className="space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5">
+                <Icon className="w-5 h-5 text-primary" />
+              </div>
+              <div className="flex-1">
+                <Label className="text-sm font-semibold flex items-center gap-1.5">
+                  {index}. {label}
+                  {isMandatory && <span className="text-destructive text-xs">*</span>}
+                </Label>
+              </div>
+            </div>
+
+            {/* Radio Buttons */}
+            <RadioGroup
+              value={selection}
+              onValueChange={(value) => handleSelectionChange(key, value as 'yes' | 'no')}
+              className="flex gap-4 ml-8"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="yes" id={`${key}-yes`} />
+                <Label htmlFor={`${key}-yes`} className="cursor-pointer font-normal">
+                  Yes
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="no" id={`${key}-no`} />
+                <Label htmlFor={`${key}-no`} className="cursor-pointer font-normal">
+                  No
+                </Label>
+              </div>
+            </RadioGroup>
+
+            {/* File Upload (only shown if Yes is selected and field needs upload) */}
+            {needsUpload && selection === 'yes' && (
+              <div className="ml-8 mt-2">
+                {file ? (
+                  <div className="flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded-md">
+                    <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                    <span className="text-xs text-green-700 truncate flex-1">
+                      {file.name}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 w-5 p-0 hover:bg-green-100"
+                      onClick={() => handleRemoveFile(key)}
+                    >
+                      <X className="w-3 h-3 text-green-600" />
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <Label
+                      htmlFor={`doc-${key}`}
+                      className="flex items-center justify-center gap-2 p-2 border-2 border-dashed border-muted-foreground/25 rounded-md hover:border-primary/50 hover:bg-primary/5 transition-colors cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">
+                        Click to attach document
+                      </span>
+                    </Label>
+                    <Input
+                      id={`doc-${key}`}
+                      type="file"
+                      className="hidden"
+                      onChange={(e) => handleFileUpload(key, e)}
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    />
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
   };
 
   return (
@@ -959,118 +1275,89 @@ export default function EmployeeProfile() {
             <DialogHeader>
               <DialogTitle className="flex items-center text-2xl">
                 <UserCheck className="w-6 h-6 mr-2 text-green-600" />
-                Employee Approval - Required Documents
+                Employee Approval Checklist
               </DialogTitle>
               <DialogDescription className="space-y-2">
-                <p className="font-medium text-destructive">
-                  ⚠️ All 10 documents are mandatory for compliance and must be uploaded before approval.
-                </p>
                 <p>
-                  Please upload all required documents to proceed with employee approval.
+                  Please complete the following checklist for employee approval. Upload documents where required when "Yes" is selected.
                 </p>
               </DialogDescription>
             </DialogHeader>
 
-            <ScrollArea className="h-[450px] pr-4">
-              <div className="space-y-3 py-2">
-                {/* Document Upload Items */}
-                {[
-                  { key: 'hrDocuments', label: 'HR Documents needed', icon: FileText },
-                  { key: 'cpiTraining', label: 'CPI Training', icon: GraduationCap },
-                  { key: 'cprTraining', label: 'CPR Training', icon: Activity },
-                  { key: 'crisisPrevention', label: 'Crisis Prevention/De-Escalation', icon: Shield },
-                  { key: 'bciFbiCheck', label: 'BCI/FBI Check', icon: Shield },
-                  { key: 'federalExclusions', label: 'Federal Exclusions', icon: AlertTriangle },
-                  { key: 'stateExclusions', label: 'State Exclusions', icon: AlertTriangle },
-                  { key: 'samGovExclusion', label: 'SAM.gov Exclusion', icon: FileCheck },
-                  { key: 'leie', label: 'LEIE', icon: FileCheck },
-                  { key: 'urineDrugScreen', label: 'Urine Drug Screen', icon: Stethoscope },
-                ].map((doc, index) => {
-                  const Icon = doc.icon;
-                  const file = uploadedDocuments[doc.key];
-                  
-                  return (
-                    <Card key={doc.key} className="border hover:border-primary/50 transition-colors">
-                      <CardContent className="p-3">
-                        <div className="flex items-start gap-3">
-                          <div className="mt-0.5">
-                            <Icon className="w-4 h-4 text-primary" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <Label htmlFor={`doc-${doc.key}`} className="text-sm font-semibold cursor-pointer flex items-center gap-1.5">
-                              {index + 1}. {doc.label}
-                              <span className="text-destructive text-xs">*</span>
-                            </Label>
-                            {file ? (
-                              <div className="mt-1.5 flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded-md">
-                                <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
-                                <span className="text-xs text-green-700 truncate flex-1">
-                                  {file.name}
-                                </span>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-5 w-5 p-0 hover:bg-green-100"
-                                  onClick={() => handleRemoveFile(doc.key)}
-                                >
-                                  <X className="w-3 h-3 text-green-600" />
-                                </Button>
-                              </div>
-                            ) : (
-                              <div className="mt-1.5">
-                                <Label
-                                  htmlFor={`doc-${doc.key}`}
-                                  className="flex items-center justify-center gap-2 p-2 border-2 border-dashed border-muted-foreground/25 rounded-md hover:border-primary/50 hover:bg-primary/5 transition-colors cursor-pointer"
-                                >
-                                  <Upload className="w-3.5 h-3.5 text-muted-foreground" />
-                                  <span className="text-xs text-muted-foreground">
-                                    Click to upload
-                                  </span>
-                                </Label>
-                              </div>
-                            )}
-                            <Input
-                              id={`doc-${doc.key}`}
-                              type="file"
-                              className="hidden"
-                              onChange={(e) => handleFileUpload(doc.key, e)}
-                              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                            />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
+            <ScrollArea className="h-[500px] pr-4">
+              <div className="space-y-4 py-2">
+                {/* Optional Training Section */}
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                    <GraduationCap className="w-4 h-4" />
+                    Optional Training (Attach document if completed)
+                  </h3>
+                  {renderApprovalField('cpiTraining', 'CPI Training Completed', GraduationCap, false, true, 1)}
+                  {renderApprovalField('cprTraining', 'CPR Training Completed', Activity, false, true, 2)}
+                  {renderApprovalField('crisisPrevention', 'Crisis Prevention/De-Escalation Training Completed', Shield, false, true, 3)}
+                </div>
 
-                {/* Upload Summary */}
-                <Card className={`border-2 ${areAllDocumentsUploaded() ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+                <Separator />
+
+                {/* Mandatory Checks Section */}
+                <div>
+                  <h3 className="text-sm font-semibold text-destructive mb-3 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4" />
+                    Required Background Checks & Screenings
+                  </h3>
+                  {renderApprovalField('federalExclusions', 'Federal Exclusions', AlertTriangle, true, true, 4)}
+                  {renderApprovalField('stateExclusions', 'State Exclusions', AlertTriangle, true, true, 5)}
+                  {renderApprovalField('samGovExclusion', 'SAM.gov Exclusion', FileCheck, true, true, 6)}
+                  {renderApprovalField('urineDrugScreen', 'Urine Drug Screen - Initiated or Completed', Stethoscope, true, true, 7)}
+                  {renderApprovalField('bciFbiCheck', 'BCI/FBI Check - Initiated or Completed', Shield, true, true, 8)}
+                </div>
+
+                <Separator />
+
+                {/* Setup Section (No uploads) */}
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                    <Building className="w-4 h-4" />
+                    Equipment & System Setup
+                  </h3>
+                  {renderApprovalField('laptopSetup', 'Laptop Ordered/Setup', Building, false, false, 9)}
+                  {renderApprovalField('emailSetup', 'Email Setup', Mail, false, false, 10)}
+                  {renderApprovalField('emrSetup', 'EMR Setup', FileText, false, false, 11)}
+                  {renderApprovalField('phoneSetup', 'Phone Setup', Phone, false, false, 12)}
+                </div>
+
+                {/* Summary */}
+                <Card className={`border-2 ${areAllRequiredBackgroundChecksComplete() ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        {areAllDocumentsUploaded() ? (
+                        {areAllRequiredBackgroundChecksComplete() ? (
                           <CheckCircle2 className="w-5 h-5 text-green-600" />
                         ) : (
                           <AlertTriangle className="w-5 h-5 text-amber-600" />
                         )}
-                        <span className="font-medium">Upload Progress</span>
+                        <span className="font-medium">Approval Status</span>
                       </div>
                       <Badge 
-                        variant={areAllDocumentsUploaded() ? "default" : "secondary"}
+                        variant={areAllRequiredBackgroundChecksComplete() ? "default" : "secondary"}
                         className={`text-base px-3 py-1 ${
-                          areAllDocumentsUploaded() 
+                          areAllRequiredBackgroundChecksComplete() 
                             ? 'bg-green-600 hover:bg-green-700' 
                             : 'bg-amber-600 text-white hover:bg-amber-700'
                         }`}
                       >
-                        {Object.values(uploadedDocuments).filter(Boolean).length} / 10 {areAllDocumentsUploaded() ? 'Complete ✓' : 'Required'}
+                        {areAllRequiredBackgroundChecksComplete() ? 'Ready to Approve ✓' : 'Save Checklist Only'}
                       </Badge>
                     </div>
-                    {!areAllDocumentsUploaded() && (
+                    {areAllRequiredBackgroundChecksComplete() ? (
+                      <p className="text-sm text-green-700 mt-2 flex items-center gap-1">
+                        <CheckCircle2 className="w-4 h-4" />
+                        All 5 required background checks uploaded. Employee will be approved.
+                      </p>
+                    ) : (
                       <p className="text-sm text-amber-700 mt-2 flex items-center gap-1">
                         <AlertTriangle className="w-4 h-4" />
-                        Please upload all remaining documents to proceed
+                        Missing required background checks. Checklist will be saved without approval.
                       </p>
                     )}
                   </CardContent>
@@ -1083,7 +1370,7 @@ export default function EmployeeProfile() {
                 type="button"
                 variant="outline"
                 onClick={() => setShowApprovalModal(false)}
-                disabled={approveMutation.isPending}
+                disabled={approveMutation.isPending || isUploadingDocuments}
               >
                 Cancel
               </Button>
@@ -1093,17 +1380,31 @@ export default function EmployeeProfile() {
                     <Button
                       type="button"
                       onClick={handleApprovalSubmit}
-                      disabled={!areAllDocumentsUploaded() || approveMutation.isPending}
+                      disabled={!areAllSelectedDocumentsValid() || approveMutation.isPending || isUploadingDocuments}
                       className="bg-green-600 hover:bg-green-700 disabled:opacity-50"
                     >
                       <UserCheck className="w-4 h-4 mr-2" />
-                      {approveMutation.isPending ? "Approving..." : "Complete Approval"}
+                      {isUploadingDocuments 
+                        ? "Uploading Documents..." 
+                        : approveMutation.isPending 
+                        ? "Approving..." 
+                        : areAllRequiredBackgroundChecksComplete()
+                        ? "Complete Approval"
+                        : "Save Checklist"}
                     </Button>
                   </div>
                 </TooltipTrigger>
-                {!areAllDocumentsUploaded() && (
+                {!areAllSelectedDocumentsValid() ? (
                   <TooltipContent>
-                    <p>Please upload all 10 required documents first</p>
+                    <p>Please upload documents for all fields where "Yes" is selected</p>
+                  </TooltipContent>
+                ) : !areAllRequiredBackgroundChecksComplete() ? (
+                  <TooltipContent>
+                    <p>Missing required background checks. Will save checklist only (no approval)</p>
+                  </TooltipContent>
+                ) : (
+                  <TooltipContent>
+                    <p>All required documents uploaded. Will approve employee</p>
                   </TooltipContent>
                 )}
               </Tooltip>
