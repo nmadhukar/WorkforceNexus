@@ -1,10 +1,11 @@
 import { useParams, useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MainLayout } from "@/components/layout/main-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -20,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -80,6 +82,7 @@ import { DocumentList } from "@/components/documents/DocumentList";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { useDocuments } from "@/hooks/useDocuments";
 
 /**
  * Comprehensive employee profile page displaying detailed employee information with tabbed navigation
@@ -133,18 +136,131 @@ export default function EmployeeProfile() {
 
   // State for approval modal
   const [showApprovalModal, setShowApprovalModal] = useState(false);
+
+  // Fetch existing approval checklist (for modal)
+  const { data: existingChecklist } = useQuery<any>({
+    queryKey: ["/api/employees", employeeId, "approval-checklist"],
+    enabled: !!employeeId && showApprovalModal,
+  });
+  
+  // Fetch checklist data for the checklist documents tab (always enabled)
+  const { data: checklistData } = useQuery<any>({
+    queryKey: ["/api/employees", employeeId, "approval-checklist"],
+    enabled: !!employeeId,
+  });
+  
+  const [isUploadingDocuments, setIsUploadingDocuments] = useState(false);
+  
+  // Fetch existing approval-related documents for this employee when modal is open
+  const { documents: approvalDocuments = [], isLoading: isApprovalDocsLoading, refetch: refetchApprovalDocuments } = useDocuments({
+    employeeId,
+    enabled: !!employeeId && showApprovalModal,
+  });
+  
+  // Fetch approval documents for checklist tab view (always enabled)
+  const { documents: checklistTabDocuments = [] } = useDocuments({
+    employeeId,
+    enabled: !!employeeId,
+  });
+  
+  // Radio button selections (default to 'no')
+  const [approvalSelections, setApprovalSelections] = useState<Record<string, 'yes' | 'no'>>({
+    cpiTraining: 'no',
+    cprTraining: 'no',
+    crisisPrevention: 'no',
+    federalExclusions: 'no',
+    stateExclusions: 'no',
+    samGovExclusion: 'no',
+    urineDrugScreen: 'no',
+    bciFbiCheck: 'no',
+    laptopSetup: 'no',
+    emailSetup: 'no',
+    emrSetup: 'no',
+    phoneSetup: 'no',
+  });
+
+  // Uploaded documents (only for 'yes' selections that need uploads)
   const [uploadedDocuments, setUploadedDocuments] = useState<Record<string, File | null>>({
-    hrDocuments: null,
     cpiTraining: null,
     cprTraining: null,
     crisisPrevention: null,
-    bciFbiCheck: null,
     federalExclusions: null,
     stateExclusions: null,
     samGovExclusion: null,
-    leie: null,
     urineDrugScreen: null,
+    bciFbiCheck: null,
   });
+
+  // Track which existing documents have been dismissed (to allow re-upload)
+  const [dismissedExistingDocs, setDismissedExistingDocs] = useState<Set<string>>(new Set());
+
+  // Document type mapping for API
+  const documentTypeLabels: Record<string, string> = {
+    cpiTraining: 'CPI_Training',
+    cprTraining: 'CPR_Training',
+    crisisPrevention: 'Crisis_Prevention_De_Escalation',
+    bciFbiCheck: 'BCI_FBI_Check',
+    federalExclusions: 'Federal_Exclusions',
+    stateExclusions: 'State_Exclusions',
+    samGovExclusion: 'SAM_Gov_Exclusion',
+    urineDrugScreen: 'Urine_Drug_Screen',
+  };
+
+  // Helpers: find existing approval document by checklist key (for modal)
+  const getExistingApprovalDoc = (key: string) => {
+    const type = documentTypeLabels[key];
+    return approvalDocuments.find((d: any) => d.documentType === type);
+  };
+  const hasExistingApprovalDoc = (key: string) => !!getExistingApprovalDoc(key);
+  
+  // Helper: find document for checklist tab view
+  const getChecklistTabDoc = (key: string) => {
+    const type = documentTypeLabels[key];
+    return checklistTabDocuments.find((d: any) => d.documentType === type);
+  };
+
+  // Load existing checklist data when modal opens
+  useEffect(() => {
+    if (existingChecklist && showApprovalModal) {
+      setApprovalSelections({
+        cpiTraining: existingChecklist.cpiTraining || 'no',
+        cprTraining: existingChecklist.cprTraining || 'no',
+        crisisPrevention: existingChecklist.crisisPrevention || 'no',
+        federalExclusions: existingChecklist.federalExclusions || 'no',
+        stateExclusions: existingChecklist.stateExclusions || 'no',
+        samGovExclusion: existingChecklist.samGovExclusion || 'no',
+        urineDrugScreen: existingChecklist.urineDrugScreen || 'no',
+        bciFbiCheck: existingChecklist.bciFbiCheck || 'no',
+        laptopSetup: existingChecklist.laptopSetup || 'no',
+        emailSetup: existingChecklist.emailSetup || 'no',
+        emrSetup: existingChecklist.emrSetup || 'no',
+        phoneSetup: existingChecklist.phoneSetup || 'no',
+      });
+    }
+  }, [existingChecklist, showApprovalModal]);
+
+  // Reset dismissed documents when modal opens/closes and refetch documents
+  useEffect(() => {
+    if (showApprovalModal) {
+      // Reset dismissed state when modal opens
+      setDismissedExistingDocs(new Set());
+      // Clear any pending uploads when modal opens
+      setUploadedDocuments({
+        cpiTraining: null,
+        cprTraining: null,
+        crisisPrevention: null,
+        federalExclusions: null,
+        stateExclusions: null,
+        samGovExclusion: null,
+        urineDrugScreen: null,
+        bciFbiCheck: null,
+      });
+      // Refetch documents to ensure we have the latest data
+      if (employeeId) {
+        refetchApprovalDocuments();
+      }
+    }
+  }, [showApprovalModal, employeeId, refetchApprovalDocuments]);
 
   // Approval mutation
   const approveMutation = useMutation({
@@ -337,6 +453,26 @@ export default function EmployeeProfile() {
   };
 
   /**
+   * Handles radio button selection changes
+   * @param {string} key - The field key
+   * @param {'yes' | 'no'} value - Selected value
+   */
+  const handleSelectionChange = (key: string, value: 'yes' | 'no') => {
+    setApprovalSelections(prev => ({
+      ...prev,
+      [key]: value
+    }));
+    
+    // Clear uploaded file if user selects 'no'
+    if (value === 'no' && uploadedDocuments.hasOwnProperty(key)) {
+      setUploadedDocuments(prev => ({
+        ...prev,
+        [key]: null
+      }));
+    }
+  };
+
+  /**
    * Handles file upload for approval documents
    * @param {string} documentKey - The key identifying which document is being uploaded
    * @param {React.ChangeEvent<HTMLInputElement>} event - The file input change event
@@ -347,6 +483,15 @@ export default function EmployeeProfile() {
       ...prev,
       [documentKey]: file
     }));
+    
+    // Clear dismissed state when new file is selected
+    if (file) {
+      setDismissedExistingDocs(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(documentKey);
+        return newSet;
+      });
+    }
   };
 
   /**
@@ -361,29 +506,318 @@ export default function EmployeeProfile() {
   };
 
   /**
-   * Checks if all required documents are uploaded
-   * @returns {boolean} True if all 10 documents are uploaded
+   * Dismisses an existing document to allow re-upload
+   * @param {string} documentKey - The key identifying which document to dismiss
    */
-  const areAllDocumentsUploaded = () => {
-    return Object.values(uploadedDocuments).every(file => file !== null);
+  const handleDismissExistingDoc = (documentKey: string) => {
+    setDismissedExistingDocs(prev => new Set(prev).add(documentKey));
+  };
+
+  /**
+   * Checks if all 5 required background check documents are uploaded
+   * @returns {boolean} True if all 5 mandatory docs are "yes" with documents uploaded
+   */
+  const areAllRequiredBackgroundChecksComplete = () => {
+    const mandatoryFields = ['federalExclusions', 'stateExclusions', 'samGovExclusion', 'urineDrugScreen', 'bciFbiCheck'];
+    
+    // ALL 5 must be 'yes' AND have documents uploaded
+    for (const field of mandatoryFields) {
+      const selection = approvalSelections[field];
+      const hasNewDocument = !!uploadedDocuments[field];
+      const hasPrevDocument = hasExistingApprovalDoc(field) && !dismissedExistingDocs.has(field);
+      
+      if (selection !== 'yes' || !(hasNewDocument || hasPrevDocument)) {
+        return false;
+      }
+    }
+    
+    return true;
+  };
+
+  /**
+   * Checks if any field marked "yes" is missing its document
+   * @returns {boolean} True if all "yes" selections have documents
+   */
+  const areAllSelectedDocumentsValid = () => {
+    // Check all fields that need documents (training + background checks)
+    const fieldsWithDocs = ['cpiTraining', 'cprTraining', 'crisisPrevention', 'federalExclusions', 'stateExclusions', 'samGovExclusion', 'urineDrugScreen', 'bciFbiCheck'];
+    
+    for (const field of fieldsWithDocs) {
+      // If 'yes' is selected, document must be uploaded
+      const hasNewDocument = !!uploadedDocuments[field];
+      const hasPrevDocument = hasExistingApprovalDoc(field) && !dismissedExistingDocs.has(field);
+      
+      if (approvalSelections[field] === 'yes' && !(hasNewDocument || hasPrevDocument)) {
+        return false;
+      }
+    }
+    
+    return true;
+  };
+
+  /**
+   * Uploads approval documents to the server
+   */
+  const uploadApprovalDocuments = async (): Promise<boolean> => {
+    try {
+      setIsUploadingDocuments(true);
+      
+      // Collect all documents that need to be uploaded (where 'yes' is selected)
+      const docsToUpload: { key: string; file: File }[] = [];
+      
+      Object.entries(uploadedDocuments).forEach(([key, file]) => {
+        if (file && approvalSelections[key] === 'yes') {
+          docsToUpload.push({ key, file });
+        }
+      });
+      
+      if (docsToUpload.length === 0) {
+        return true; // No documents to upload
+      }
+      
+      // Create FormData for multipart upload
+      const formData = new FormData();
+      
+      // Add all files and their types
+      const documentTypes: string[] = [];
+      docsToUpload.forEach(({ key, file }) => {
+        formData.append('documents', file);
+        documentTypes.push(documentTypeLabels[key]);
+      });
+      
+      // Add metadata
+      formData.append('documentTypes', JSON.stringify(documentTypes));
+      formData.append('selections', JSON.stringify(approvalSelections));
+      
+      // Upload documents using fetch
+      const response = await fetch(`/api/employees/${employeeId}/approval-documents`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to upload documents');
+      }
+      
+      const result = await response.json();
+      
+      // Refresh documents list to show newly uploaded files
+      queryClient.invalidateQueries({ queryKey: ["/api/documents/employee", employeeId] });
+      
+      toast({
+        title: "Documents Uploaded",
+        description: `Successfully uploaded ${result.uploaded} document(s).`,
+      });
+      
+      return true;
+    } catch (error) {
+      console.error('Error uploading documents:', error);
+      toast({
+        title: "Upload Failed",
+        description: error instanceof Error ? error.message : "Failed to upload documents",
+        variant: "destructive"
+      });
+      return false;
+    } finally {
+      setIsUploadingDocuments(false);
+    }
   };
 
   /**
    * Handles the approval process with documents
    */
-  const handleApprovalSubmit = () => {
-    if (!areAllDocumentsUploaded()) {
+  const handleApprovalSubmit = async () => {
+    // Validate that any field marked "yes" has a document
+    if (!areAllSelectedDocumentsValid()) {
       toast({
-        title: "Missing Documents",
-        description: "Please upload all required documents before approving the employee.",
+        title: "Missing Required Information",
+        description: "Please upload documents for all fields marked 'Yes'.",
         variant: "destructive"
       });
       return;
     }
     
-    // For now, just call the existing approve mutation
-    // Later this will upload documents first
-    approveMutation.mutate();
+    // Upload documents first (if any)
+    const uploadSuccess = await uploadApprovalDocuments();
+    
+    if (!uploadSuccess) {
+      toast({
+        title: "Upload Failed",
+        description: "Documents must be uploaded before saving. Please try again.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // Save checklist data to database
+    try {
+      await apiRequest("POST", `/api/employees/${employeeId}/approval-checklist`, approvalSelections);
+      
+      // Invalidate queries to refresh data (checklist and documents)
+      queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "approval-checklist"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/documents/employee", employeeId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId] });
+      
+      // Check if all 5 required background checks are complete
+      const allBackgroundChecksComplete = areAllRequiredBackgroundChecksComplete();
+      
+      if (allBackgroundChecksComplete) {
+        // All 5 required documents uploaded → Approve employee
+        toast({
+          title: "Checklist Saved",
+          description: "All required documents uploaded. Approving employee...",
+        });
+        
+        // Approve the employee
+        approveMutation.mutate();
+      } else {
+        // Not all required documents → Just save, don't approve
+        toast({
+          title: "Checklist Saved",
+          description: "Checklist saved successfully. Employee not approved yet - missing required background checks.",
+          variant: "default"
+        });
+        // Close modal and refresh data
+        setShowApprovalModal(false);
+      }
+      
+    } catch (error) {
+      console.error('Error saving checklist:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save checklist data. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Helper function to render approval field with radio buttons and optional upload
+  const renderApprovalField = (
+    key: string,
+    label: string,
+    icon: any,
+    isMandatory: boolean,
+    needsUpload: boolean,
+    index: number
+  ) => {
+    const Icon = icon;
+    const selection = approvalSelections[key];
+    const file = uploadedDocuments[key];
+
+    return (
+      <Card key={key} className="border hover:border-primary/50 transition-colors">
+        <CardContent className="p-4">
+          <div className="space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5">
+                <Icon className="w-5 h-5 text-primary" />
+              </div>
+              <div className="flex-1">
+                <Label className="text-sm font-semibold flex items-center gap-1.5">
+                  {index}. {label}
+                  {isMandatory && <span className="text-destructive text-xs">*</span>}
+                </Label>
+              </div>
+            </div>
+
+            {/* Radio Buttons */}
+            <RadioGroup
+              value={selection}
+              onValueChange={(value) => handleSelectionChange(key, value as 'yes' | 'no')}
+              className="flex gap-4 ml-8"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="yes" id={`${key}-yes`} />
+                <Label htmlFor={`${key}-yes`} className="cursor-pointer font-normal">
+                  Yes
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="no" id={`${key}-no`} />
+                <Label htmlFor={`${key}-no`} className="cursor-pointer font-normal">
+                  No
+                </Label>
+              </div>
+            </RadioGroup>
+
+            {/* File Upload (only shown if Yes is selected and field needs upload) */}
+            {needsUpload && selection === 'yes' && (
+              <div className="ml-8 mt-2">
+                {file ? (
+                  <div className="flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded-md">
+                    <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                    <span className="text-xs text-green-700 truncate flex-1">
+                      {file.name}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 w-5 p-0 hover:bg-green-100"
+                      onClick={() => handleRemoveFile(key)}
+                    >
+                      <X className="w-3 h-3 text-green-600" />
+                    </Button>
+                  </div>
+                ) : getExistingApprovalDoc(key) && !dismissedExistingDocs.has(key) ? (() => {
+                  const existingDoc = getExistingApprovalDoc(key)!;
+                  const isImageDoc = existingDoc.mimeType?.startsWith('image/') || false;
+                  return (
+                    <div className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
+                      <FileCheck className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                      <span className="text-xs text-blue-700 truncate flex-1">
+                        {existingDoc.fileName}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <a
+                          href={`/api/documents/${existingDoc.id}/download`}
+                          target={isImageDoc ? "_blank" : undefined}
+                          rel={isImageDoc ? "noopener noreferrer" : undefined}
+                          className="text-xs text-blue-700 underline hover:text-blue-900"
+                        >
+                          {isImageDoc ? "View" : "Download"}
+                        </a>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-5 w-5 p-0 hover:bg-blue-100"
+                          onClick={() => handleDismissExistingDoc(key)}
+                          title="Remove and re-upload"
+                        >
+                          <X className="w-3 h-3 text-blue-600" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })() : (
+                  <>
+                    <Label
+                      htmlFor={`doc-${key}`}
+                      className="flex items-center justify-center gap-2 p-2 border-2 border-dashed border-muted-foreground/25 rounded-md hover:border-primary/50 hover:bg-primary/5 transition-colors cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">
+                        Click to attach document
+                      </span>
+                    </Label>
+                    <Input
+                      id={`doc-${key}`}
+                      type="file"
+                      className="hidden"
+                      onChange={(e) => handleFileUpload(key, e)}
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    />
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
   };
 
   return (
@@ -876,6 +1310,14 @@ export default function EmployeeProfile() {
                       <span className="text-left">Documents</span>
                     </TabsTrigger>
                     <TabsTrigger 
+                      value="checklist-documents"
+                      className="w-full justify-start data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-l-2 data-[state=active]:border-primary rounded-md h-10 px-3 hover:bg-muted/50 transition-colors"
+                      data-testid="tab-checklist-documents"
+                    >
+                      <FileSignature className="w-4 h-4 mr-3 flex-shrink-0" />
+                      <span className="text-left">Checklist Documents</span>
+                    </TabsTrigger>
+                    <TabsTrigger 
                       value="payer"
                       className="w-full justify-start data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-l-2 data-[state=active]:border-primary rounded-md h-10 px-3 hover:bg-muted/50 transition-colors"
                     >
@@ -947,6 +1389,222 @@ export default function EmployeeProfile() {
                       <DocumentList employeeId={employeeId} />
                     </div>
                   </TabsContent>
+                  
+                  <TabsContent value="checklist-documents" className="mt-0 animate-in fade-in-50 duration-300">
+                    <div className="space-y-6">
+                      <div className="border-b pb-4">
+                        <h3 className="text-xl font-semibold mb-2">Approval Checklist Documents</h3>
+                        <p className="text-sm text-muted-foreground">
+                          View the status of all approval checklist items and their associated documents.
+                        </p>
+                      </div>
+                      
+                      {!checklistData ? (
+                        <Card>
+                          <CardContent className="pt-6 pb-6 text-center">
+                            <FileCheck className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+                            <p className="text-muted-foreground">No checklist data found for this employee.</p>
+                          </CardContent>
+                        </Card>
+                      ) : (
+                        <Card>
+                          <CardContent className="p-0">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="w-[40%]">Checklist Item</TableHead>
+                                  {/* <TableHead className="w-[15%]">Category</TableHead> */}
+                                  <TableHead className="w-[15%] text-center">Status</TableHead>
+                                  <TableHead className="w-[15%] text-center">Document</TableHead>
+                                  <TableHead className="w-[15%] text-center">Action</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {/* Optional Training Section */}
+                                {[
+                                  { key: 'cpiTraining', label: 'CPI Training Completed', icon: GraduationCap, category: 'Optional Training', required: false },
+                                  { key: 'cprTraining', label: 'CPR Training Completed', icon: Activity, category: 'Optional Training', required: false },
+                                  { key: 'crisisPrevention', label: 'Crisis Prevention/De-Escalation Training Completed', icon: Shield, category: 'Optional Training', required: false },
+                                ].map(({ key, label, icon: Icon, category, required }) => {
+                                  const status = checklistData[key] || 'no';
+                                  const doc = getChecklistTabDoc(key);
+                                  const isImageDoc = doc?.mimeType?.startsWith('image/') || false;
+                                  
+                                  return (
+                                    <TableRow key={key}>
+                                      <TableCell>
+                                        <div className="flex items-center gap-2">
+                                          <Icon className="w-4 h-4 text-primary flex-shrink-0" />
+                                          <span className="font-medium">{label}</span>
+                                        </div>
+                                      </TableCell>
+                                      {/* <TableCell>
+                                        <span className="text-sm text-muted-foreground">{category}</span>
+                                      </TableCell> */}
+                                      <TableCell className="text-center">
+                                        <Badge 
+                                          variant={status === 'yes' ? 'default' : 'secondary'} 
+                                          className={`text-xs ${status === 'yes' ? 'bg-green-100 text-green-800 border-green-200' : ''}`}
+                                        >
+                                          {status === 'yes' ? 'Yes' : 'No'}
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell className="text-center">
+                                        {doc ? (
+                                          <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                            <FileCheck className="w-3 h-3 mr-1" />
+                                            Uploaded
+                                          </Badge>
+                                        ) : (
+                                          <span className="text-xs text-muted-foreground">—</span>
+                                        )}
+                                      </TableCell>
+                                      <TableCell className="text-center">
+                                        {doc ? (
+                                          <a
+                                            href={`/api/documents/${doc.id}/download`}
+                                            target={isImageDoc ? "_blank" : undefined}
+                                            rel={isImageDoc ? "noopener noreferrer" : undefined}
+                                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-primary hover:text-primary/80 hover:bg-primary/5 rounded border border-primary/20 hover:border-primary/40 transition-colors"
+                                          >
+                                            {isImageDoc ? (
+                                              <>
+                                                <FileCheck className="w-3 h-3" />
+                                                View
+                                              </>
+                                            ) : (
+                                              <>
+                                                <Download className="w-3 h-3" />
+                                                Download
+                                              </>
+                                            )}
+                                          </a>
+                                        ) : (
+                                          <span className="text-xs text-muted-foreground">—</span>
+                                        )}
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })}
+                                
+                                {/* Required Background Checks Section */}
+                                {[
+                                  { key: 'federalExclusions', label: 'Federal Exclusions', icon: AlertTriangle, category: 'Required Checks', required: true },
+                                  { key: 'stateExclusions', label: 'State Exclusions', icon: AlertTriangle, category: 'Required Checks', required: true },
+                                  { key: 'samGovExclusion', label: 'SAM.gov Exclusion', icon: FileCheck, category: 'Required Checks', required: true },
+                                  { key: 'urineDrugScreen', label: 'Urine Drug Screen - Initiated or Completed', icon: Stethoscope, category: 'Required Checks', required: true },
+                                  { key: 'bciFbiCheck', label: 'BCI/FBI Check - Initiated or Completed', icon: Shield, category: 'Required Checks', required: true },
+                                ].map(({ key, label, icon: Icon, category, required }) => {
+                                  const status = checklistData[key] || 'no';
+                                  const doc = getChecklistTabDoc(key);
+                                  const isImageDoc = doc?.mimeType?.startsWith('image/') || false;
+                                  
+                                  return (
+                                    <TableRow key={key} className={required ? "bg-red-50/30" : ""}>
+                                      <TableCell>
+                                        <div className="flex items-center gap-2">
+                                          <Icon className="w-4 h-4 text-primary flex-shrink-0" />
+                                          <div className="flex items-center gap-1">
+                                            <span className="font-medium">{label}</span>
+                                            {required && <span className="text-destructive text-sm font-semibold">*</span>}
+                                          </div>
+                                        </div>
+                                      </TableCell>
+                                      {/* <TableCell>
+                                        <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-200">
+                                          {category}
+                                        </Badge>
+                                      </TableCell> */}
+                                      <TableCell className="text-center">
+                                        <Badge 
+                                          variant={status === 'yes' ? 'default' : 'secondary'} 
+                                          className={`text-xs ${status === 'yes' ? 'bg-green-100 text-green-800 border-green-200' : ''}`}
+                                        >
+                                          {status === 'yes' ? 'Yes' : 'No'}
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell className="text-center">
+                                        {doc ? (
+                                          <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                            <FileCheck className="w-3 h-3 mr-1" />
+                                            Uploaded
+                                          </Badge>
+                                        ) : (
+                                          <span className="text-xs text-muted-foreground">—</span>
+                                        )}
+                                      </TableCell>
+                                      <TableCell className="text-center">
+                                        {doc ? (
+                                          <a
+                                            href={`/api/documents/${doc.id}/download`}
+                                            target={isImageDoc ? "_blank" : undefined}
+                                            rel={isImageDoc ? "noopener noreferrer" : undefined}
+                                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-primary hover:text-primary/80 hover:bg-primary/5 rounded border border-primary/20 hover:border-primary/40 transition-colors"
+                                          >
+                                            {isImageDoc ? (
+                                              <>
+                                                <FileCheck className="w-3 h-3" />
+                                                View
+                                              </>
+                                            ) : (
+                                              <>
+                                                <Download className="w-3 h-3" />
+                                                Download
+                                              </>
+                                            )}
+                                          </a>
+                                        ) : (
+                                          <span className="text-xs text-muted-foreground">—</span>
+                                        )}
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })}
+                                
+                                {/* Equipment & System Setup Section */}
+                                {[
+                                  { key: 'laptopSetup', label: 'Laptop Ordered/Setup', icon: Building, category: 'Equipment Setup', required: false },
+                                  { key: 'emailSetup', label: 'Email Setup', icon: Mail, category: 'Equipment Setup', required: false },
+                                  { key: 'emrSetup', label: 'EMR Setup', icon: FileText, category: 'Equipment Setup', required: false },
+                                  { key: 'phoneSetup', label: 'Phone Setup', icon: Phone, category: 'Equipment Setup', required: false },
+                                ].map(({ key, label, icon: Icon, category }) => {
+                                  const status = checklistData[key] || 'no';
+                                  
+                                  return (
+                                    <TableRow key={key}>
+                                      <TableCell>
+                                        <div className="flex items-center gap-2">
+                                          <Icon className="w-4 h-4 text-primary flex-shrink-0" />
+                                          <span className="font-medium">{label}</span>
+                                        </div>
+                                      </TableCell>
+                                      {/* <TableCell>
+                                        <span className="text-sm text-muted-foreground">{category}</span>
+                                      </TableCell> */}
+                                      <TableCell className="text-center">
+                                        <Badge 
+                                          variant={status === 'yes' ? 'default' : 'secondary'} 
+                                          className={`text-xs ${status === 'yes' ? 'bg-green-100 text-green-800 border-green-200' : ''}`}
+                                        >
+                                          {status === 'yes' ? 'Yes' : 'No'}
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell className="text-center">
+                                        <span className="text-xs text-muted-foreground">N/A</span>
+                                      </TableCell>
+                                      <TableCell className="text-center">
+                                        <span className="text-xs text-muted-foreground">—</span>
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })}
+                              </TableBody>
+                            </Table>
+                          </CardContent>
+                        </Card>
+                      )}
+                    </div>
+                  </TabsContent>
                 </div>
               </Tabs>
             </CardContent>
@@ -959,118 +1617,89 @@ export default function EmployeeProfile() {
             <DialogHeader>
               <DialogTitle className="flex items-center text-2xl">
                 <UserCheck className="w-6 h-6 mr-2 text-green-600" />
-                Employee Approval - Required Documents
+                Employee Approval Checklist
               </DialogTitle>
               <DialogDescription className="space-y-2">
-                <p className="font-medium text-destructive">
-                  ⚠️ All 10 documents are mandatory for compliance and must be uploaded before approval.
-                </p>
                 <p>
-                  Please upload all required documents to proceed with employee approval.
+                  Please complete the following checklist for employee approval. Upload documents where required when "Yes" is selected.
                 </p>
               </DialogDescription>
             </DialogHeader>
 
-            <ScrollArea className="h-[450px] pr-4">
-              <div className="space-y-3 py-2">
-                {/* Document Upload Items */}
-                {[
-                  { key: 'hrDocuments', label: 'HR Documents needed', icon: FileText },
-                  { key: 'cpiTraining', label: 'CPI Training', icon: GraduationCap },
-                  { key: 'cprTraining', label: 'CPR Training', icon: Activity },
-                  { key: 'crisisPrevention', label: 'Crisis Prevention/De-Escalation', icon: Shield },
-                  { key: 'bciFbiCheck', label: 'BCI/FBI Check', icon: Shield },
-                  { key: 'federalExclusions', label: 'Federal Exclusions', icon: AlertTriangle },
-                  { key: 'stateExclusions', label: 'State Exclusions', icon: AlertTriangle },
-                  { key: 'samGovExclusion', label: 'SAM.gov Exclusion', icon: FileCheck },
-                  { key: 'leie', label: 'LEIE', icon: FileCheck },
-                  { key: 'urineDrugScreen', label: 'Urine Drug Screen', icon: Stethoscope },
-                ].map((doc, index) => {
-                  const Icon = doc.icon;
-                  const file = uploadedDocuments[doc.key];
-                  
-                  return (
-                    <Card key={doc.key} className="border hover:border-primary/50 transition-colors">
-                      <CardContent className="p-3">
-                        <div className="flex items-start gap-3">
-                          <div className="mt-0.5">
-                            <Icon className="w-4 h-4 text-primary" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <Label htmlFor={`doc-${doc.key}`} className="text-sm font-semibold cursor-pointer flex items-center gap-1.5">
-                              {index + 1}. {doc.label}
-                              <span className="text-destructive text-xs">*</span>
-                            </Label>
-                            {file ? (
-                              <div className="mt-1.5 flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded-md">
-                                <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
-                                <span className="text-xs text-green-700 truncate flex-1">
-                                  {file.name}
-                                </span>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-5 w-5 p-0 hover:bg-green-100"
-                                  onClick={() => handleRemoveFile(doc.key)}
-                                >
-                                  <X className="w-3 h-3 text-green-600" />
-                                </Button>
-                              </div>
-                            ) : (
-                              <div className="mt-1.5">
-                                <Label
-                                  htmlFor={`doc-${doc.key}`}
-                                  className="flex items-center justify-center gap-2 p-2 border-2 border-dashed border-muted-foreground/25 rounded-md hover:border-primary/50 hover:bg-primary/5 transition-colors cursor-pointer"
-                                >
-                                  <Upload className="w-3.5 h-3.5 text-muted-foreground" />
-                                  <span className="text-xs text-muted-foreground">
-                                    Click to upload
-                                  </span>
-                                </Label>
-                              </div>
-                            )}
-                            <Input
-                              id={`doc-${doc.key}`}
-                              type="file"
-                              className="hidden"
-                              onChange={(e) => handleFileUpload(doc.key, e)}
-                              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                            />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
+            <ScrollArea className="h-[500px] pr-4">
+              <div className="space-y-4 py-2">
+                {/* Optional Training Section */}
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                    <GraduationCap className="w-4 h-4" />
+                    Optional Training (Attach document if completed)
+                  </h3>
+                  {renderApprovalField('cpiTraining', 'CPI Training Completed', GraduationCap, false, true, 1)}
+                  {renderApprovalField('cprTraining', 'CPR Training Completed', Activity, false, true, 2)}
+                  {renderApprovalField('crisisPrevention', 'Crisis Prevention/De-Escalation Training Completed', Shield, false, true, 3)}
+                </div>
 
-                {/* Upload Summary */}
-                <Card className={`border-2 ${areAllDocumentsUploaded() ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+                <Separator />
+
+                {/* Mandatory Checks Section */}
+                <div>
+                  <h3 className="text-sm font-semibold text-destructive mb-3 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4" />
+                    Required Background Checks & Screenings
+                  </h3>
+                  {renderApprovalField('federalExclusions', 'Federal Exclusions', AlertTriangle, true, true, 4)}
+                  {renderApprovalField('stateExclusions', 'State Exclusions', AlertTriangle, true, true, 5)}
+                  {renderApprovalField('samGovExclusion', 'SAM.gov Exclusion', FileCheck, true, true, 6)}
+                  {renderApprovalField('urineDrugScreen', 'Urine Drug Screen - Initiated or Completed', Stethoscope, true, true, 7)}
+                  {renderApprovalField('bciFbiCheck', 'BCI/FBI Check - Initiated or Completed', Shield, true, true, 8)}
+                </div>
+
+                <Separator />
+
+                {/* Setup Section (No uploads) */}
+                <div>
+                  <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                    <Building className="w-4 h-4" />
+                    Equipment & System Setup
+                  </h3>
+                  {renderApprovalField('laptopSetup', 'Laptop Ordered/Setup', Building, false, false, 9)}
+                  {renderApprovalField('emailSetup', 'Email Setup', Mail, false, false, 10)}
+                  {renderApprovalField('emrSetup', 'EMR Setup', FileText, false, false, 11)}
+                  {renderApprovalField('phoneSetup', 'Phone Setup', Phone, false, false, 12)}
+                </div>
+
+                {/* Summary */}
+                <Card className={`border-2 ${areAllRequiredBackgroundChecksComplete() ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        {areAllDocumentsUploaded() ? (
+                        {areAllRequiredBackgroundChecksComplete() ? (
                           <CheckCircle2 className="w-5 h-5 text-green-600" />
                         ) : (
                           <AlertTriangle className="w-5 h-5 text-amber-600" />
                         )}
-                        <span className="font-medium">Upload Progress</span>
+                        <span className="font-medium">Approval Status</span>
                       </div>
                       <Badge 
-                        variant={areAllDocumentsUploaded() ? "default" : "secondary"}
+                        variant={areAllRequiredBackgroundChecksComplete() ? "default" : "secondary"}
                         className={`text-base px-3 py-1 ${
-                          areAllDocumentsUploaded() 
+                          areAllRequiredBackgroundChecksComplete() 
                             ? 'bg-green-600 hover:bg-green-700' 
                             : 'bg-amber-600 text-white hover:bg-amber-700'
                         }`}
                       >
-                        {Object.values(uploadedDocuments).filter(Boolean).length} / 10 {areAllDocumentsUploaded() ? 'Complete ✓' : 'Required'}
+                        {areAllRequiredBackgroundChecksComplete() ? 'Ready to Approve ✓' : 'Save Checklist Only'}
                       </Badge>
                     </div>
-                    {!areAllDocumentsUploaded() && (
+                    {areAllRequiredBackgroundChecksComplete() ? (
+                      <p className="text-sm text-green-700 mt-2 flex items-center gap-1">
+                        <CheckCircle2 className="w-4 h-4" />
+                        All 5 required background checks uploaded. Employee will be approved.
+                      </p>
+                    ) : (
                       <p className="text-sm text-amber-700 mt-2 flex items-center gap-1">
                         <AlertTriangle className="w-4 h-4" />
-                        Please upload all remaining documents to proceed
+                        Missing required background checks. Checklist will be saved without approval.
                       </p>
                     )}
                   </CardContent>
@@ -1083,7 +1712,7 @@ export default function EmployeeProfile() {
                 type="button"
                 variant="outline"
                 onClick={() => setShowApprovalModal(false)}
-                disabled={approveMutation.isPending}
+                disabled={approveMutation.isPending || isUploadingDocuments}
               >
                 Cancel
               </Button>
@@ -1093,17 +1722,31 @@ export default function EmployeeProfile() {
                     <Button
                       type="button"
                       onClick={handleApprovalSubmit}
-                      disabled={!areAllDocumentsUploaded() || approveMutation.isPending}
+                      disabled={!areAllSelectedDocumentsValid() || approveMutation.isPending || isUploadingDocuments}
                       className="bg-green-600 hover:bg-green-700 disabled:opacity-50"
                     >
                       <UserCheck className="w-4 h-4 mr-2" />
-                      {approveMutation.isPending ? "Approving..." : "Complete Approval"}
+                      {isUploadingDocuments 
+                        ? "Uploading Documents..." 
+                        : approveMutation.isPending 
+                        ? "Approving..." 
+                        : areAllRequiredBackgroundChecksComplete()
+                        ? "Complete Approval"
+                        : "Save Checklist"}
                     </Button>
                   </div>
                 </TooltipTrigger>
-                {!areAllDocumentsUploaded() && (
+                {!areAllSelectedDocumentsValid() ? (
                   <TooltipContent>
-                    <p>Please upload all 10 required documents first</p>
+                    <p>Please upload documents for all fields where "Yes" is selected</p>
+                  </TooltipContent>
+                ) : !areAllRequiredBackgroundChecksComplete() ? (
+                  <TooltipContent>
+                    <p>Missing required background checks. Will save checklist only (no approval)</p>
+                  </TooltipContent>
+                ) : (
+                  <TooltipContent>
+                    <p>All required documents uploaded. Will approve employee</p>
                   </TooltipContent>
                 )}
               </Tooltip>

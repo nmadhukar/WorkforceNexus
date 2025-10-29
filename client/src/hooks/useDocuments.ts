@@ -257,10 +257,18 @@ export function useDocuments(options: UseDocumentsOptions = {}) {
   };
 
   // Download document
-  const download = async (documentId: number, fileName?: string) => {
+  const download = async (documentId: number, fileName?: string, mimeType?: string) => {
     try {
       // Use direct download endpoint (streams through server, avoids CORS issues)
       const url = `/api/documents/${documentId}/download`;
+      
+      // For images, open in new tab instead of downloading
+      if (mimeType?.startsWith('image/')) {
+        window.open(url, '_blank');
+        return;
+      }
+      
+      // For other files, trigger download
       const link = document.createElement('a');
       link.href = url;
       if (fileName) {

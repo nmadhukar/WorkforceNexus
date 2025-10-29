@@ -1722,6 +1722,445 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
+  /**
+   * GET /api/employees/:id/approval-checklist
+   * Get approval checklist for an employee
+   * @route GET /api/employees/:id/approval-checklist
+   * @group Employees - Employee approval checklist operations
+   * @security session, apikey
+   * @returns {object} 200 - Approval checklist data
+   * @returns {object} 404 - Checklist not found (returns default values)
+   */
+  app.get('/api/employees/:id/approval-checklist',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('read:employees'),
+    validateId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.id);
+        
+        // Check if employee exists
+        const employee = await storage.getEmployee(employeeId);
+        if (!employee) {
+          return res.status(404).json({ 
+            error: 'Employee not found',
+            details: `No employee found with ID: ${employeeId}`
+          });
+        }
+        
+        // Get checklist
+        const checklist = await storage.getEmployeeApprovalChecklist(employeeId);
+        
+        // If no checklist exists, return default values
+        if (!checklist) {
+          return res.json({
+            employeeId,
+            cpiTraining: 'no',
+            cprTraining: 'no',
+            crisisPrevention: 'no',
+            federalExclusions: 'no',
+            stateExclusions: 'no',
+            samGovExclusion: 'no',
+            urineDrugScreen: 'no',
+            bciFbiCheck: 'no',
+            laptopSetup: 'no',
+            emailSetup: 'no',
+            emrSetup: 'no',
+            phoneSetup: 'no'
+          });
+        }
+        
+        res.json(checklist);
+      } catch (error) {
+        console.error('Error fetching approval checklist:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        res.status(500).json({ 
+          error: 'Failed to fetch approval checklist',
+          details: errorMessage,
+          hint: 'The employee_approval_checklists table may not exist. Run: npm run db:generate && npm run db:migrate'
+        });
+      }
+    }
+  );
+
+  /**
+   * POST /api/employees/:id/approval-checklist
+   * Create or update approval checklist for an employee
+   * @route POST /api/employees/:id/approval-checklist
+   * @group Employees - Employee approval checklist operations
+   * @security session, apikey
+   * @param {object} body - Checklist data (all yes/no fields)
+   * @returns {object} 200 - Created/updated checklist
+   */
+  app.post('/api/employees/:id/approval-checklist',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:employees'),
+    requireRole(['admin', 'hr']),
+    auditMiddleware('employee_approval_checklists'),
+    validateId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.id);
+        
+        // Check if employee exists
+        const employee = await storage.getEmployee(employeeId);
+        if (!employee) {
+          return res.status(404).json({ 
+            error: 'Employee not found',
+            details: `No employee found with ID: ${employeeId}`
+          });
+        }
+        
+        // Validate request body
+        if (!req.body || typeof req.body !== 'object') {
+          return res.status(400).json({ 
+            error: 'Invalid request body',
+            details: 'Request body must be a JSON object with checklist fields'
+          });
+        }
+        
+        // Get checklist data from request
+        const checklistData = {
+          employeeId,
+          cpiTraining: req.body.cpiTraining || 'no',
+          cprTraining: req.body.cprTraining || 'no',
+          crisisPrevention: req.body.crisisPrevention || 'no',
+          federalExclusions: req.body.federalExclusions || 'no',
+          stateExclusions: req.body.stateExclusions || 'no',
+          samGovExclusion: req.body.samGovExclusion || 'no',
+          urineDrugScreen: req.body.urineDrugScreen || 'no',
+          bciFbiCheck: req.body.bciFbiCheck || 'no',
+          laptopSetup: req.body.laptopSetup || 'no',
+          emailSetup: req.body.emailSetup || 'no',
+          emrSetup: req.body.emrSetup || 'no',
+          phoneSetup: req.body.phoneSetup || 'no',
+          createdBy: req.user?.id,
+          updatedBy: req.user?.id
+        };
+        
+        console.log('[Approval Checklist] Saving data for employee:', employeeId, checklistData);
+        
+        // Check if checklist already exists
+        const existingChecklist = await storage.getEmployeeApprovalChecklist(employeeId);
+        
+        let checklist;
+        if (existingChecklist) {
+          console.log('[Approval Checklist] Updating existing checklist:', existingChecklist.id);
+          // Update existing checklist
+          checklist = await storage.updateEmployeeApprovalChecklist(employeeId, checklistData);
+        } else {
+          console.log('[Approval Checklist] Creating new checklist');
+          // Create new checklist
+          checklist = await storage.createEmployeeApprovalChecklist(checklistData);
+        }
+        
+        await logAudit(req, checklist.id, existingChecklist, checklist);
+        
+        console.log('[Approval Checklist] Successfully saved:', checklist.id);
+        res.json(checklist);
+      } catch (error) {
+        console.error('Error saving approval checklist:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        const errorStack = error instanceof Error ? error.stack : '';
+        
+        res.status(500).json({ 
+          error: 'Failed to save approval checklist',
+          details: errorMessage,
+          stack: process.env.NODE_ENV === 'development' ? errorStack : undefined,
+          hint: 'The employee_approval_checklists table may not exist. Run: npm run db:generate && npm run db:migrate'
+        });
+      }
+    }
+  );
+
+  /**
+   * PUT /api/employees/:id/approval-checklist
+   * Update approval checklist for an employee
+   * @route PUT /api/employees/:id/approval-checklist
+   * @group Employees - Employee approval checklist operations
+   * @security session, apikey
+   * @param {object} body - Partial checklist data to update
+   * @returns {object} 200 - Updated checklist
+   * @returns {object} 404 - Checklist not found
+   */
+  app.put('/api/employees/:id/approval-checklist',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:employees'),
+    requireRole(['admin', 'hr']),
+    auditMiddleware('employee_approval_checklists'),
+    validateId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.id);
+        
+        // Check if employee exists
+        const employee = await storage.getEmployee(employeeId);
+        if (!employee) {
+          return res.status(404).json({ 
+            error: 'Employee not found',
+            details: `No employee found with ID: ${employeeId}`
+          });
+        }
+        
+        // Validate request body
+        if (!req.body || typeof req.body !== 'object') {
+          return res.status(400).json({ 
+            error: 'Invalid request body',
+            details: 'Request body must be a JSON object with checklist fields to update'
+          });
+        }
+        
+        // Check if checklist exists
+        const existingChecklist = await storage.getEmployeeApprovalChecklist(employeeId);
+        if (!existingChecklist) {
+          return res.status(404).json({ 
+            error: 'Approval checklist not found',
+            details: 'No checklist exists for this employee. Use POST to create one first.',
+            hint: 'POST /api/employees/:id/approval-checklist'
+          });
+        }
+        
+        // Update checklist with only provided fields
+        const updateData = {
+          ...req.body,
+          updatedBy: req.user?.id
+        };
+        
+        console.log('[Approval Checklist] Updating checklist for employee:', employeeId, updateData);
+        
+        const updatedChecklist = await storage.updateEmployeeApprovalChecklist(employeeId, updateData);
+        
+        await logAudit(req, updatedChecklist.id, existingChecklist, updatedChecklist);
+        
+        console.log('[Approval Checklist] Successfully updated:', updatedChecklist.id);
+        res.json(updatedChecklist);
+      } catch (error) {
+        console.error('Error updating approval checklist:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        const errorStack = error instanceof Error ? error.stack : '';
+        
+        res.status(500).json({ 
+          error: 'Failed to update approval checklist',
+          details: errorMessage,
+          stack: process.env.NODE_ENV === 'development' ? errorStack : undefined,
+          hint: 'The employee_approval_checklists table may not exist. Run: npm run db:generate && npm run db:migrate'
+        });
+      }
+    }
+  );
+
+  /**
+   * POST /api/employees/:id/approval-documents
+   * Upload approval documents during employee approval process
+   * @route POST /api/employees/:id/approval-documents
+   * @group Employees - Employee approval document upload
+   * @security session, apikey
+   * @param {files} documents - Array of document files to upload
+   * @param {string} body.documentTypes - JSON string array of document type names
+   * @param {string} body.selections - JSON string of yes/no selections
+   * @returns {object} 200 - Upload results
+   */
+  app.post('/api/employees/:id/approval-documents',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:employees'),
+    requireRole(['admin', 'hr']),
+    upload.array('documents', 15), // Support up to 15 files
+    validateId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.id);
+        
+        console.log('[Approval Documents] Upload request for employee:', employeeId);
+        console.log('[Approval Documents] Files count:', req.files ? (req.files as any).length : 0);
+        
+        // Check if employee exists
+        const employee = await storage.getEmployee(employeeId);
+        if (!employee) {
+          return res.status(404).json({ 
+            error: 'Employee not found',
+            details: `No employee found with ID: ${employeeId}`
+          });
+        }
+        
+        // Get uploaded files
+        const files = req.files as Express.Multer.File[];
+        if (!files || files.length === 0) {
+          return res.status(400).json({ 
+            error: 'No files uploaded',
+            details: 'Request must include at least one document file',
+            hint: 'Use FormData with field name "documents" to upload files'
+          });
+        }
+        
+        console.log('[Approval Documents] Files received:', files.map(f => ({ name: f.originalname, size: f.size, type: f.mimetype })));
+        
+        // Parse document types from request
+        let documentTypes: string[] = [];
+        try {
+          documentTypes = JSON.parse(req.body.documentTypes || '[]');
+          console.log('[Approval Documents] Document types:', documentTypes);
+        } catch (e) {
+          const parseError = e instanceof Error ? e.message : 'Unknown parsing error';
+          return res.status(400).json({ 
+            error: 'Invalid documentTypes format',
+            details: `Failed to parse documentTypes JSON: ${parseError}`,
+            received: req.body.documentTypes,
+            hint: 'documentTypes must be a JSON array of strings, e.g., ["Federal_Exclusions", "State_Exclusions"]'
+          });
+        }
+        
+        // Validate that we have a document type for each file
+        if (documentTypes.length !== files.length) {
+          return res.status(400).json({ 
+            error: 'Mismatch between files and document types',
+            details: `Received ${files.length} files but ${documentTypes.length} document types`,
+            filesReceived: files.map(f => f.originalname),
+            documentTypesReceived: documentTypes,
+            hint: 'Each uploaded file must have a corresponding document type'
+          });
+        }
+        
+        // Get selections (optional, for audit purposes)
+        let selections: Record<string, string> = {};
+        try {
+          selections = JSON.parse(req.body.selections || '{}');
+          console.log('[Approval Documents] Selections:', selections);
+        } catch (e) {
+          console.warn('[Approval Documents] Failed to parse selections:', e);
+        }
+        
+        // Check if S3 is enabled
+        const s3Config = await storage.getS3Configuration();
+        const s3Enabled = s3Config?.enabled && 
+                         s3Config.accessKeyId && 
+                         s3Config.secretAccessKey && 
+                         s3Config.bucketName;
+        const storageType = s3Enabled ? 's3' : 'local';
+        
+        console.log('[Approval Documents] Storage type:', storageType);
+        
+        // Process each file
+        const uploadedDocuments = [];
+        const errors = [];
+        
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const documentType = documentTypes[i];
+          
+          console.log(`[Approval Documents] Processing file ${i + 1}/${files.length}: ${documentType}`);
+          
+          try {
+            let s3Key = null;
+            let s3Etag = null;
+            
+            // Upload to S3 if enabled
+            if (storageType === 's3' && s3Config) {
+              s3Key = `employees/${employeeId}/approval/${documentType}-${Date.now()}-${file.originalname}`;
+              
+              console.log(`[Approval Documents] Uploading to S3: ${s3Key}`);
+              
+              // Read file as buffer for S3 upload
+              const fs = await import('fs/promises');
+              const fileBuffer = await fs.readFile(file.path);
+              
+              const uploadResult = await s3Service.uploadFile(
+                fileBuffer,
+                s3Key,
+                file.mimetype
+              );
+              
+              if (!uploadResult.success) {
+                throw new Error(`S3 upload failed: ${uploadResult.error || 'Unknown S3 error'}`);
+              }
+              
+              s3Etag = uploadResult.etag?.replace(/"/g, '') || null;
+              console.log(`[Approval Documents] S3 upload success: ${s3Key}, ETag: ${s3Etag}`);
+            } else {
+              console.log(`[Approval Documents] Using local storage: ${file.path}`);
+            }
+            
+            // Create document record
+            // Always preserve the actual local file path for fallback even when using S3
+            const document = await storage.createDocument({
+              employeeId,
+              documentType,
+              documentName: `${documentType} - Approval Document`,
+              fileName: file.originalname,
+              fileSize: file.size,
+              filePath: file.path, // Always store actual local path for fallback
+              storageType,
+              storageKey: s3Key,
+              mimeType: file.mimetype,
+              s3Etag,
+              notes: `Uploaded during employee approval process. Selections: ${JSON.stringify(selections)}`
+            });
+            
+            uploadedDocuments.push(document);
+            console.log(`[Approval Documents] Document record created: ID ${document.id}`);
+            
+            // Log audit
+            await storage.createAudit({
+              tableName: 'documents',
+              recordId: document.id,
+              action: 'CREATE',
+              changedBy: req.user?.id || null,
+              oldData: null,
+              newData: document
+            });
+            
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Upload failed';
+            console.error(`[Approval Documents] Error uploading ${documentType}:`, error);
+            errors.push({
+              documentType,
+              fileName: file.originalname,
+              error: errorMessage,
+              details: error instanceof Error ? error.stack : undefined
+            });
+          }
+        }
+        
+        console.log(`[Approval Documents] Upload complete: ${uploadedDocuments.length} successful, ${errors.length} failed`);
+        
+        // Return results
+        res.json({
+          success: true,
+          uploaded: uploadedDocuments.length,
+          failed: errors.length,
+          storageType,
+          documents: uploadedDocuments.map(doc => ({
+            id: doc.id,
+            documentType: doc.documentType,
+            fileName: doc.fileName,
+            fileSize: doc.fileSize,
+            storageType: doc.storageType
+          })),
+          errors: errors.length > 0 ? errors : undefined
+        });
+        
+      } catch (error) {
+        console.error('[Approval Documents] Fatal error:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        const errorStack = error instanceof Error ? error.stack : '';
+        
+        res.status(500).json({ 
+          error: 'Failed to upload documents',
+          details: errorMessage,
+          stack: process.env.NODE_ENV === 'development' ? errorStack : undefined,
+          hint: 'Check server logs for more details. Ensure the documents table exists and S3 is properly configured (if using S3).'
+        });
+      }
+    }
+  );
+
   // Education routes - accessible via API key or session
   app.get('/api/employees/:id/educations', 
     apiKeyAuth,
@@ -1963,41 +2402,276 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const document = await storage.getDocument(documentId);
         
         if (!document) {
-          return res.status(404).json({ error: 'Document not found' });
+          return res.status(404).json({ 
+            error: 'Document not found',
+            details: `No document found with ID: ${documentId}`
+          });
         }
+        
+        console.log(`[Document Download] Attempting download for document ${documentId}:`, {
+          storageType: document.storageType,
+          storageKey: document.storageKey,
+          filePath: document.filePath,
+          fileName: document.fileName,
+          fileSize: document.fileSize,
+          mimeType: document.mimeType,
+          employeeId: document.employeeId,
+          documentType: document.documentType
+        });
+        
+        // Check if filePath is a local file that exists
+        if (document.filePath) {
+          // Try both absolute and relative paths
+          const absolutePath = path.isAbsolute(document.filePath) 
+            ? document.filePath 
+            : path.join(uploadDir, document.filePath);
+          
+          const filePathExists = fs.existsSync(document.filePath);
+          const absolutePathExists = fs.existsSync(absolutePath);
+          
+          console.log(`[Document Download] filePath check:`, {
+            original: document.filePath,
+            absolute: absolutePath,
+            existsOriginal: filePathExists,
+            existsAbsolute: absolutePathExists
+          });
+        }
+        
+        // Check if file is an image (should display inline instead of download)
+        const isImage = document.mimeType?.startsWith('image/') || false;
+        const contentType = document.mimeType || 'application/octet-stream';
         
         // Handle S3 stored documents
         if (document.storageType === 's3' && document.storageKey) {
+          // Check if S3 is actually configured
+          if (!s3Service.isS3Configured()) {
+            console.warn(`[Document Download] Document ${documentId} marked as S3 but S3 not configured. Trying local fallback...`);
+            
+            // Try to use filePath as fallback if it's a real file path
+            if (document.filePath && fs.existsSync(document.filePath)) {
+              console.log(`[Document Download] Using local file fallback: ${document.filePath}`);
+              if (isImage) {
+                res.setHeader('Content-Type', contentType);
+                res.setHeader('Content-Disposition', `inline; filename="${document.fileName ?? 'document'}"`);
+                return res.sendFile(document.filePath);
+              }
+              return res.download(document.filePath, document.fileName ?? 'document');
+            }
+            
+            return res.status(404).json({ 
+              error: 'S3 not configured',
+              details: 'Document is stored in S3 but S3 service is not configured. Please configure S3 or contact administrator.',
+              documentId,
+              storageKey: document.storageKey
+            });
+          }
+          
           // Stream from S3 through the server to avoid CORS issues
           const downloadResult = await s3Service.downloadFile(document.storageKey, 's3');
           
           if (downloadResult.success && downloadResult.data) {
-            res.setHeader('Content-Type', downloadResult.contentType || 'application/octet-stream');
-            res.setHeader('Content-Disposition', `attachment; filename="${document.fileName || 'document'}"`);
+            console.log(`[Document Download] Successfully downloaded from S3: ${document.storageKey}`);
+            res.setHeader('Content-Type', downloadResult.contentType || contentType);
+            
+            // For images, use inline to display in browser; for other files, use attachment to download
+            const disposition = isImage ? 'inline' : 'attachment';
+            res.setHeader('Content-Disposition', `${disposition}; filename="${document.fileName || 'document'}"`);
             res.setHeader('Content-Length', downloadResult.data.length.toString());
             return res.send(downloadResult.data);
           } else {
-            console.error('Failed to download from S3:', document.storageKey);
-            return res.status(404).json({ error: 'Document file not found in storage' });
+            console.error(`[Document Download] Failed to download from S3:`, {
+              storageKey: document.storageKey,
+              error: downloadResult.error,
+              documentId
+            });
+            
+            // Try local fallback: check if filePath is a real local path (not an S3 key)
+            // filePath should be the actual local file path, even if storageType is 's3'
+            if (document.filePath) {
+              const isS3Key = document.filePath.startsWith('employees/') || 
+                            document.filePath.startsWith('s3://') ||
+                            document.filePath === document.storageKey;
+              
+              if (!isS3Key) {
+                // Try original path first
+                if (fs.existsSync(document.filePath)) {
+                  console.log(`[Document Download] Using local file as fallback (original path): ${document.filePath}`);
+                  const fileName = document.fileName ?? 'document';
+                  if (isImage) {
+                    res.setHeader('Content-Type', contentType);
+                    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+                    return res.sendFile(path.resolve(document.filePath));
+                  }
+                  return res.download(document.filePath, fileName);
+                }
+                
+                // Try as relative path from uploads folder
+                const relativePath = path.join(uploadDir, document.filePath);
+                if (fs.existsSync(relativePath)) {
+                  console.log(`[Document Download] Using local file as fallback (relative path): ${relativePath}`);
+                  const fileName = document.fileName ?? 'document';
+                  if (isImage) {
+                    res.setHeader('Content-Type', contentType);
+                    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+                    return res.sendFile(path.resolve(relativePath));
+                  }
+                  return res.download(relativePath, fileName);
+                }
+              }
+            }
+            
+            // Try to find file in uploads folder by searching for files matching the document
+            // This handles cases where the file was marked as S3 but the local temp file still exists
+            if (document.storageKey && document.fileName) {
+              try {
+                console.log(`[Document Download] Searching uploads folder for fallback file...`);
+                const uploadsFiles = await fs.promises.readdir(uploadDir);
+                
+                // Strategy 1: Look for files matching the original filename
+                let matchingFile = uploadsFiles.find(f => {
+                  const lowerFile = f.toLowerCase();
+                  const lowerOriginal = document.fileName.toLowerCase();
+                  const nameWithoutExt = lowerOriginal.split('.')[0];
+                  // Skip .meta.json files and .gitkeep
+                  if (f.startsWith('.') || f.endsWith('.meta.json')) return false;
+                  return lowerFile.includes(nameWithoutExt);
+                });
+                
+                // Strategy 2: If not found, try matching by file size (if available)
+                if (!matchingFile && document.fileSize) {
+                  console.log(`[Document Download] Trying to match by file size: ${document.fileSize} bytes`);
+                  for (const f of uploadsFiles) {
+                    if (f.startsWith('.') || f.endsWith('.meta.json')) continue;
+                    try {
+                      const filePath = path.join(uploadDir, f);
+                      const stats = await fs.promises.stat(filePath);
+                      if (stats.isFile() && stats.size === document.fileSize) {
+                        console.log(`[Document Download] Found file matching size: ${f} (${stats.size} bytes)`);
+                        matchingFile = f;
+                        break;
+                      }
+                    } catch (statError) {
+                      // Skip files we can't stat
+                      continue;
+                    }
+                  }
+                }
+                
+                // Strategy 3: For approval documents, try to match by timestamp in storageKey
+                // Storage key format: employees/{employeeId}/approval/{documentType}-{timestamp}-{filename}
+                if (!matchingFile && document.storageKey.includes('/approval/')) {
+                  const timestampMatch = document.storageKey.match(/-(\d+)-/);
+                  if (timestampMatch) {
+                    const timestamp = timestampMatch[1];
+                    console.log(`[Document Download] Looking for files with timestamp: ${timestamp}`);
+                    // Check files modified around that time (within 1 hour window)
+                    const targetTime = parseInt(timestamp);
+                    for (const f of uploadsFiles) {
+                      if (f.startsWith('.') || f.endsWith('.meta.json')) continue;
+                      try {
+                        const filePath = path.join(uploadDir, f);
+                        const stats = await fs.promises.stat(filePath);
+                        const fileTime = stats.mtimeMs;
+                        // Check if file was modified within 1 hour of the timestamp
+                        if (stats.isFile() && Math.abs(fileTime - targetTime) < 3600000) {
+                          console.log(`[Document Download] Found file with matching timestamp: ${f}`);
+                          matchingFile = f;
+                          break;
+                        }
+                      } catch (statError) {
+                        continue;
+                      }
+                    }
+                  }
+                }
+                
+                if (matchingFile && document.fileName) {
+                  const localFilePath = path.join(uploadDir, matchingFile);
+                  if (fs.existsSync(localFilePath)) {
+                    console.log(`[Document Download] ✓ Found matching file in uploads folder: ${localFilePath}`);
+                    if (isImage) {
+                      res.setHeader('Content-Type', contentType);
+                      res.setHeader('Content-Disposition', `inline; filename="${document.fileName}"`);
+                      return res.sendFile(path.resolve(localFilePath));
+                    }
+                    return res.download(localFilePath, document.fileName);
+                  }
+                } else {
+                  console.log(`[Document Download] ✗ No matching file found in uploads folder (searched ${uploadsFiles.length} files)`);
+                }
+              } catch (scanError) {
+                console.error('[Document Download] Error scanning uploads folder:', scanError);
+              }
+            }
+            
+            const errorDetails = {
+              error: 'Document file not found in storage',
+              details: downloadResult.error || 'File not found in S3 bucket and local fallback failed',
+              storageKey: document.storageKey,
+              filePath: document.filePath,
+              documentId,
+              fileName: document.fileName,
+              attemptedFallbacks: [
+                'Checked filePath for local file',
+                'Searched uploads folder by filename',
+                ...(document.fileSize ? ['Searched uploads folder by file size'] : []),
+                ...(document.storageKey?.includes('/approval/') ? ['Searched uploads folder by timestamp'] : [])
+              ],
+              hint: 'The file may have been deleted from local storage. Options: 1) Fix S3 permissions and re-upload, 2) Re-upload the file, 3) Check if file exists manually in server/uploads folder'
+            };
+            
+            console.error('[Document Download] All fallback attempts failed:', errorDetails);
+            
+            return res.status(404).json(errorDetails);
           }
         }
         
-        // Handle locally stored documents (backward compatibility)
+        // Handle locally stored documents
         if (document.filePath && fs.existsSync(document.filePath)) {
+          console.log(`[Document Download] Downloading local file: ${document.filePath}`);
+          if (isImage) {
+            res.setHeader('Content-Type', contentType);
+            res.setHeader('Content-Disposition', `inline; filename="${document.fileName || 'document'}"`);
+            return res.sendFile(document.filePath);
+          }
           return res.download(document.filePath, document.fileName || 'document');
         }
         
-        // If storage key exists but file is local
+        // If storage key exists but file is local (for backward compatibility)
         if (document.storageKey && document.storageType === 'local') {
           if (fs.existsSync(document.storageKey)) {
+            console.log(`[Document Download] Downloading from storageKey: ${document.storageKey}`);
+            if (isImage) {
+              res.setHeader('Content-Type', contentType);
+              res.setHeader('Content-Disposition', `inline; filename="${document.fileName || 'document'}"`);
+              return res.sendFile(document.storageKey);
+            }
             return res.download(document.storageKey, document.fileName || 'document');
           }
         }
         
-        return res.status(404).json({ error: 'Document file not found' });
+        console.error(`[Document Download] File not found for document ${documentId}:`, {
+          storageType: document.storageType,
+          storageKey: document.storageKey,
+          filePath: document.filePath,
+          filePathExists: document.filePath ? fs.existsSync(document.filePath) : false
+        });
+        
+        return res.status(404).json({ 
+          error: 'Document file not found',
+          details: 'The document record exists but the physical file cannot be found in storage',
+          documentId,
+          storageType: document.storageType,
+          storageKey: document.storageKey,
+          filePath: document.filePath
+        });
       } catch (error) {
-        console.error('Error downloading document:', error);
-        res.status(500).json({ error: 'Failed to download document' });
+        console.error('[Document Download] Error downloading document:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        res.status(500).json({ 
+          error: 'Failed to download document',
+          details: errorMessage
+        });
       }
     }
   );

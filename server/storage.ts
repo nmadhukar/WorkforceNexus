@@ -43,6 +43,7 @@ import {
   docusealTemplates,
   formSubmissions,
   onboardingFormSubmissions,
+  employeeApprovalChecklists,
   type User, 
   type InsertUser,
   type Employee,
@@ -98,6 +99,8 @@ import {
   type Location,
   type InsertLocation,
   type LicenseType,
+  type EmployeeApprovalChecklist,
+  type InsertEmployeeApprovalChecklist,
   type InsertLicenseType,
   type ResponsiblePerson,
   type InsertResponsiblePerson,
@@ -642,6 +645,14 @@ export interface IStorage {
   createIncidentLog(log: InsertIncidentLog): Promise<IncidentLog>;
   updateIncidentLog(id: number, log: Partial<InsertIncidentLog>): Promise<IncidentLog>;
   deleteIncidentLog(id: number): Promise<void>;
+  
+  /**
+   * Employee Approval Checklist Management
+   */
+  getEmployeeApprovalChecklist(employeeId: number): Promise<EmployeeApprovalChecklist | null>;
+  createEmployeeApprovalChecklist(checklist: InsertEmployeeApprovalChecklist): Promise<EmployeeApprovalChecklist>;
+  updateEmployeeApprovalChecklist(employeeId: number, checklist: Partial<InsertEmployeeApprovalChecklist>): Promise<EmployeeApprovalChecklist>;
+  deleteEmployeeApprovalChecklist(employeeId: number): Promise<void>;
   
   /**
    * Audit Trail Management
@@ -1999,6 +2010,41 @@ export class DatabaseStorage implements IStorage {
 
   async deleteIncidentLog(id: number): Promise<void> {
     await db.delete(incidentLogs).where(eq(incidentLogs.id, id));
+  }
+
+  // Employee approval checklist operations
+  async getEmployeeApprovalChecklist(employeeId: number): Promise<EmployeeApprovalChecklist | null> {
+    const [checklist] = await db
+      .select()
+      .from(employeeApprovalChecklists)
+      .where(eq(employeeApprovalChecklists.employeeId, employeeId));
+    return checklist || null;
+  }
+
+  async createEmployeeApprovalChecklist(checklist: InsertEmployeeApprovalChecklist): Promise<EmployeeApprovalChecklist> {
+    const [newChecklist] = await db
+      .insert(employeeApprovalChecklists)
+      .values(checklist)
+      .returning();
+    return newChecklist;
+  }
+
+  async updateEmployeeApprovalChecklist(
+    employeeId: number,
+    checklist: Partial<InsertEmployeeApprovalChecklist>
+  ): Promise<EmployeeApprovalChecklist> {
+    const [updatedChecklist] = await db
+      .update(employeeApprovalChecklists)
+      .set({ ...checklist, updatedAt: new Date() })
+      .where(eq(employeeApprovalChecklists.employeeId, employeeId))
+      .returning();
+    return updatedChecklist;
+  }
+
+  async deleteEmployeeApprovalChecklist(employeeId: number): Promise<void> {
+    await db
+      .delete(employeeApprovalChecklists)
+      .where(eq(employeeApprovalChecklists.employeeId, employeeId));
   }
 
   // Audit operations
