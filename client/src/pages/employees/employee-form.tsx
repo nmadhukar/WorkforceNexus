@@ -53,6 +53,9 @@ interface EmployeeFormData {
   qualification?: string;
   npiNumber?: string;
   enumerationDate?: string;
+  hasEmploymentGap?: boolean;
+  employmentGap?: string;
+  hadLicenseIncidents?: boolean;
 
   // Credentials
   medicalLicenseNumber?: string;
@@ -75,6 +78,7 @@ interface EmployeeFormData {
   nppesPassword?: string;
 
   status?: string;
+  onboardingStatus?: string;
 
   // Related entities (for form state management)
   educations?: any[];
@@ -142,11 +146,15 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
   const [proceedBlockedMessage, setProceedBlockedMessage] = useState<string | undefined>(undefined);
   const [employeeId, setEmployeeId] = useState<number | undefined>(undefined);
   const hasInitializedEmployee = useRef(false);
+  const [onboardingSubmitted, setOnboardingSubmitted] = useState<boolean>(false);
   const [formData, setFormData] = useState<EmployeeFormData>({
     firstName: "",
     lastName: "",
     workEmail: "",
     status: "active",
+    hasEmploymentGap: false,
+    employmentGap: "",
+    hadLicenseIncidents: false,
     educations: [],
     employments: [],
     stateLicenses: [],
@@ -179,8 +187,8 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
       return res.json();
     },
     retry: (failureCount, error) => {
-      if (error instanceof Error && 
-          (error.message.includes('404') || error.message.includes('401'))) {
+      if (error instanceof Error &&
+        (error.message.includes('404') || error.message.includes('401'))) {
         return false;
       }
       return failureCount < 2;
@@ -225,6 +233,9 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
         caqhIssueDate: onboardingData.caqhIssueDate ? onboardingData.caqhIssueDate.split('T')[0] : undefined,
         caqhLastAttestationDate: onboardingData.caqhLastAttestationDate ? onboardingData.caqhLastAttestationDate.split('T')[0] : undefined,
         caqhReattestationDueDate: onboardingData.caqhReattestationDueDate ? onboardingData.caqhReattestationDueDate.split('T')[0] : undefined,
+        hasEmploymentGap: onboardingData.hasEmploymentGap ?? false,
+        employmentGap: onboardingData.employmentGap ?? "",
+        hadLicenseIncidents: onboardingData.hadLicenseIncidents ?? (Array.isArray(onboardingData.incidentLogs) && onboardingData.incidentLogs.length > 0),
         educations: onboardingData.educations || [],
         employments: onboardingData.employments || [],
         stateLicenses: onboardingData.stateLicenses || [],
@@ -233,7 +244,8 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
         peerReferences: onboardingData.peerReferences || [],
         emergencyContacts: onboardingData.emergencyContacts || [],
         trainings: onboardingData.trainings || [],
-        payerEnrollments: onboardingData.payerEnrollments || []
+        payerEnrollments: onboardingData.payerEnrollments || [],
+        incidentLogs: onboardingData.incidentLogs || []
       });
       if (onboardingData.id) {
         setEmployeeId(onboardingData.id);
@@ -256,7 +268,11 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
         peerReferences: employee.peerReferences || [],
         emergencyContacts: employee.emergencyContacts || [],
         trainings: employee.trainings || [],
-        payerEnrollments: employee.payerEnrollments || []
+        payerEnrollments: employee.payerEnrollments || [],
+        incidentLogs: employee.incidentLogs || [],
+        hasEmploymentGap: employee.hasEmploymentGap ?? false,
+        employmentGap: employee.employmentGap ?? "",
+        hadLicenseIncidents: employee.hadLicenseIncidents ?? (Array.isArray(employee.incidentLogs) && employee.incidentLogs.length > 0)
       });
       formDataInitialized.current = true;
     } else if (!isOnboarding && employee) {
@@ -482,13 +498,21 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
 
       return newEmployee;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Set employeeId in onboarding mode so subsequent saves use PUT
+      if (isOnboarding && data?.id) {
+        setEmployeeId(data.id);
+        hasInitializedEmployee.current = true;
+      }
       toast({
         title: "Success",
-        description: "Employee and related entities created successfully"
+        description: isOnboarding ? "Draft saved successfully" : "Employee and related entities created successfully"
       });
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
-      navigate("/employees");
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/my-onboarding"] });
+      if (!isOnboarding) {
+        navigate("/employees");
+      }
     },
     onError: (error: any) => {
       console.error('Error creating employee:', error);
@@ -501,6 +525,35 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
         description: errorMessage,
         variant: "destructive",
         duration: 10000
+      });
+    }
+  });
+
+  // Final onboarding submit (moves to Thank You step)
+  const submitOnboardingMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/onboarding/submit", {});
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Failed to submit onboarding' }));
+        throw new Error(error.error || 'Failed to submit onboarding');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      setOnboardingSubmitted(true);
+      setFormData(prev => ({ ...prev, onboardingStatus: 'completed' } as any));
+      setCurrentStep(1);
+      toast({
+        title: "Onboarding Submitted",
+        description: "Your onboarding documentation was submitted successfully."
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/my-onboarding"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Submission Failed",
+        description: error?.message || 'Failed to submit onboarding',
+        variant: "destructive"
       });
     }
   });
@@ -522,7 +575,7 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
         'personalEmail', 'workEmail', 'cellPhone', 'workPhone',
         'homeAddress1', 'homeAddress2', 'homeCity', 'homeState', 'homeZip',
         'gender', 'birthCity', 'birthState', 'birthCountry',
-        'jobTitle', 'workLocation', 'qualification', 'department',
+        'jobTitle', 'workLocation', 'qualification', 'department', 'hasEmploymentGap', 'employmentGap',
         'npiNumber', 'enumerationDate',
         'medicalQualification', 'medicalLicenseNumber', 'medicalLicenseState',
         'medicalLicenseIssueDate', 'medicalLicenseExpirationDate', 'medicalLicenseStatus',
@@ -545,8 +598,10 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
         }
       }
 
-      // Use employeeId from state for onboarding, or params.id for edit mode
-      const targetEmployeeId = isOnboarding ? employeeId : params.id;
+      // Use employeeId from state first (most reliable), then onboardingData.id, or params.id for edit mode
+      const targetEmployeeId = isOnboarding
+        ? (employeeId || onboardingData?.id)
+        : params.id;
       if (!targetEmployeeId) {
         throw new Error('Employee ID is required for update');
       }
@@ -586,8 +641,21 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
       const cleanData = Object.fromEntries(
         Object.entries(data).filter(([_, v]) => v !== undefined && v !== "" && v !== null)
       );
-      
-      const response = await apiRequest("POST", "/api/onboarding/save-draft", cleanData);
+
+      // Determine which API endpoint to use based on whether employeeId exists
+      // Step 1: Use POST (create) if no employeeId exists
+      // Step 2+: Use PUT (update) if employeeId exists
+      const targetEmployeeId = employeeId || onboardingData?.id;
+
+      let response;
+      if (targetEmployeeId) {
+        // Step 2+: Use PUT endpoint with employeeId
+        response = await apiRequest("PUT", `/api/onboarding/save-draft/${targetEmployeeId}`, cleanData);
+      } else {
+        // Step 1: Use POST endpoint (creates new employee)
+        response = await apiRequest("POST", "/api/onboarding/save-draft", cleanData);
+      }
+
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || 'Failed to save draft');
@@ -601,15 +669,15 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
         setEmployeeId(result.employeeId);
         hasInitializedEmployee.current = true;
       }
-      toast({
-        title: "Draft Saved",
-        description: "Your progress has been saved. You can continue later."
-      });
+      // Don't show toast here - it will be shown by handleSaveDraft for manual saves
+      // Auto-saves (on next step) happen silently
+
       // Refetch onboarding data to get updated employee record
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/my-onboarding"] });
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
     },
     onError: (error: Error) => {
+      // Always show error toast - user needs to know if save fails
       toast({
         title: "Save Failed",
         description: error.message,
@@ -624,13 +692,14 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
    */
   const handleSubmit = () => {
     if (isOnboarding) {
-      if (employeeId) {
-        // Employee exists, use PUT to update
-        updateMutation.mutate({ ...formData });
-      } else {
-        // No employee exists yet, use save-draft to create
-        saveDraftMutation.mutate(formData);
+      // If on last step (Review) and not yet submitted, submit onboarding then show Thank You
+      const lastStep = currentStep === steps.length;
+      if (!onboardingSubmitted && lastStep) {
+        submitOnboardingMutation.mutate();
+        return;
       }
+      // Otherwise save draft
+      saveDraftMutation.mutate(formData);
     } else if (isEdit) {
       updateMutation.mutate(formData);
     } else {
@@ -639,10 +708,39 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
   };
 
   /**
+   * Handles save draft action specifically for onboarding mode
+   * @description Always uses saveDraftMutation for onboarding (never calls employee API)
+   */
+  const handleSaveDraft = () => {
+    if (!isOnboarding) {
+      // Not in onboarding mode, use regular submit
+      handleSubmit();
+      return;
+    }
+
+    // In onboarding mode, always use save-draft API (handles both create and update)
+    saveDraftMutation.mutate(formData, {
+      onSuccess: () => {
+        // Show success toast for manual save only
+        toast({
+          title: "Draft Saved",
+          description: "Your progress has been saved. You can continue later."
+        });
+      }
+    });
+  };
+
+  /**
    * Advances to the next step in the form
-   * @description Validates current step before advancing (if validation implemented)
+   * @description Validates current step before advancing and auto-saves draft in onboarding mode
    */
   const handleNext = async () => {
+    // If onboarding is completed, do not allow navigation beyond Thank You
+    const isCompleted = isOnboarding && ((onboardingData?.onboardingStatus ?? formData.onboardingStatus) === 'completed' || onboardingSubmitted);
+    if (isCompleted) {
+      return;
+    }
+    // Validate current step if validation is registered
     const validate = currentStepValidatorRef.current;
     if (validate) {
       try {
@@ -653,10 +751,29 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
       } catch (error) {
         return;
       }
-    } else {
     }
-    if (currentStep < 13) {
-      setCurrentStep(currentStep + 1);
+
+    // In onboarding mode, auto-save draft before moving to next step
+    if (isOnboarding) {
+      // Save draft automatically when moving to next step (silent save - no success toast)
+      // This ensures progress is preserved even if user closes browser
+      try {
+        await saveDraftMutation.mutateAsync(formData);
+        // Mutation's onSuccess handles employeeId and query invalidation
+        // Only move to next step after successful save
+        if (currentStep < 13) {
+          setCurrentStep(currentStep + 1);
+        }
+      } catch (error) {
+        // If save fails, don't move to next step
+        // Error toast is already shown by saveDraftMutation.onError
+        return;
+      }
+    } else {
+      // Not in onboarding mode, just move to next step
+      if (currentStep < 13) {
+        setCurrentStep(currentStep + 1);
+      }
     }
   };
 
@@ -688,6 +805,8 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
       return isValid;
     };
   }, []);
+
+  const isOnboardingComplete = isOnboarding && ((onboardingData?.onboardingStatus ?? formData.onboardingStatus) === 'completed' || onboardingSubmitted);
 
   const steps = [
     {
@@ -741,6 +860,7 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : (isOnboarding ? employeeId : undefined)}
+          allowFetch={!isOnboarding}
           registerValidation={registerStepValidation}
           data-testid="step-education-employment"
         />
@@ -829,6 +949,7 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : (isOnboarding ? employeeId : undefined)}
+          allowFetch={!isOnboarding}
           registerValidation={registerStepValidation}
           data-testid="step-incidents"
         />
@@ -934,7 +1055,9 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
                 </div>
               </div>
             </CardContent>
-          </Card>) : (<div className="space-y-2">
+          </Card>
+        ) : (
+          <div className="space-y-2">
             <h1 className="text-3xl font-bold flex items-center gap-2">
               <ClipboardList className="w-8 h-8" />
               Employee Onboarding
@@ -946,21 +1069,37 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
         )}
 
         {/* Form Container with Constrained Width */}
-        <div className="w-full employee-form-wrapper">
-          <MultiStepForm
-            steps={steps}
-            currentStep={currentStep}
-            onNext={handleNext}
-            onPrevious={handlePrevious}
-            onSubmit={handleSubmit}
-            isSubmitting={createMutation.isPending || updateMutation.isPending || saveDraftMutation.isPending}
-            canNext={true}
-            canProceed={canProceed}
-            proceedBlockedMessage={proceedBlockedMessage}
-            isOnboarding={isOnboarding}
-            data-testid="multi-step-form"
-          />
-        </div>
+        {
+          !isOnboardingComplete ? (
+            <div className="w-full employee-form-wrapper">
+              <MultiStepForm
+                steps={steps}
+                currentStep={currentStep}
+                onNext={handleNext}
+                onPrevious={handlePrevious}
+                onSubmit={handleSubmit}
+                isSubmitting={createMutation.isPending || updateMutation.isPending || saveDraftMutation.isPending || submitOnboardingMutation.isPending}
+                canNext={true}
+                canProceed={canProceed}
+                proceedBlockedMessage={proceedBlockedMessage}
+                isOnboarding={isOnboarding}
+                onSaveDraft={isOnboarding ? handleSaveDraft : undefined}
+                isSavingDraft={createMutation.isPending || updateMutation.isPending || saveDraftMutation.isPending}
+                data-testid="multi-step-form"
+              />
+            </div>
+          ) : (
+            <div className="space-y-6" data-testid="step-thank-you">
+              <Card>
+                <CardContent className="py-10">
+                  <h2 className="text-2xl font-semibold mb-2">Thank you</h2>
+                  <p className="text-muted-foreground">
+                    Your onboarding documentation is successfully submitted and the HR will reach out if any additional information is needed.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          )}
       </div>
     </MainLayout>
   );

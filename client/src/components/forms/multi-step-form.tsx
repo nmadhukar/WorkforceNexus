@@ -3,7 +3,7 @@ import { ReactNode, useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Badge } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Badge, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import {
@@ -29,6 +29,8 @@ interface MultiStepFormProps {
   canProceed?: boolean;
   proceedBlockedMessage?: string;
   isOnboarding?: boolean;
+  onSaveDraft?: () => void;
+  isSavingDraft?: boolean;
 }
 
 export function MultiStepForm({
@@ -41,7 +43,9 @@ export function MultiStepForm({
   canNext,
   canProceed,
   proceedBlockedMessage,
-  isOnboarding
+  isOnboarding,
+  onSaveDraft,
+  isSavingDraft
 }: MultiStepFormProps) {
   const progressPercentage = (currentStep / steps.length) * 100;
   const isLastStep = currentStep === steps.length;
@@ -353,37 +357,57 @@ export function MultiStepForm({
                     </TooltipProvider>
                   </>
                 ) : (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span tabIndex={0}>
-                          <Button
-                            onClick={onNext}
-                            disabled={isNextDisabled}
-                            data-testid="button-next"
-                            className={cn(
-                              "flex-1 sm:flex-initial",
-                              isNextDisabled && proceedBlockedMessage && "relative"
-                            )}
-                          >
-                            {isNextDisabled && proceedBlockedMessage && (
-                              <AlertCircle className="w-4 h-4 mr-2" />
-                            )}
-                            Next Step
-                            <ArrowRight className="w-4 h-4 ml-2" />
-                          </Button>
-                        </span>
-                      </TooltipTrigger>
-                      {isNextDisabled && (
-                        <TooltipContent className="max-w-xs">
-                          <div className="flex items-start gap-2">
-                            <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                            <p className="text-sm">{nextButtonTooltip}</p>
-                          </div>
-                        </TooltipContent>
-                      )}
-                    </Tooltip>
-                  </TooltipProvider>
+                  <>
+                    {isOnboarding && onSaveDraft && (
+                      <Button
+                        variant="outline"
+                        onClick={onSaveDraft}
+                        disabled={isSavingDraft || isSubmitting}
+                        data-testid="button-save-draft-form"
+                        className="flex-1 sm:flex-initial"
+                      >
+                        {isSavingDraft ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
+                            Saving...
+                          </>
+                        ) : (
+                          "Save Draft"
+                        )}
+                      </Button>
+                    )}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span tabIndex={0}>
+                            <Button
+                              onClick={onNext}
+                              disabled={isNextDisabled}
+                              data-testid="button-next"
+                              className={cn(
+                                "flex-1 sm:flex-initial",
+                                isNextDisabled && proceedBlockedMessage && "relative"
+                              )}
+                            >
+                              {isNextDisabled && proceedBlockedMessage && (
+                                <AlertCircle className="w-4 h-4 mr-2" />
+                              )}
+                              Next Step
+                              <ArrowRight className="w-4 h-4 ml-2" />
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        {isNextDisabled && (
+                          <TooltipContent className="max-w-xs">
+                            <div className="flex items-start gap-2">
+                              <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                              <p className="text-sm">{nextButtonTooltip}</p>
+                            </div>
+                          </TooltipContent>
+                        )}
+                      </Tooltip>
+                    </TooltipProvider>
+                  </>
                 )}
               </div>
             </div>

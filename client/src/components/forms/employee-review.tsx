@@ -19,9 +19,9 @@ export function EmployeeReview({ data, onValidationChange, registerValidation }:
     }
   }, [registerValidation, onValidationChange]);
 
-  const maskSSN = (ssn: string) => {
-    if (!ssn || ssn.length < 4) return "****";
-    return `***-**-${ssn.slice(-4)}`;
+  // Display raw encrypted SSN format without masking
+  const displaySSN = (ssn: string) => {
+    return ssn || "Not provided";
   };
 
   const formatDate = (date: string) => {
@@ -90,7 +90,7 @@ export function EmployeeReview({ data, onValidationChange, registerValidation }:
             </div>
             <div>
               <span className="font-medium text-muted-foreground">SSN:</span>
-              <p data-testid="review-ssn">{maskSSN(data.ssn)}</p>
+              <p data-testid="review-ssn">{displaySSN(data.ssn)}</p>
             </div>
             <div>
               <span className="font-medium text-muted-foreground">Personal Email:</span>

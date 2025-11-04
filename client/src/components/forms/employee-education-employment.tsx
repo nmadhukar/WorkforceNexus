@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -25,11 +25,12 @@ interface EmployeeEducationEmploymentProps {
   data: any;
   onChange: (data: any) => void;
   employeeId?: number;
+  allowFetch?: boolean;
   onValidationChange?: (isValid: boolean) => void;
   registerValidation?: (validationFn: () => Promise<boolean>) => void;
 }
 
-export function EmployeeEducationEmployment({ data, onChange, employeeId, onValidationChange, registerValidation }: EmployeeEducationEmploymentProps) {
+export function EmployeeEducationEmployment({ data, onChange, employeeId, allowFetch = true, onValidationChange, registerValidation }: EmployeeEducationEmploymentProps) {
   const { toast } = useToast();
   const [isEducationDialogOpen, setIsEducationDialogOpen] = useState(false);
   const [isEmploymentDialogOpen, setIsEmploymentDialogOpen] = useState(false);
@@ -83,20 +84,27 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
   // Fetch existing data if in update mode
   const { data: educations = [] } = useQuery<any[]>({
     queryKey: ["/api/employees", employeeId, "educations"],
-    enabled: !!employeeId
+    enabled: allowFetch && !!employeeId
   });
 
   const { data: employments = [] } = useQuery<any[]>({
     queryKey: ["/api/employees", employeeId, "employments"],
-    enabled: !!employeeId
+    enabled: allowFetch && !!employeeId
   });
 
   useEffect(() => {
-    if (employeeId) {
+    if (employeeId && allowFetch) {
       setLocalEducations(educations);
       setLocalEmployments(employments);
     }
-  }, [educations, employments, employeeId]);
+  }, [educations, employments, employeeId, allowFetch]);
+
+  useEffect(() => {
+    if (!allowFetch || !employeeId) {
+      setLocalEducations(Array.isArray(data?.educations) ? data.educations : []);
+      setLocalEmployments(Array.isArray(data?.employments) ? data.employments : []);
+    }
+  }, [allowFetch, employeeId, data?.educations, data?.employments]);
 
   useEffect(() => {
     onChange({
@@ -337,7 +345,12 @@ export function EmployeeEducationEmployment({ data, onChange, employeeId, onVali
             <RadioGroup
               name="employmentGap"
               value={employmentGap}
-              onValueChange={(value: string) => setEmploymentGap(value)}
+              onValueChange={(value: string) => {
+                setEmploymentGap(value);
+                if (value === "no") {
+                  setEmploymentGapText("");
+                }
+              }}
               style={{display: "flex", flexDirection: "row", gap: 16}}
             >
               <div className="flex items-center gap-2">

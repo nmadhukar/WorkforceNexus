@@ -114,6 +114,9 @@ export const employees = pgTable("employees", {
   qualification: text("qualification"), // Professional qualifications and specialties
   // Department/discipline classification used by credentials step
   departments: varchar("departments", { length: 100 }),
+  // Employment gap tracking for onboarding
+  hasEmploymentGap: boolean("has_employment_gap"),
+  employmentGap: text("employment_gap"),
   
   // MEDICAL LICENSING INFORMATION
   medicalLicenseNumber: varchar("medical_license_number", { length: 50 }), // State medical license
@@ -694,6 +697,8 @@ export const incidentLogs = pgTable("incident_logs", {
   id: serial("id").primaryKey(), // Auto-incrementing primary key
   employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Foreign key to employees
   incidentDate: date("incident_date").notNull(), // Date when incident occurred
+  incidentType: varchar("incident_type", { length: 100 }), // Type/category of incident
+  severity: varchar("severity", { length: 20 }), // Severity level (low, medium, high, critical)
   description: text("description"), // Detailed incident description and circumstances
   resolution: text("resolution"), // Actions taken to resolve or address the incident
   reportedBy: varchar("reported_by", { length: 50 }) // Name/ID of person reporting the incident
@@ -1188,8 +1193,7 @@ export const insertStateLicenseSchema = createInsertSchema(stateLicenses, {
 }, { message: "Expiration date cannot be before issue date", path: ["expirationDate"] });
 export const insertDeaLicenseSchema = createInsertSchema(deaLicenses, {
   issueDate: z.coerce.date().nullable().optional(),
-  expirationDate: z.coerce.date().nullable().optional(),
-  state: z.string().max(2).regex(/^[A-Z]{2}$/).optional().or(z.literal("")).transform(val => val || null)
+  expirationDate: z.coerce.date().nullable().optional()
 }).omit({ id: true }).refine((data) => {
   if (data.expirationDate && data.issueDate) {
     return new Date(data.expirationDate) >= new Date(data.issueDate);
