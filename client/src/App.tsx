@@ -35,10 +35,11 @@ function Router() {
       <ProtectedRoute path="/" component={Dashboard} />
       <ProtectedRoute path="/onboarding" component={OnboardingPage} />
       <ProtectedRoute path="/employee-portal" component={EmployeePortal} />
-      <ProtectedRoute path="/employees" component={EmployeesList} />
+      {/* More specific routes must come before less specific ones */}
       <ProtectedRoute path="/employees/new" component={EmployeeForm} />
       <ProtectedRoute path="/employees/:id/edit" component={EmployeeForm} />
       <ProtectedRoute path="/employees/:id" component={EmployeeProfile} />
+      <ProtectedRoute path="/employees" component={EmployeesList} />
       <ProtectedRoute path="/documents" component={Documents} />
       <ProtectedRoute path="/reports" component={Reports} />
       <ProtectedRoute path="/audits" component={Audits} />

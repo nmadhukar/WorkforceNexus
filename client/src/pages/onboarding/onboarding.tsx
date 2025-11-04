@@ -22,6 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import EmployeeForm from "../employees/employee-form";
 
 /**
  * @fileoverview Employee Onboarding Wizard Component
@@ -2665,106 +2666,108 @@ export default function OnboardingPage() {
   }
 
   return (
-    <ErrorBoundary onError={handleErrorBoundary}>
-      <MainLayout>
-        <div className="max-w-6xl mx-auto p-6 space-y-6">
-          {/* Header */}
-          <div className="space-y-2">
-            <h1 className="text-3xl font-bold flex items-center gap-2">
-              <ClipboardList className="w-8 h-8" />
-              Employee Onboarding
-            </h1>
-            <p className="text-muted-foreground">
-              Complete your onboarding information to join our team
-            </p>
-          </div>
+    // <ErrorBoundary onError={handleErrorBoundary}>
+    //   <MainLayout>
+    //     <div className="max-w-6xl mx-auto p-6 space-y-6">
+    //       {/* Header */}
+    //       <div className="space-y-2">
+    //         <h1 className="text-3xl font-bold flex items-center gap-2">
+    //           <ClipboardList className="w-8 h-8" />
+    //           Employee Onboarding
+    //         </h1>
+    //         <p className="text-muted-foreground">
+    //           Complete your onboarding information to join our team
+    //         </p>
+    //       </div>
 
-          {/* Progress Indicator */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium">Step {currentStep} of 12</span>
-                <span className="text-sm text-muted-foreground">{Math.round((currentStep / 12) * 100)}% Complete</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-primary h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${(currentStep / 12) * 100}%` }}
-                />
-              </div>
-              <div className="mt-4 flex items-center justify-between">
-                <h3 className="font-semibold">{steps[currentStep - 1].title}</h3>
-                {existingOnboarding && (
-                  <Badge variant="outline">Draft Available</Badge>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+    //       {/* Progress Indicator */}
+    //       <Card>
+    //         <CardContent className="pt-6">
+    //           <div className="flex items-center justify-between mb-2">
+    //             <span className="text-sm font-medium">Step {currentStep} of 12</span>
+    //             <span className="text-sm text-muted-foreground">{Math.round((currentStep / 12) * 100)}% Complete</span>
+    //           </div>
+    //           <div className="w-full bg-gray-200 rounded-full h-2">
+    //             <div 
+    //               className="bg-primary h-2 rounded-full transition-all duration-300"
+    //               style={{ width: `${(currentStep / 12) * 100}%` }}
+    //             />
+    //           </div>
+    //           <div className="mt-4 flex items-center justify-between">
+    //             <h3 className="font-semibold">{steps[currentStep - 1].title}</h3>
+    //             {existingOnboarding && (
+    //               <Badge variant="outline">Draft Available</Badge>
+    //             )}
+    //           </div>
+    //         </CardContent>
+    //       </Card>
 
-          {/* Form */}
-          <FormProvider {...form}>
-            <form className="space-y-6">
-              <Card>
-                <CardContent className="pt-6">
-                  <StepRenderer 
-                    key={currentStep}
-                    stepNumber={currentStep} 
-                    updateFormData={updateFormData}
-                    formData={formData}
-                    onboardingId={existingOnboarding?.id}
-                  />
-                </CardContent>
-              </Card>
+    //       {/* Form */}
+    //       <FormProvider {...form}>
+    //         <form className="space-y-6">
+    //           <Card>
+    //             <CardContent className="pt-6">
+    //               <StepRenderer 
+    //                 key={currentStep}
+    //                 stepNumber={currentStep} 
+    //                 updateFormData={updateFormData}
+    //                 formData={formData}
+    //                 onboardingId={existingOnboarding?.id}
+    //               />
+    //             </CardContent>
+    //           </Card>
 
-              {/* Navigation */}
-              <div className="flex items-center justify-between">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handlePrevious}
-                  disabled={currentStep === 1}
-                  data-testid="button-previous"
-                >
-                  Previous
-                </Button>
+    //           {/* Navigation */}
+    //           <div className="flex items-center justify-between">
+    //             <Button
+    //               type="button"
+    //               variant="outline"
+    //               onClick={handlePrevious}
+    //               disabled={currentStep === 1}
+    //               data-testid="button-previous"
+    //             >
+    //               Previous
+    //             </Button>
 
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleSaveDraft}
-                    disabled={saveDraftMutation.isPending}
-                    data-testid="button-save-draft"
-                  >
-                    <Save className="w-4 h-4 mr-2" />
-                    {saveDraftMutation.isPending ? "Saving..." : "Save Draft"}
-                  </Button>
+    //             <div className="flex gap-2">
+    //               <Button
+    //                 type="button"
+    //                 variant="outline"
+    //                 onClick={handleSaveDraft}
+    //                 disabled={saveDraftMutation.isPending}
+    //                 data-testid="button-save-draft"
+    //               >
+    //                 <Save className="w-4 h-4 mr-2" />
+    //                 {saveDraftMutation.isPending ? "Saving..." : "Save Draft"}
+    //               </Button>
 
-                  {currentStep === 12 ? (
-                    <Button
-                      type="button"
-                      onClick={handleSubmit}
-                      disabled={submitOnboardingMutation.isPending}
-                      data-testid="button-submit-onboarding"
-                    >
-                      <CheckCircle className="w-4 h-4 mr-2" />
-                      {submitOnboardingMutation.isPending ? "Submitting..." : "Submit Onboarding"}
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      onClick={handleNext}
-                      data-testid="button-next"
-                    >
-                      Next
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </form>
-          </FormProvider>
-        </div>
-      </MainLayout>
-    </ErrorBoundary>
+    //               {currentStep === 12 ? (
+    //                 <Button
+    //                   type="button"
+    //                   onClick={handleSubmit}
+    //                   disabled={submitOnboardingMutation.isPending}
+    //                   data-testid="button-submit-onboarding"
+    //                 >
+    //                   <CheckCircle className="w-4 h-4 mr-2" />
+    //                   {submitOnboardingMutation.isPending ? "Submitting..." : "Submit Onboarding"}
+    //                 </Button>
+    //               ) : (
+    //                 <Button
+    //                   type="button"
+    //                   onClick={handleNext}
+    //                   data-testid="button-next"
+    //                 >
+    //                   Next
+    //                 </Button>
+    //               )}
+    //             </div>
+    //           </div>
+    //         </form>
+    //       </FormProvider>
+    //     </div>
+    //   </MainLayout>
+    // </ErrorBoundary>
+
+    <EmployeeForm isOnboarding={true} />
   );
 }

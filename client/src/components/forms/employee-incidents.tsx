@@ -29,15 +29,19 @@ interface EmployeeIncidentsProps {
   data: any;
   onChange: (data: any) => void;
   employeeId?: number;
+  allowFetch?: boolean;
   onValidationChange?: (isValid: boolean) => void;
   registerValidation?: (validationFn: () => Promise<boolean>) => void;
 }
 
-export function EmployeeIncidents({ data, onChange, employeeId, onValidationChange, registerValidation }: EmployeeIncidentsProps) {
+export function EmployeeIncidents({ data, onChange, employeeId, allowFetch = true, onValidationChange, registerValidation }: EmployeeIncidentsProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState<any>(null);
+  const initialHadIncidents = (typeof data?.hadLicenseIncidents === "boolean")
+    ? data.hadLicenseIncidents
+    : Array.isArray(data?.incidentLogs) && data.incidentLogs.length > 0;
   const [localIncidents, setLocalIncidents] = useState<any[]>(data.incidentLogs || []);
-  const [hadLicenseIncidents, setHadLicenseIncidents] = useState<boolean>(false);
+  const [hadLicenseIncidents, setHadLicenseIncidents] = useState<boolean>(initialHadIncidents);
 
   const form = useForm<IncidentFormData>({
     resolver: zodResolver(incidentSchema),
@@ -51,20 +55,39 @@ export function EmployeeIncidents({ data, onChange, employeeId, onValidationChan
   });
 
   // Fetch existing data if in update mode
-  const { data: incidents = [] } = useQuery({
+  const { data: incidents = [] } = useQuery<any[]>({
     queryKey: ["/api/employees", employeeId, "incident-logs"],
-    enabled: !!employeeId
+    enabled: allowFetch && !!employeeId
   });
 
   useEffect(() => {
-    if (employeeId) {
+    if (employeeId && allowFetch) {
       setLocalIncidents(incidents);
     }
-  }, [incidents, employeeId]);
+  }, [incidents, employeeId, allowFetch]);
 
   useEffect(() => {
-    onChange({ ...data, incidentLogs: localIncidents });
-  }, [localIncidents]);
+    if (!employeeId && Array.isArray(data?.incidentLogs)) {
+      setLocalIncidents(prev => (prev.length === 0 ? data.incidentLogs : prev));
+    }
+  }, [employeeId, data?.incidentLogs]);
+
+  useEffect(() => {
+    if (!employeeId) {
+      if (typeof data?.hadLicenseIncidents === "boolean") {
+        setHadLicenseIncidents(data.hadLicenseIncidents);
+      } else if (Array.isArray(data?.incidentLogs) && data.incidentLogs.length > 0) {
+        setHadLicenseIncidents(true);
+      }
+    }
+  }, [employeeId, data?.hadLicenseIncidents, data?.incidentLogs]);
+
+  useEffect(() => {
+    onChange({
+      incidentLogs: localIncidents,
+      hadLicenseIncidents
+    });
+  }, [localIncidents, hadLicenseIncidents, onChange]);
 
   const isValid = !hadLicenseIncidents || (hadLicenseIncidents && localIncidents.length > 0);
 

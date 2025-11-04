@@ -964,17 +964,21 @@ export default function EmployeePortal() {
                         <div key={training.id} className="p-3 border rounded-lg">
                           <div className="flex items-start justify-between">
                             <div>
-                              <p className="font-medium">{training.trainingName}</p>
+                              <p className="font-medium">{training.trainingType}</p>
                               <p className="text-sm text-muted-foreground">
-                                {training.trainingProvider} • {training.trainingHours} hours
+                                {training.provider}
+                                {training.credits != null ? ` • ${training.credits} credits` : ''}
                               </p>
                               <p className="text-xs text-muted-foreground">
                                 Completed: {formatDate(training.completionDate)}
                               </p>
+                              <p className="text-xs text-muted-foreground">
+                                Expires: {training.expirationDate ? formatDate(training.expirationDate) : '—'}
+                              </p>
                             </div>
-                            {training.certificateNumber && (
+                            {training.certificatePath && (
                               <Badge variant="secondary">
-                                Cert #{training.certificateNumber}
+                                Cert: {training.certificatePath}
                               </Badge>
                             )}
                           </div>
@@ -1009,12 +1013,13 @@ export default function EmployeePortal() {
                   <div className="space-y-3">
                     {education.map((edu: any) => (
                       <div key={edu.id} className="p-3 border rounded-lg">
-                        <p className="font-medium">{edu.institutionName}</p>
+                        <p className="font-medium">{edu.schoolInstitution}</p>
                         <p className="text-sm text-muted-foreground">
-                          {edu.degree} in {edu.fieldOfStudy}
+                          {edu.educationType} · {edu.degree}
+                          {edu.specialtyMajor ? ` in ${edu.specialtyMajor}` : ''}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          Graduated: {formatDate(edu.graduationDate)}
+                          {formatDate(edu.startDate)} - {edu.endDate ? formatDate(edu.endDate) : 'Present'}
                         </p>
                       </div>
                     ))}
@@ -1043,8 +1048,8 @@ export default function EmployeePortal() {
                   <div className="space-y-3">
                     {employmentHistory.map((emp: any) => (
                       <div key={emp.id} className="p-3 border rounded-lg">
-                        <p className="font-medium">{emp.employerName}</p>
-                        <p className="text-sm text-muted-foreground">{emp.jobTitle}</p>
+                        <p className="font-medium">{emp.employer}</p>
+                        <p className="text-sm text-muted-foreground">{emp.position}</p>
                         <p className="text-xs text-muted-foreground">
                           {formatDate(emp.startDate)} - {emp.endDate ? formatDate(emp.endDate) : "Present"}
                         </p>

@@ -104,6 +104,17 @@ export const validateId = (): ValidationChain[] => [
   param('id').isInt({ min: 1 }).withMessage('ID must be a positive integer')
 ];
 
+/**
+ * Validate a numeric route param by name
+ *
+ * @function validateParamId
+ * @param {string} paramName - The route param name to validate
+ * @returns {ValidationChain[]} Array of validation rules
+ */
+export const validateParamId = (paramName: string): ValidationChain[] => [
+  param(paramName).isInt({ min: 1 }).withMessage(`${paramName} must be a positive integer`)
+];
+
 // Employment validation
 export const validateEmployment = (): ValidationChain[] => [
   body('employer').optional().isLength({ min: 1 }).withMessage('Employer cannot be empty'),

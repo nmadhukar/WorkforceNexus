@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -18,7 +19,8 @@ import { EmployeeForms } from "@/components/forms/employee-forms";
 import { EmployeeReview } from "@/components/forms/employee-review";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, User, Building2, Save, X } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { ArrowLeft, User, Building2, Save, X, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -44,14 +46,17 @@ interface EmployeeFormData {
   homeCity?: string;
   homeState?: string;
   homeZip?: string;
-  
+
   // Professional Info
   jobTitle?: string;
   workLocation?: string;
   qualification?: string;
   npiNumber?: string;
   enumerationDate?: string;
-  
+  hasEmploymentGap?: boolean;
+  employmentGap?: string;
+  hadLicenseIncidents?: boolean;
+
   // Credentials
   medicalLicenseNumber?: string;
   substanceUseLicenseNumber?: string;
@@ -60,7 +65,7 @@ interface EmployeeFormData {
   mentalHealthQualification?: string;
   medicaidNumber?: string;
   medicarePtanNumber?: string;
-  
+
   // CAQH Info
   caqhProviderId?: string;
   caqhIssueDate?: string;
@@ -71,9 +76,10 @@ interface EmployeeFormData {
   caqhPassword?: string;
   nppesLoginId?: string;
   nppesPassword?: string;
-  
+
   status?: string;
-  
+  onboardingStatus?: string;
+
   // Related entities (for form state management)
   educations?: any[];
   employments?: any[];
@@ -129,19 +135,26 @@ interface EmployeeFormData {
  * 12. Incidents - Incident logs and safety records
  * 13. Review - Final review and submission
  */
-export default function EmployeeForm() {
+export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: boolean }) {
   const params = useParams();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const currentStepRef = useRef(currentStep);
   const [canProceed, setCanProceed] = useState(true);
   const [proceedBlockedMessage, setProceedBlockedMessage] = useState<string | undefined>(undefined);
+  const [employeeId, setEmployeeId] = useState<number | undefined>(undefined);
+  const hasInitializedEmployee = useRef(false);
+  const [onboardingSubmitted, setOnboardingSubmitted] = useState<boolean>(false);
   const [formData, setFormData] = useState<EmployeeFormData>({
     firstName: "",
     lastName: "",
     workEmail: "",
     status: "active",
+    hasEmploymentGap: false,
+    employmentGap: "",
+    hadLicenseIncidents: false,
     educations: [],
     employments: [],
     stateLicenses: [],
@@ -157,11 +170,50 @@ export default function EmployeeForm() {
   const currentStepValidatorRef = useRef<(() => Promise<boolean>) | null>(null);
 
   const isEdit = params.id !== undefined;
-  
-  // Fetch employee data if editing
+
+  // Fetch onboarding data if in onboarding mode
+  const { data: onboardingData, isLoading: loadingOnboarding } = useQuery({
+    queryKey: ["/api/onboarding/my-onboarding"],
+    enabled: isOnboarding && !!user && user.role === "prospective_employee",
+    queryFn: async () => {
+      const res = await fetch("/api/onboarding/my-onboarding", { credentials: "include" });
+      if (!res.ok) {
+        if (res.status === 404) {
+          return null;
+        }
+        const errorData = await res.json().catch(() => ({ error: 'Failed to fetch onboarding data' }));
+        throw new Error(errorData.error || `Server error: ${res.status}`);
+      }
+      return res.json();
+    },
+    retry: (failureCount, error) => {
+      if (error instanceof Error &&
+        (error.message.includes('404') || error.message.includes('401'))) {
+        return false;
+      }
+      return failureCount < 2;
+    }
+  });
+
+  // Initialize employee on first load in onboarding mode
+  useEffect(() => {
+    if (isOnboarding && !hasInitializedEmployee.current && !loadingOnboarding) {
+      if (onboardingData && onboardingData.id) {
+        // Employee already exists from onboarding
+        setEmployeeId(onboardingData.id);
+        hasInitializedEmployee.current = true;
+      } else if (!onboardingData && user?.role === "prospective_employee") {
+        // No employee exists yet - it will be created on first save-draft
+        // Just mark as initialized so we don't keep checking
+        hasInitializedEmployee.current = true;
+      }
+    }
+  }, [isOnboarding, loadingOnboarding, onboardingData, user]);
+
+  // Fetch employee data if editing (non-onboarding) or after employee ID is set (onboarding)
   const { data: employee } = useQuery({
-    queryKey: ["/api/employees", params.id],
-    enabled: isEdit,
+    queryKey: ["/api/employees", params.id || employeeId],
+    enabled: isEdit || (isOnboarding && !!employeeId),
     queryFn: async ({ queryKey }) => {
       const res = await fetch(`${queryKey[0]}/${queryKey[1]}`, { credentials: "include" });
       if (!res.ok) throw new Error('Failed to fetch employee');
@@ -169,8 +221,62 @@ export default function EmployeeForm() {
     }
   });
 
+  // Initialize form data from employee or onboarding data
+  const formDataInitialized = useRef(false);
   useEffect(() => {
-    if (employee) {
+    if (isOnboarding && onboardingData) {
+      // Use onboarding data if available
+      setFormData({
+        ...onboardingData,
+        dateOfBirth: onboardingData.dateOfBirth ? onboardingData.dateOfBirth.split('T')[0] : undefined,
+        enumerationDate: onboardingData.enumerationDate ? onboardingData.enumerationDate.split('T')[0] : undefined,
+        caqhIssueDate: onboardingData.caqhIssueDate ? onboardingData.caqhIssueDate.split('T')[0] : undefined,
+        caqhLastAttestationDate: onboardingData.caqhLastAttestationDate ? onboardingData.caqhLastAttestationDate.split('T')[0] : undefined,
+        caqhReattestationDueDate: onboardingData.caqhReattestationDueDate ? onboardingData.caqhReattestationDueDate.split('T')[0] : undefined,
+        hasEmploymentGap: onboardingData.hasEmploymentGap ?? false,
+        employmentGap: onboardingData.employmentGap ?? "",
+        hadLicenseIncidents: onboardingData.hadLicenseIncidents ?? (Array.isArray(onboardingData.incidentLogs) && onboardingData.incidentLogs.length > 0),
+        educations: onboardingData.educations || [],
+        employments: onboardingData.employments || [],
+        stateLicenses: onboardingData.stateLicenses || [],
+        deaLicenses: onboardingData.deaLicenses || [],
+        boardCertifications: onboardingData.boardCertifications || [],
+        peerReferences: onboardingData.peerReferences || [],
+        emergencyContacts: onboardingData.emergencyContacts || [],
+        trainings: onboardingData.trainings || [],
+        payerEnrollments: onboardingData.payerEnrollments || [],
+        incidentLogs: onboardingData.incidentLogs || []
+      });
+      if (onboardingData.id) {
+        setEmployeeId(onboardingData.id);
+      }
+      formDataInitialized.current = true;
+    } else if (isOnboarding && employee && !formDataInitialized.current) {
+      // Use employee data if onboarding data is not available but employee exists
+      setFormData({
+        ...employee,
+        dateOfBirth: employee.dateOfBirth ? employee.dateOfBirth.split('T')[0] : undefined,
+        enumerationDate: employee.enumerationDate ? employee.enumerationDate.split('T')[0] : undefined,
+        caqhIssueDate: employee.caqhIssueDate ? employee.caqhIssueDate.split('T')[0] : undefined,
+        caqhLastAttestationDate: employee.caqhLastAttestationDate ? employee.caqhLastAttestationDate.split('T')[0] : undefined,
+        caqhReattestationDueDate: employee.caqhReattestationDueDate ? employee.caqhReattestationDueDate.split('T')[0] : undefined,
+        educations: employee.educations || [],
+        employments: employee.employments || [],
+        stateLicenses: employee.stateLicenses || [],
+        deaLicenses: employee.deaLicenses || [],
+        boardCertifications: employee.boardCertifications || [],
+        peerReferences: employee.peerReferences || [],
+        emergencyContacts: employee.emergencyContacts || [],
+        trainings: employee.trainings || [],
+        payerEnrollments: employee.payerEnrollments || [],
+        incidentLogs: employee.incidentLogs || [],
+        hasEmploymentGap: employee.hasEmploymentGap ?? false,
+        employmentGap: employee.employmentGap ?? "",
+        hadLicenseIncidents: employee.hadLicenseIncidents ?? (Array.isArray(employee.incidentLogs) && employee.incidentLogs.length > 0)
+      });
+      formDataInitialized.current = true;
+    } else if (!isOnboarding && employee) {
+      // Use employee data for edit mode
       setFormData({
         ...employee,
         dateOfBirth: employee.dateOfBirth ? employee.dateOfBirth.split('T')[0] : undefined,
@@ -180,7 +286,7 @@ export default function EmployeeForm() {
         caqhReattestationDueDate: employee.caqhReattestationDueDate ? employee.caqhReattestationDueDate.split('T')[0] : undefined
       });
     }
-  }, [employee]);
+  }, [employee, onboardingData, isOnboarding]);
 
   // Update ref when step changes
   useEffect(() => {
@@ -202,15 +308,15 @@ export default function EmployeeForm() {
         taxForms, trainings, payerEnrollments, incidentLogs,
         ...employeeData
       } = data;
-      
+
       // Create employee first
       const response = await apiRequest("POST", "/api/employees", employeeData);
       const newEmployee = await response.json();
       const employeeId = newEmployee.id;
-      
+
       // Create related entities
       const promises = [];
-      
+
       // Add educations
       if (educations && educations.length > 0) {
         for (const education of educations) {
@@ -227,7 +333,7 @@ export default function EmployeeForm() {
           );
         }
       }
-      
+
       // Add employments
       if (employments && employments.length > 0) {
         for (const employment of employments) {
@@ -244,7 +350,7 @@ export default function EmployeeForm() {
           );
         }
       }
-      
+
       // Add state licenses
       if (stateLicenses && stateLicenses.length > 0) {
         for (const license of stateLicenses) {
@@ -261,7 +367,7 @@ export default function EmployeeForm() {
           );
         }
       }
-      
+
       // Add DEA licenses
       if (deaLicenses && deaLicenses.length > 0) {
         for (const license of deaLicenses) {
@@ -278,7 +384,7 @@ export default function EmployeeForm() {
           );
         }
       }
-      
+
       // Add board certifications
       if (boardCertifications && boardCertifications.length > 0) {
         for (const cert of boardCertifications) {
@@ -293,7 +399,7 @@ export default function EmployeeForm() {
           );
         }
       }
-      
+
       // Add peer references
       if (peerReferences && peerReferences.length > 0) {
         for (const ref of peerReferences) {
@@ -303,7 +409,7 @@ export default function EmployeeForm() {
           );
         }
       }
-      
+
       // Add emergency contacts
       if (emergencyContacts && emergencyContacts.length > 0) {
         for (const contact of emergencyContacts) {
@@ -313,7 +419,7 @@ export default function EmployeeForm() {
           );
         }
       }
-      
+
       // Add tax forms
       if (taxForms && taxForms.length > 0) {
         for (const form of taxForms) {
@@ -328,7 +434,7 @@ export default function EmployeeForm() {
           );
         }
       }
-      
+
       // Add trainings
       if (trainings && trainings.length > 0) {
         for (const training of trainings) {
@@ -343,7 +449,7 @@ export default function EmployeeForm() {
           );
         }
       }
-      
+
       // Add payer enrollments
       if (payerEnrollments && payerEnrollments.length > 0) {
         for (const enrollment of payerEnrollments) {
@@ -358,7 +464,7 @@ export default function EmployeeForm() {
           );
         }
       }
-      
+
       // Add incident logs
       if (incidentLogs && incidentLogs.length > 0) {
         for (const incident of incidentLogs) {
@@ -372,10 +478,10 @@ export default function EmployeeForm() {
           );
         }
       }
-      
+
       // Wait for all entities to be created with error handling
       const results = await Promise.allSettled(promises);
-      
+
       // Check for any failures
       const failed = results.filter(r => r.status === 'rejected');
       if (failed.length > 0) {
@@ -386,31 +492,68 @@ export default function EmployeeForm() {
           }
           return '';
         }).filter(Boolean);
-        
+
         throw new Error(`Failed to create ${failed.length} related record(s):\n${errors.join('\n')}`);
       }
-      
+
       return newEmployee;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Set employeeId in onboarding mode so subsequent saves use PUT
+      if (isOnboarding && data?.id) {
+        setEmployeeId(data.id);
+        hasInitializedEmployee.current = true;
+      }
       toast({
         title: "Success",
-        description: "Employee and related entities created successfully"
+        description: isOnboarding ? "Draft saved successfully" : "Employee and related entities created successfully"
       });
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
-      navigate("/employees");
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/my-onboarding"] });
+      if (!isOnboarding) {
+        navigate("/employees");
+      }
     },
     onError: (error: any) => {
       console.error('Error creating employee:', error);
-      const errorMessage = error?.response?.data?.details 
+      const errorMessage = error?.response?.data?.details
         ? `Validation errors:\n${JSON.stringify(error.response.data.details, null, 2)}`
         : error.message || 'Failed to create employee';
-      
+
       toast({
         title: "Error",
         description: errorMessage,
         variant: "destructive",
         duration: 10000
+      });
+    }
+  });
+
+  // Final onboarding submit (moves to Thank You step)
+  const submitOnboardingMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/onboarding/submit", {});
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Failed to submit onboarding' }));
+        throw new Error(error.error || 'Failed to submit onboarding');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      setOnboardingSubmitted(true);
+      setFormData(prev => ({ ...prev, onboardingStatus: 'completed' } as any));
+      setCurrentStep(1);
+      toast({
+        title: "Onboarding Submitted",
+        description: "Your onboarding documentation was submitted successfully."
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/my-onboarding"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Submission Failed",
+        description: error?.message || 'Failed to submit onboarding',
+        variant: "destructive"
       });
     }
   });
@@ -424,7 +567,7 @@ export default function EmployeeForm() {
         taxForms, trainings, payerEnrollments, incidentLogs,
         ...employeeData
       } = data;
-      
+
       // Remove non-employee fields
       const updateData: any = {};
       const allowedFields = [
@@ -432,7 +575,7 @@ export default function EmployeeForm() {
         'personalEmail', 'workEmail', 'cellPhone', 'workPhone',
         'homeAddress1', 'homeAddress2', 'homeCity', 'homeState', 'homeZip',
         'gender', 'birthCity', 'birthState', 'birthCountry',
-        'jobTitle', 'workLocation', 'qualification', 'department',
+        'jobTitle', 'workLocation', 'qualification', 'department', 'hasEmploymentGap', 'employmentGap',
         'npiNumber', 'enumerationDate',
         'medicalQualification', 'medicalLicenseNumber', 'medicalLicenseState',
         'medicalLicenseIssueDate', 'medicalLicenseExpirationDate', 'medicalLicenseStatus',
@@ -448,29 +591,40 @@ export default function EmployeeForm() {
         'status', 'applicationStatus', 'onboardingStatus', 'invitationId',
         'userId', 'onboardingCompletedAt', 'approvedAt', 'approvedBy'
       ];
-      
+
       for (const field of allowedFields) {
         if (field in employeeData) {
           updateData[field as keyof typeof employeeData] = employeeData[field as keyof typeof employeeData];
         }
       }
-      
-      return apiRequest("PUT", `/api/employees/${params.id}`, updateData);
+
+      // Use employeeId from state first (most reliable), then onboardingData.id, or params.id for edit mode
+      const targetEmployeeId = isOnboarding
+        ? (employeeId || onboardingData?.id)
+        : params.id;
+      if (!targetEmployeeId) {
+        throw new Error('Employee ID is required for update');
+      }
+
+      return apiRequest("PUT", `/api/employees/${targetEmployeeId}`, updateData);
     },
     onSuccess: () => {
       toast({
         title: "Success",
-        description: "Employee updated successfully"
+        description: isOnboarding ? "Draft saved successfully" : "Employee updated successfully"
       });
       queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
-      navigate("/employees");
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/my-onboarding"] });
+      if (!isOnboarding) {
+        navigate("/employees");
+      }
     },
     onError: (error: any) => {
       console.error('Error updating employee:', error);
-      const errorMessage = error?.response?.data?.details 
+      const errorMessage = error?.response?.data?.details
         ? `Validation errors:\n${JSON.stringify(error.response.data.details, null, 2)}`
         : error.message || 'Failed to update employee';
-      
+
       toast({
         title: "Error",
         description: errorMessage,
@@ -480,12 +634,73 @@ export default function EmployeeForm() {
     }
   });
 
+  // Save draft mutation for onboarding (first-time creation)
+  const saveDraftMutation = useMutation({
+    mutationFn: async (data: EmployeeFormData) => {
+      // Filter out undefined/empty values
+      const cleanData = Object.fromEntries(
+        Object.entries(data).filter(([_, v]) => v !== undefined && v !== "" && v !== null)
+      );
+
+      // Determine which API endpoint to use based on whether employeeId exists
+      // Step 1: Use POST (create) if no employeeId exists
+      // Step 2+: Use PUT (update) if employeeId exists
+      const targetEmployeeId = employeeId || onboardingData?.id;
+
+      let response;
+      if (targetEmployeeId) {
+        // Step 2+: Use PUT endpoint with employeeId
+        response = await apiRequest("PUT", `/api/onboarding/save-draft/${targetEmployeeId}`, cleanData);
+      } else {
+        // Step 1: Use POST endpoint (creates new employee)
+        response = await apiRequest("POST", "/api/onboarding/save-draft", cleanData);
+      }
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to save draft');
+      }
+      const result = await response.json();
+      return result;
+    },
+    onSuccess: (result) => {
+      // Set employee ID from the response
+      if (result.employeeId && !employeeId) {
+        setEmployeeId(result.employeeId);
+        hasInitializedEmployee.current = true;
+      }
+      // Don't show toast here - it will be shown by handleSaveDraft for manual saves
+      // Auto-saves (on next step) happen silently
+
+      // Refetch onboarding data to get updated employee record
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/my-onboarding"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
+    },
+    onError: (error: Error) => {
+      // Always show error toast - user needs to know if save fails
+      toast({
+        title: "Save Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
   /**
    * Handles form submission for both create and edit modes
-   * @description Routes to appropriate mutation based on edit state
+   * @description Routes to appropriate mutation based on edit state and onboarding mode
    */
   const handleSubmit = () => {
-    if (isEdit) {
+    if (isOnboarding) {
+      // If on last step (Review) and not yet submitted, submit onboarding then show Thank You
+      const lastStep = currentStep === steps.length;
+      if (!onboardingSubmitted && lastStep) {
+        submitOnboardingMutation.mutate();
+        return;
+      }
+      // Otherwise save draft
+      saveDraftMutation.mutate(formData);
+    } else if (isEdit) {
       updateMutation.mutate(formData);
     } else {
       createMutation.mutate(formData);
@@ -493,10 +708,39 @@ export default function EmployeeForm() {
   };
 
   /**
+   * Handles save draft action specifically for onboarding mode
+   * @description Always uses saveDraftMutation for onboarding (never calls employee API)
+   */
+  const handleSaveDraft = () => {
+    if (!isOnboarding) {
+      // Not in onboarding mode, use regular submit
+      handleSubmit();
+      return;
+    }
+
+    // In onboarding mode, always use save-draft API (handles both create and update)
+    saveDraftMutation.mutate(formData, {
+      onSuccess: () => {
+        // Show success toast for manual save only
+        toast({
+          title: "Draft Saved",
+          description: "Your progress has been saved. You can continue later."
+        });
+      }
+    });
+  };
+
+  /**
    * Advances to the next step in the form
-   * @description Validates current step before advancing (if validation implemented)
+   * @description Validates current step before advancing and auto-saves draft in onboarding mode
    */
   const handleNext = async () => {
+    // If onboarding is completed, do not allow navigation beyond Thank You
+    const isCompleted = isOnboarding && ((onboardingData?.onboardingStatus ?? formData.onboardingStatus) === 'completed' || onboardingSubmitted);
+    if (isCompleted) {
+      return;
+    }
+    // Validate current step if validation is registered
     const validate = currentStepValidatorRef.current;
     if (validate) {
       try {
@@ -507,10 +751,29 @@ export default function EmployeeForm() {
       } catch (error) {
         return;
       }
-    } else {
     }
-    if (currentStep < 13) {
-      setCurrentStep(currentStep + 1);
+
+    // In onboarding mode, auto-save draft before moving to next step
+    if (isOnboarding) {
+      // Save draft automatically when moving to next step (silent save - no success toast)
+      // This ensures progress is preserved even if user closes browser
+      try {
+        await saveDraftMutation.mutateAsync(formData);
+        // Mutation's onSuccess handles employeeId and query invalidation
+        // Only move to next step after successful save
+        if (currentStep < 13) {
+          setCurrentStep(currentStep + 1);
+        }
+      } catch (error) {
+        // If save fails, don't move to next step
+        // Error toast is already shown by saveDraftMutation.onError
+        return;
+      }
+    } else {
+      // Not in onboarding mode, just move to next step
+      if (currentStep < 13) {
+        setCurrentStep(currentStep + 1);
+      }
     }
   };
 
@@ -542,6 +805,8 @@ export default function EmployeeForm() {
       return isValid;
     };
   }, []);
+
+  const isOnboardingComplete = isOnboarding && ((onboardingData?.onboardingStatus ?? formData.onboardingStatus) === 'completed' || onboardingSubmitted);
 
   const steps = [
     {
@@ -594,7 +859,8 @@ export default function EmployeeForm() {
         <EmployeeEducationEmployment
           data={formData}
           onChange={updateFormData}
-          employeeId={isEdit ? parseInt(params.id!) : undefined}
+          employeeId={isEdit ? parseInt(params.id!) : (isOnboarding ? employeeId : undefined)}
+          allowFetch={!isOnboarding}
           registerValidation={registerStepValidation}
           data-testid="step-education-employment"
         />
@@ -606,7 +872,7 @@ export default function EmployeeForm() {
         <EmployeeLicenses
           data={formData}
           onChange={updateFormData}
-          employeeId={isEdit ? parseInt(params.id!) : undefined}
+          employeeId={isEdit ? parseInt(params.id!) : (isOnboarding ? employeeId : undefined)}
           registerValidation={registerStepValidation}
           data-testid="step-licenses"
         />
@@ -618,7 +884,7 @@ export default function EmployeeForm() {
         <EmployeeCertifications
           data={formData}
           onChange={updateFormData}
-          employeeId={isEdit ? parseInt(params.id!) : undefined}
+          employeeId={isEdit ? parseInt(params.id!) : (isOnboarding ? employeeId : undefined)}
           registerValidation={registerStepValidation}
           data-testid="step-certifications"
         />
@@ -642,7 +908,7 @@ export default function EmployeeForm() {
         <EmployeeDocumentsSubmission
           data={formData}
           onChange={updateFormData}
-          employeeId={isEdit ? parseInt(params.id!) : undefined}
+          employeeId={isEdit ? parseInt(params.id!) : (isOnboarding ? employeeId : undefined)}
           registerValidation={registerStepValidation}
           onValidationChange={(isValid) => {
             setCanProceed(!!isValid);
@@ -658,7 +924,7 @@ export default function EmployeeForm() {
         <EmployeeTrainingPayer
           data={formData}
           onChange={updateFormData}
-          employeeId={isEdit ? parseInt(params.id!) : undefined}
+          employeeId={isEdit ? parseInt(params.id!) : (isOnboarding ? employeeId : undefined)}
           registerValidation={registerStepValidation}
           data-testid="step-training-payer"
         />
@@ -670,7 +936,7 @@ export default function EmployeeForm() {
         <EmployeeForms
           data={formData}
           onChange={updateFormData}
-          employeeId={isEdit ? parseInt(params.id!) : undefined}
+          employeeId={isEdit ? parseInt(params.id!) : (isOnboarding ? employeeId : undefined)}
           registerValidation={registerStepValidation}
           data-testid="step-forms"
         />
@@ -682,7 +948,8 @@ export default function EmployeeForm() {
         <EmployeeIncidents
           data={formData}
           onChange={updateFormData}
-          employeeId={isEdit ? parseInt(params.id!) : undefined}
+          employeeId={isEdit ? parseInt(params.id!) : (isOnboarding ? employeeId : undefined)}
+          allowFetch={!isOnboarding}
           registerValidation={registerStepValidation}
           data-testid="step-incidents"
         />
@@ -703,107 +970,136 @@ export default function EmployeeForm() {
     <MainLayout>
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Enhanced Header Section */}
-        <Card className="border-0 shadow-sm bg-gradient-to-r from-primary/5 via-background to-secondary/5">
-          <CardContent className="p-6">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              {/* Left Side - Navigation & Title */}
-              <div className="flex flex-col space-y-4">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => navigate("/employees")}
-                  data-testid="button-back"
-                  className="w-fit"
-                >
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back to Employees
-                </Button>
-                <div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="p-2 bg-primary/10 rounded-lg">
-                      {isEdit ? <User className="w-6 h-6 text-primary" /> : <Building2 className="w-6 h-6 text-primary" />}
+        {!isOnboarding ? (
+          <Card className="border-0 shadow-sm bg-gradient-to-r from-primary/5 via-background to-secondary/5">
+            <CardContent className="p-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                {/* Left Side - Navigation & Title */}
+                <div className="flex flex-col space-y-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => navigate("/employees")}
+                    data-testid="button-back"
+                    className="w-fit"
+                  >
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    Back to Employees
+                  </Button>
+                  <div>
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="p-2 bg-primary/10 rounded-lg">
+                        {isEdit ? <User className="w-6 h-6 text-primary" /> : <Building2 className="w-6 h-6 text-primary" />}
+                      </div>
+                      <h1 className="text-2xl md:text-3xl font-bold text-foreground" data-testid="text-form-title">
+                        {isEdit ?
+                          `Edit: ${formData.firstName || ''} ${formData.lastName || 'Employee'}` :
+                          "Add New Employee"
+                        }
+                      </h1>
                     </div>
-                    <h1 className="text-2xl md:text-3xl font-bold text-foreground" data-testid="text-form-title">
-                      {isEdit ? 
-                        `Edit: ${formData.firstName || ''} ${formData.lastName || 'Employee'}` : 
-                        "Add New Employee"
+                    <p className="text-muted-foreground ml-11">
+                      {isEdit ?
+                        "Update employee information and related records" :
+                        "Complete all steps to add a new medical staff member"
                       }
-                    </h1>
+                    </p>
                   </div>
-                  <p className="text-muted-foreground ml-11">
-                    {isEdit ? 
-                      "Update employee information and related records" : 
-                      "Complete all steps to add a new medical staff member"
-                    }
-                  </p>
                 </div>
-              </div>
-              
-              {/* Right Side - Quick Actions & Status */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                {isEdit && (
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="bg-background">
-                      ID: #{params.id}
-                    </Badge>
-                    {formData.status && (
-                      <Badge 
-                        variant={formData.status === 'active' ? 'default' : 'secondary'}
-                        className={cn(
-                          formData.status === 'active' && "bg-secondary text-secondary-foreground",
-                          formData.status === 'inactive' && "bg-destructive text-destructive-foreground"
-                        )}
-                      >
-                        {formData.status}
+
+                {/* Right Side - Quick Actions & Status */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                  {isEdit && (
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="bg-background">
+                        ID: #{params.id}
                       </Badge>
-                    )}
+                      {formData.status && (
+                        <Badge
+                          variant={formData.status === 'active' ? 'default' : 'secondary'}
+                          className={cn(
+                            formData.status === 'active' && "bg-secondary text-secondary-foreground",
+                            formData.status === 'inactive' && "bg-destructive text-destructive-foreground"
+                          )}
+                        >
+                          {formData.status}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      data-testid="button-cancel"
+                      onClick={() => {
+                        if (confirm(isEdit ? "Discard changes?" : "Cancel employee creation?")) {
+                          navigate("/employees");
+                        }
+                      }}
+                    >
+                      <X className="w-4 h-4 mr-2" />
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      data-testid="button-save-draft"
+                      onClick={handleSubmit}
+                      disabled={createMutation.isPending || updateMutation.isPending}
+                      className="bg-gradient-to-r from-primary to-primary/90"
+                    >
+                      <Save className="w-4 h-4 mr-2" />
+                      {createMutation.isPending || updateMutation.isPending ? "Saving..." : "Save Draft"}
+                    </Button>
                   </div>
-                )}
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    data-testid="button-cancel"
-                    onClick={() => {
-                      if (confirm(isEdit ? "Discard changes?" : "Cancel employee creation?")) {
-                        navigate("/employees");
-                      }
-                    }}
-                  >
-                    <X className="w-4 h-4 mr-2" />
-                    Cancel
-                  </Button>
-                  <Button
-                    size="sm"
-                    data-testid="button-save-draft"
-                    onClick={handleSubmit}
-                    disabled={createMutation.isPending || updateMutation.isPending}
-                    className="bg-gradient-to-r from-primary to-primary/90"
-                  >
-                    <Save className="w-4 h-4 mr-2" />
-                    {createMutation.isPending || updateMutation.isPending ? "Saving..." : "Save Draft"}
-                  </Button>
                 </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold flex items-center gap-2">
+              <ClipboardList className="w-8 h-8" />
+              Employee Onboarding
+            </h1>
+            <p className="text-muted-foreground">
+              Complete your onboarding information to join our team
+            </p>
+          </div>
+        )}
 
         {/* Form Container with Constrained Width */}
-        <div className="w-full employee-form-wrapper">
-          <MultiStepForm
-            steps={steps}
-            currentStep={currentStep}
-            onNext={handleNext}
-            onPrevious={handlePrevious}
-            onSubmit={handleSubmit}
-            isSubmitting={createMutation.isPending || updateMutation.isPending}
-            canNext={true}
-            canProceed={canProceed}
-            proceedBlockedMessage={proceedBlockedMessage}
-            data-testid="multi-step-form"
-          />
-        </div>
+        {
+          !isOnboardingComplete ? (
+            <div className="w-full employee-form-wrapper">
+              <MultiStepForm
+                steps={steps}
+                currentStep={currentStep}
+                onNext={handleNext}
+                onPrevious={handlePrevious}
+                onSubmit={handleSubmit}
+                isSubmitting={createMutation.isPending || updateMutation.isPending || saveDraftMutation.isPending || submitOnboardingMutation.isPending}
+                canNext={true}
+                canProceed={canProceed}
+                proceedBlockedMessage={proceedBlockedMessage}
+                isOnboarding={isOnboarding}
+                onSaveDraft={isOnboarding ? handleSaveDraft : undefined}
+                isSavingDraft={createMutation.isPending || updateMutation.isPending || saveDraftMutation.isPending}
+                data-testid="multi-step-form"
+              />
+            </div>
+          ) : (
+            <div className="space-y-6" data-testid="step-thank-you">
+              <Card>
+                <CardContent className="py-10">
+                  <h2 className="text-2xl font-semibold mb-2">Thank you</h2>
+                  <p className="text-muted-foreground">
+                    Your onboarding documentation is successfully submitted and the HR will reach out if any additional information is needed.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          )}
       </div>
     </MainLayout>
   );

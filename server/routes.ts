@@ -1,3 +1,4 @@
+
 /**
  * @fileoverview Express API Routes for HR Management System
  * 
@@ -42,7 +43,8 @@ import {
   validateClinicLicense,
   validateComplianceDocument,
   validateLicenseRenewal,
-  handleValidationErrors 
+  handleValidationErrors,
+  validateParamId 
 } from "./middleware/validation";
 import { 
   apiKeyAuth, 
@@ -52,7 +54,7 @@ import {
   API_KEY_PERMISSIONS,
   type ApiKeyRequest
 } from "./middleware/apiKeyAuth";
-import { encryptSensitiveFields, decryptSensitiveFields, maskSSN } from "./middleware/encryption";
+import { encryptSensitiveFields, decryptSensitiveFields } from "./middleware/encryption";
 import { auditMiddleware, logAudit, AuditRequest } from "./middleware/audit";
 import { startCronJobs, manualExpirationCheck, checkExpiringApiKeys } from "./services/cronJobs";
 import { body } from "express-validator";
@@ -78,6 +80,7 @@ import {
   taxForms,
   trainings,
   payerEnrollments,
+  incidentLogs,
   insertEmployeeSchema,
   insertEducationSchema,
   insertEmploymentSchema,
@@ -92,7 +95,7 @@ import {
   type Employee
 } from "@shared/schema";
 import { z } from "zod";
-import { eq, or, sql, count } from "drizzle-orm";
+import { eq, or, sql, count, and } from "drizzle-orm";
 import { encrypt, decrypt, mask } from "./utils/encryption";
 import { getBaseUrl } from "./utils/url";
 import crypto from "crypto";
@@ -173,7 +176,7 @@ const TIMESTAMP_FIELDS = new Set<string>([
 
 const toDateOnly = (value: any): any => {
   if (value == null || value === '') return null;
-  if (value instanceof Date) return value.toISOString().split('T')[0];
+  if (value instanceof Date) return value?.toISOString().split('T')[0];
   if (typeof value === 'string') {
     // If already YYYY-MM-DD
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
@@ -1331,10 +1334,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           location: req.query.location as string
         });
         
-        // Mask sensitive data for display
+        // Return raw encrypted SSN (no masking)
         const maskedEmployees = result.employees.map(emp => ({
           ...emp,
-          ssn: maskSSN(emp.ssn || ''),
+          ssn: emp.ssn || '', // Return raw encrypted format
           caqhPassword: emp.caqhPassword ? '***' : '',
           nppesPassword: emp.nppesPassword ? '***' : ''
         }));
@@ -1375,10 +1378,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(404).json({ error: 'No employee record found for current user' });
         }
         
-        // Mask sensitive data
+        // Return raw encrypted SSN (no masking)
         const maskedEmployee = {
           ...employee,
-          ssn: maskSSN(employee.ssn || ''),
+          ssn: employee.ssn || '', // Return raw encrypted format
           caqhPassword: employee.caqhPassword ? '***' : '',
           nppesPassword: employee.nppesPassword ? '***' : ''
         };
@@ -1404,10 +1407,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(404).json({ error: 'Employee not found' });
         }
         
-        // Mask sensitive data
+        // Return raw encrypted SSN (no masking)
         const maskedEmployee = {
           ...employee,
-          ssn: maskSSN(employee.ssn || ''),
+          ssn: employee.ssn || '', // Return raw encrypted format
           caqhPassword: employee.caqhPassword ? '***' : '',
           nppesPassword: employee.nppesPassword ? '***' : ''
         };
@@ -1437,10 +1440,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         await logAudit(req, employee.id, null, employee);
         
-        // Return masked data
+        // Return raw encrypted SSN (no masking)
         const maskedEmployee = {
           ...employee,
-          ssn: maskSSN(employee.ssn || ''),
+          ssn: employee.ssn || '', // Return raw encrypted format
           caqhPassword: employee.caqhPassword ? '***' : '',
           nppesPassword: employee.nppesPassword ? '***' : ''
         };
@@ -1478,10 +1481,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         await logAudit(req, id, oldEmployee, employee);
         
-        // Return masked data
+        // Return raw encrypted SSN (no masking)
         const maskedEmployee = {
           ...employee,
-          ssn: maskSSN(employee.ssn || ''),
+          ssn: employee.ssn || '', // Return raw encrypted format
           caqhPassword: employee.caqhPassword ? '***' : '',
           nppesPassword: employee.nppesPassword ? '***' : ''
         };
@@ -1706,10 +1709,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const pendingEmployees = await storage.getEmployeesByApplicationStatus('pending');
         
-        // Mask sensitive data
+        // Return raw encrypted SSN (no masking)
         const maskedEmployees = pendingEmployees.map((employee: any) => ({
           ...employee,
-          ssn: maskSSN(employee.ssn || ''),
+          ssn: employee.ssn || '', // Return raw encrypted format
           caqhPassword: employee.caqhPassword ? '***' : '',
           nppesPassword: employee.nppesPassword ? '***' : ''
         }));
@@ -6007,7 +6010,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Get related entities
         const [educations, employments, stateLicenses, deaLicenses, boardCertifications, 
-               peerReferences, emergencyContacts, taxForms, trainings, payerEnrollments] = await Promise.all([
+               peerReferences, emergencyContacts, taxForms, trainings, payerEnrollments, incidentLogs] = await Promise.all([
           storage.getEmployeeEducations(employee.id!),
           storage.getEmployeeEmployments(employee.id!),
           storage.getEmployeeStateLicenses(employee.id!),
@@ -6017,7 +6020,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           storage.getEmployeeEmergencyContacts(employee.id!),
           storage.getEmployeeTaxForms(employee.id!),
           storage.getEmployeeTrainings(employee.id!),
-          storage.getEmployeePayerEnrollments(employee.id!)
+          storage.getEmployeePayerEnrollments(employee.id!),
+          storage.getEmployeeIncidentLogs(employee.id!)
         ]);
         
         res.json({
@@ -6031,7 +6035,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           emergencyContacts,
           taxForms,
           trainings,
-          payerEnrollments
+          payerEnrollments,
+          incidentLogs,
+          hadLicenseIncidents: (employee as any).hadLicenseIncidents ?? (incidentLogs.length > 0)
         });
       } catch (error) {
         console.error('Error fetching onboarding data:', error);
@@ -6200,6 +6206,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           birthState: z.string().max(50).nullable().optional(),
           birthCountry: z.string().max(50).nullable().optional(),
           
+          // Department
+          department: z.string().max(100).nullable().optional(),
+          
           // Driver's license information
           driversLicenseNumber: z.string().max(50).nullable().optional(),
           dlStateIssued: z.string().max(50).nullable().optional(),
@@ -6207,7 +6216,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           dlExpirationDate: z.coerce.date().nullable().optional(),
           
           // Sensitive identification
-          ssn: z.string().max(20).nullable().optional(),
+          ssn: z.string().max(255).nullable().optional(), // Increased for encrypted format
           
           // National Provider Identifier (NPI)
           npiNumber: z.string().max(20).nullable().optional(),
@@ -6217,13 +6226,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
           jobTitle: z.string().max(100).nullable().optional(),
           workLocation: z.string().max(100).nullable().optional(),
           qualification: z.string().nullable().optional(),
+          hasEmploymentGap: z.boolean().nullable().optional(),
+          employmentGap: z.string().max(2000).nullable().optional(),
           
           // Medical licensing information
           medicalLicenseNumber: z.string().max(50).nullable().optional(),
+          medicalLicenseState: z.string().max(50).nullable().optional(),
+          medicalLicenseIssueDate: z.coerce.date().nullable().optional(),
+          medicalLicenseExpirationDate: z.coerce.date().nullable().optional(),
+          medicalLicenseStatus: z.string().max(50).nullable().optional(),
+          medicalQualification: z.string().nullable().optional(),
           substanceUseLicenseNumber: z.string().max(50).nullable().optional(),
+          substanceUseLicenseState: z.string().max(50).nullable().optional(),
+          substanceUseLicenseIssueDate: z.coerce.date().nullable().optional(),
+          substanceUseLicenseExpirationDate: z.coerce.date().nullable().optional(),
+          substanceUseLicenseStatus: z.string().max(50).nullable().optional(),
           substanceUseQualification: z.string().nullable().optional(),
           mentalHealthLicenseNumber: z.string().max(50).nullable().optional(),
+          mentalHealthLicenseState: z.string().max(50).nullable().optional(),
+          mentalHealthLicenseIssueDate: z.coerce.date().nullable().optional(),
+          mentalHealthLicenseExpirationDate: z.coerce.date().nullable().optional(),
+          mentalHealthLicenseStatus: z.string().max(50).nullable().optional(),
           mentalHealthQualification: z.string().nullable().optional(),
+          
+          // DEA License
+          deaNumber: z.string().max(50).nullable().optional(),
           
           // Payer/billing identifiers
           medicaidNumber: z.string().max(50).nullable().optional(),
@@ -6270,35 +6297,94 @@ export async function registerRoutes(app: Express): Promise<Server> {
           description: z.string().nullable().optional()
         }).partial().strict();
         
-        const stateLicenseDraftSchema = z.object({
-          id: z.number().optional(),
-          employeeId: z.number().optional(),  // Allow employeeId from existing records
-          licenseNumber: z.string().max(50),
-          state: z.string().max(50),
+        const stateLicenseDraftSchema = z.preprocess((data: any) => {
+          // Transform data before validation: remove invalid string IDs and source field
+          if (data && typeof data === 'object') {
+            const cleaned: any = { ...data };
+            // Filter out invalid string IDs (like "credentials-medical")
+            if (cleaned.id && typeof cleaned.id === 'string' && !cleaned.id.match(/^\d+$/)) {
+              delete cleaned.id;
+            }
+            // Remove source field
+            delete cleaned.source;
+            return cleaned;
+          }
+          return data;
+        }, z.object({
+          id: z.union([z.number(), z.string()]).optional().transform((val) => {
+            if (typeof val === 'string' && val.match(/^\d+$/)) {
+              return parseInt(val);
+            }
+            return typeof val === 'number' ? val : undefined;
+          }),
+          employeeId: z.number().optional(),
+          licenseNumber: z.string().max(50).optional(),
+          state: z.string().max(50).optional(),
           licenseType: z.string().max(50).nullable().optional(),
           issueDate: z.coerce.date().nullable().optional(),
           expirationDate: z.coerce.date().nullable().optional(),
           status: z.string().max(50).nullable().optional()
-        }).partial().strict();
+        }).passthrough());
         
-        const deaLicenseDraftSchema = z.object({
-          id: z.number().optional(),
-          employeeId: z.number().optional(),  // Allow employeeId from existing records
-          deaNumber: z.string().max(50),
+        const deaLicenseDraftSchema = z.preprocess((data: any) => {
+          // Transform data before validation: remove invalid string IDs and map fields
+          if (data && typeof data === 'object') {
+            const cleaned: any = { ...data };
+            // Filter out invalid string IDs (like "credentials-dea")
+            if (cleaned.id && typeof cleaned.id === 'string' && !cleaned.id.match(/^\d+$/)) {
+              delete cleaned.id;
+            }
+            // Map licenseNumber to deaNumber if needed
+            if (cleaned.licenseNumber && !cleaned.deaNumber) {
+              cleaned.deaNumber = cleaned.licenseNumber;
+            }
+            // Remove fields not in schema
+            delete cleaned.licenseNumber;
+            delete cleaned.state;
+            delete cleaned.source;
+            return cleaned;
+          }
+          return data;
+        }, z.object({
+          id: z.union([z.number(), z.string()]).optional().transform((val) => {
+            if (typeof val === 'string' && val.match(/^\d+$/)) {
+              return parseInt(val);
+            }
+            return typeof val === 'number' ? val : undefined;
+          }),
+          employeeId: z.number().optional(),
+          deaNumber: z.string().max(50).optional(),
           issueDate: z.coerce.date().nullable().optional(),
           expirationDate: z.coerce.date().nullable().optional(),
           status: z.string().max(50).nullable().optional()
-        }).partial().strict();
+        }).passthrough());
         
-        const boardCertificationDraftSchema = z.object({
+        const boardCertificationDraftSchema = z.preprocess((data: any) => {
+          // Transform data before validation: map frontend field names
+          if (data && typeof data === 'object') {
+            const cleaned: any = { ...data };
+            // Map frontend field names to backend field names
+            if (cleaned.certification && !cleaned.certificationName) {
+              cleaned.certificationName = cleaned.certification;
+            }
+            if (cleaned.boardName && !cleaned.issuingBoard) {
+              cleaned.issuingBoard = cleaned.boardName;
+            }
+            // Remove frontend field names
+            delete cleaned.certification;
+            delete cleaned.boardName;
+            return cleaned;
+          }
+          return data;
+        }, z.object({
           id: z.number().optional(),
-          employeeId: z.number().optional(),  // Allow employeeId from existing records
-          certificationName: z.string().max(100),
+          employeeId: z.number().optional(),
+          certificationName: z.string().max(100).optional(),
           issuingBoard: z.string().max(100).nullable().optional(),
           certificationNumber: z.string().max(50).nullable().optional(),
           issueDate: z.coerce.date().nullable().optional(),
           expirationDate: z.coerce.date().nullable().optional()
-        }).partial().strict();
+        }).passthrough());
         
         const peerReferenceDraftSchema = z.object({
           id: z.number().optional(),
@@ -6309,14 +6395,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
           comments: z.string().nullable().optional()
         }).partial().strict();
         
-        const emergencyContactDraftSchema = z.object({
+        const emergencyContactDraftSchema = z.preprocess((data: any) => {
+          // Transform data before validation: map frontend field names
+          if (data && typeof data === 'object') {
+            const cleaned: any = { ...data };
+            // Map frontend field names to backend field names
+            if (cleaned.name && !cleaned.contactName) {
+              cleaned.contactName = cleaned.name;
+            }
+            if (cleaned.phone && !cleaned.phoneNumber) {
+              cleaned.phoneNumber = cleaned.phone;
+            }
+            // Remove frontend field names
+            delete cleaned.name;
+            delete cleaned.phone;
+            return cleaned;
+          }
+          return data;
+        }, z.object({
           id: z.number().optional(),
-          employeeId: z.number().optional(),  // Allow employeeId from existing records
+          employeeId: z.number().optional(),
           contactName: z.string().max(100).nullable().optional(),
           relationship: z.string().max(50).nullable().optional(),
           phoneNumber: z.string().max(20).nullable().optional(),
           email: z.string().max(100).nullable().optional()
-        }).partial().strict();
+        }).passthrough());
         
         const taxFormDraftSchema = z.object({
           id: z.number().optional(),
@@ -6326,25 +6429,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
           signedDate: z.coerce.date().nullable().optional()
         }).partial().strict();
         
-        const trainingDraftSchema = z.object({
-          id: z.number().optional(),
-          employeeId: z.number().optional(),  // Allow employeeId from existing records
-          trainingName: z.string().max(100).nullable().optional(),
+        const trainingDraftSchema = z.preprocess((data: any) => {
+          if (data && typeof data === 'object') {
+            const cleaned: any = { ...data };
+            if (cleaned.trainingName && !cleaned.trainingType) {
+              cleaned.trainingType = cleaned.trainingName;
+            }
+            if (cleaned.certificateNumber && !cleaned.certificatePath) {
+              cleaned.certificatePath = cleaned.certificateNumber;
+            }
+            if (typeof cleaned.credits === 'string' && cleaned.credits.trim() === '') {
+              cleaned.credits = null;
+            }
+            delete cleaned.trainingName;
+            delete cleaned.certificateNumber;
+            return cleaned;
+          }
+          return data;
+        }, z.object({
+          id: z.union([z.number(), z.string()]).optional().transform((val) => {
+            if (typeof val === 'string' && val.match(/^\d+$/)) {
+              return parseInt(val);
+            }
+            return typeof val === 'number' ? val : undefined;
+          }),
+          employeeId: z.number().optional(),
+          trainingType: z.string().max(100).nullable().optional(),
           provider: z.string().max(100).nullable().optional(),
           completionDate: z.coerce.date().nullable().optional(),
           expirationDate: z.coerce.date().nullable().optional(),
-          certificateNumber: z.string().max(50).nullable().optional()
-        }).partial().strict();
+          credits: z.preprocess((val) => {
+            if (val === '' || val === undefined) return null;
+            return val;
+          }, z.coerce.number().nullable().optional()),
+          certificatePath: z.string().max(255).nullable().optional()
+        }).partial().strict());
         
-        const payerEnrollmentDraftSchema = z.object({
+        const incidentLogDraftSchema = z.object({
+          id: z.union([z.number(), z.string()]).optional().transform((val) => {
+            if (typeof val === 'string' && val.match(/^\d+$/)) {
+              return parseInt(val);
+            }
+            return typeof val === 'number' ? val : undefined;
+          }),
+          employeeId: z.number().optional(),
+          incidentDate: z.coerce.date().nullable().optional(),
+          incidentType: z.string().max(100).nullable().optional(),
+          description: z.string().nullable().optional(),
+          severity: z.string().max(20).nullable().optional(),
+          resolution: z.string().nullable().optional(),
+          reportedBy: z.string().max(50).nullable().optional()
+        }).partial().strict();
+
+        const payerEnrollmentDraftSchema = z.preprocess((data: any) => {
+          // Transform data before validation: map frontend field names
+          if (data && typeof data === 'object') {
+            const cleaned: any = { ...data };
+            // Map frontend field names to backend field names
+            if (cleaned.providerId && !cleaned.enrollmentId) {
+              cleaned.enrollmentId = cleaned.providerId;
+            }
+            if (cleaned.enrollmentStatus && !cleaned.status) {
+              cleaned.status = cleaned.enrollmentStatus;
+            }
+            // Remove frontend field names
+            delete cleaned.providerId;
+            delete cleaned.enrollmentStatus;
+            return cleaned;
+          }
+          return data;
+        }, z.object({
           id: z.number().optional(),
-          employeeId: z.number().optional(),  // Allow employeeId from existing records
+          employeeId: z.number().optional(),
           payerName: z.string().max(100).nullable().optional(),
           enrollmentId: z.string().max(50).nullable().optional(),
           effectiveDate: z.coerce.date().nullable().optional(),
           terminationDate: z.coerce.date().nullable().optional(),
           status: z.string().max(20).nullable().optional()
-        }).partial().strict();
+        }).passthrough());
         
         const onboardingDraftSchema = z.object({
           // Employee fields - flattened at root level to match existing frontend structure
@@ -6380,6 +6542,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           payerEnrollments: z.array(payerEnrollmentDraftSchema)
             .max(MAX_ARRAY_LENGTH, `Maximum ${MAX_ARRAY_LENGTH} payer enrollment records allowed`).optional(),
+
+          incidentLogs: z.array(incidentLogDraftSchema)
+            .max(MAX_ARRAY_LENGTH, `Maximum ${MAX_ARRAY_LENGTH} incident log records allowed`).optional(),
           
           // Frontend tracking fields (not stored directly, some used for validation logic)
           status: z.string().optional(),  // Frontend sends this but we override server-side
@@ -6403,11 +6568,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
         
-        const data = validationResult.data;
+        let data = validationResult.data;
         console.log('[save-draft] Validation successful');
         
+        // Convert any Date objects back to strings (Zod coerces dates to Date objects, but DB expects strings)
+        const convertDatesToStrings = (obj: any): any => {
+          if (!obj || typeof obj !== 'object') return obj;
+          if (Array.isArray(obj)) {
+            return obj.map(convertDatesToStrings);
+          }
+          const result: any = {};
+          for (const [key, value] of Object.entries(obj)) {
+            if (value instanceof Date) {
+              // For date-only fields, convert to YYYY-MM-DD
+              if (DATE_ONLY_FIELDS.has(key)) {
+                result[key] = value.toISOString().split('T')[0];
+              } else {
+                // For timestamp fields, keep full ISO string
+                result[key] = value.toISOString();
+              }
+            } else if (typeof value === 'object' && value !== null) {
+              result[key] = convertDatesToStrings(value);
+            } else {
+              result[key] = value;
+            }
+          }
+          return result;
+        };
+        
+        data = convertDatesToStrings(data);
+        console.log('[save-draft] Converted Date objects to strings');
+        
         // Step 4: Extract employee and related entity data
-        const {
+        // NOTE: Allow prospective_employee to save nested entities - they need to complete the full form
+        let {
           educations: educationsData,
           employments: employmentsData,
           stateLicenses: stateLicensesData,
@@ -6418,6 +6612,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
           taxForms: taxFormsData,
           trainings: trainingsData,
           payerEnrollments: payerEnrollmentsData,
+          incidentLogs: incidentLogsData,
+          // SECURITY: Filter out server-controlled fields that should never come from frontend
+          id,
+          userId: _reqBodyUserId,
+          createdAt,
+          updatedAt,
+          created_at,
+          updated_at,
+          status,
+          applicationStatus,
+          onboardingStatus,
+          invitationId,
+          onboardingCompletedAt,
+          approvedAt,
+          approvedBy,
+          documentUploads,
+          allRequiredDocumentsUploaded,
+          uploadedRequiredCount,
+          requiredDocumentsCount,
+          allFormsCompleted,
+          completedForms,
+          totalRequiredForms,
+          submissions,
           ...employeeData
         } = data;
         
@@ -6433,7 +6650,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           emergencyContacts: emergencyContactsData?.length || 0,
           taxForms: taxFormsData?.length || 0,
           trainings: trainingsData?.length || 0,
-          payerEnrollments: payerEnrollmentsData?.length || 0
+          payerEnrollments: payerEnrollmentsData?.length || 0,
+          incidentLogs: incidentLogsData?.length || 0
         });
         
         // Step 5 & 6: ATOMIC TRANSACTION - Wrap all operations to prevent partial writes
@@ -6455,10 +6673,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Create new employee record using tx
             console.log('[save-draft] Creating new employee record for userId:', userId);
             // SECURITY: Enforce userId from req.user, status from server
+            // Remove any undefined or null values and convert Date objects to strings
+            const cleanEmployeeData = Object.fromEntries(
+              Object.entries(employeeData)
+                .filter(([_, v]) => v !== undefined && v !== null && v !== '')
+                .map(([k, v]) => {
+                  // Convert Date objects to ISO strings for database insertion
+                  if (v instanceof Date) {
+                    // For date-only fields, convert to YYYY-MM-DD
+                    if (DATE_ONLY_FIELDS.has(k)) {
+                      return [k, v.toISOString().split('T')[0]];
+                    }
+                    // For timestamp fields, keep full ISO string
+                    return [k, v.toISOString()];
+                  }
+                  return [k, v];
+                })
+            );
             const [newEmployee] = await tx
               .insert(employees)
               .values({
-                ...employeeData,
+                ...cleanEmployeeData,
                 userId,                           // SECURITY: Always from req.user.id
                 status: 'prospective',            // SECURITY: Server-controlled
                 onboardingStatus: 'in_progress'   // SECURITY: Server-controlled
@@ -6471,10 +6706,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
             employeeId = employee.id!;
             console.log('[save-draft] Updating existing employee id:', employeeId);
             // SECURITY: Never update userId, status, or onboardingStatus from request body
+            // Remove any undefined or null values and convert Date objects to strings
+            const cleanEmployeeData = Object.fromEntries(
+              Object.entries(employeeData)
+                .filter(([_, v]) => v !== undefined && v !== null && v !== '')
+                .map(([k, v]) => {
+                  // Convert Date objects to ISO strings for database insertion
+                  if (v instanceof Date) {
+                    // For date-only fields, convert to YYYY-MM-DD
+                    if (DATE_ONLY_FIELDS.has(k)) {
+                      return [k, v.toISOString().split('T')[0]];
+                    }
+                    // For timestamp fields, keep full ISO string
+                    return [k, v.toISOString()];
+                  }
+                  return [k, v];
+                })
+            );
             await tx
               .update(employees)
               .set({
-                ...employeeData,
+                ...cleanEmployeeData,
                 // SECURITY: Preserve server-controlled fields
                 userId: employee.userId,           // Never allow changing userId
                 status: employee.status,           // Never allow changing status
@@ -6498,7 +6750,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             existingEmergencyContacts,
             existingTaxForms,
             existingTrainings,
-            existingPayerEnrollments
+            existingPayerEnrollments,
+            existingIncidentLogs
           ] = await Promise.all([
             tx.select().from(educations).where(eq(educations.employeeId, employeeId)),
             tx.select().from(employments).where(eq(employments.employeeId, employeeId)),
@@ -6509,7 +6762,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             tx.select().from(emergencyContacts).where(eq(emergencyContacts.employeeId, employeeId)),
             tx.select().from(taxForms).where(eq(taxForms.employeeId, employeeId)),
             tx.select().from(trainings).where(eq(trainings.employeeId, employeeId)),
-            tx.select().from(payerEnrollments).where(eq(payerEnrollments.employeeId, employeeId))
+            tx.select().from(payerEnrollments).where(eq(payerEnrollments.employeeId, employeeId)),
+            tx.select().from(incidentLogs).where(eq(incidentLogs.employeeId, employeeId))
           ]);
           
           try {
@@ -6517,26 +6771,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (educationsData && Array.isArray(educationsData)) {
             console.log('[save-draft] Processing', educationsData.length, 'educations');
             for (const education of educationsData) {
-              const sanitizedEducation = sanitizeDateFields(education);
-              if (sanitizedEducation.id) {
+              // Convert any Date objects to strings before sanitizing (defensive)
+              const educationWithStringDates = convertDatesToStrings(education);
+              const sanitizedEducation = sanitizeDateFields(educationWithStringDates);
+              // Filter out temporary IDs that are too large (timestamp-based IDs like 1761900140116)
+              // Real database IDs are typically much smaller
+              const isTemporaryId = sanitizedEducation.id && 
+                typeof sanitizedEducation.id === 'number' && 
+                sanitizedEducation.id > 1000000000000; // IDs larger than this are likely temporary
+              
+              if (sanitizedEducation.id && !isTemporaryId) {
                 // SECURITY: Verify ownership before update
                 const existing = existingEducations.find(e => e.id === sanitizedEducation.id);
                 if (!existing) {
-                  console.error('[save-draft] SECURITY: Attempted to update education not owned by employee');
-                  throw new Error('Cannot update education record not owned by this employee');
+                  // ID doesn't exist for this employee - treat as new record
+                  console.log('[save-draft] Education ID not found, treating as new record:', sanitizedEducation.id);
+                  const { id, ...newEducation } = sanitizedEducation;
+                  await tx
+                    .insert(educations)
+                    .values({
+                      ...newEducation,
+                      employeeId  // SECURITY: Always use verified employeeId
+                    } as any);
+                } else {
+                  // ID exists and is owned by this employee - update it
+                  await tx
+                    .update(educations)
+                    .set({
+                      ...sanitizedEducation,
+                      employeeId  // SECURITY: Enforce correct employeeId
+                    } as any)
+                    .where(eq(educations.id, sanitizedEducation.id));
                 }
-                await tx
-                  .update(educations)
-                  .set({
-                    ...sanitizedEducation,
-                    employeeId  // SECURITY: Enforce correct employeeId
-                  } as any)
-                  .where(eq(educations.id, sanitizedEducation.id));
               } else {
+                // No ID or temporary ID - treat as new record
+                const { id, ...newEducation } = sanitizedEducation;
                 await tx
                   .insert(educations)
                   .values({
-                    ...sanitizedEducation,
+                    ...newEducation,
                     employeeId  // SECURITY: Always use verified employeeId
                   } as any);
               }
@@ -6548,25 +6821,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log('[save-draft] Processing', employmentsData.length, 'employments');
             for (const employment of employmentsData) {
               const sanitizedEmployment = sanitizeDateFields(employment);
-              if (sanitizedEmployment.id) {
+              // Filter out temporary IDs that are too large (timestamp-based IDs)
+              const isTemporaryId = sanitizedEmployment.id && 
+                typeof sanitizedEmployment.id === 'number' && 
+                sanitizedEmployment.id > 1000000000000;
+              
+              if (sanitizedEmployment.id && !isTemporaryId) {
                 // SECURITY: Verify ownership before update
                 const existing = existingEmployments.find(e => e.id === sanitizedEmployment.id);
                 if (!existing) {
-                  console.error('[save-draft] SECURITY: Attempted to update employment not owned by employee');
-                  throw new Error('Cannot update employment record not owned by this employee');
+                  // ID doesn't exist for this employee - treat as new record
+                  console.log('[save-draft] Employment ID not found, treating as new record:', sanitizedEmployment.id);
+                  const { id, ...newEmployment } = sanitizedEmployment;
+                  await tx
+                    .insert(employments)
+                    .values({
+                      ...newEmployment,
+                      employeeId
+                    } as any);
+                } else {
+                  // ID exists and is owned by this employee - update it
+                  await tx
+                    .update(employments)
+                    .set({
+                      ...sanitizedEmployment,
+                      employeeId
+                    } as any)
+                    .where(eq(employments.id, sanitizedEmployment.id));
                 }
-                await tx
-                  .update(employments)
-                  .set({
-                    ...sanitizedEmployment,
-                    employeeId
-                  } as any)
-                  .where(eq(employments.id, sanitizedEmployment.id));
               } else {
+                // No ID or temporary ID - treat as new record
+                const { id, ...newEmployment } = sanitizedEmployment;
                 await tx
                   .insert(employments)
                   .values({
-                    ...sanitizedEmployment,
+                    ...newEmployment,
                     employeeId
                   } as any);
               }
@@ -6576,27 +6865,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Handle state licenses using tx
           if (stateLicensesData && Array.isArray(stateLicensesData)) {
             console.log('[save-draft] Processing', stateLicensesData.length, 'state licenses');
-            for (const license of stateLicensesData) {
+            // Filter out items with invalid string IDs (like "credentials-medical")
+            const validStateLicenses = stateLicensesData.filter((license: any) => {
+              // If ID exists and is not a valid number, filter it out (it's a frontend temp ID)
+              if (license.id && typeof license.id === 'string' && !license.id.match(/^\d+$/)) {
+                return false;
+              }
+              return true;
+            });
+            for (const license of validStateLicenses) {
               const sanitizedLicense = sanitizeDateFields(license);
-              if (sanitizedLicense.id) {
+              // Remove source field if present
+              const { source, ...cleanLicense } = sanitizedLicense as any;
+              // Filter out temporary IDs that are too large (timestamp-based IDs)
+              const isTemporaryId = cleanLicense.id && 
+                typeof cleanLicense.id === 'number' && 
+                cleanLicense.id > 1000000000000;
+              
+              if (cleanLicense.id && typeof cleanLicense.id === 'number' && !isTemporaryId) {
                 // SECURITY: Verify ownership before update
-                const existing = existingStateLicenses.find(e => e.id === sanitizedLicense.id);
+                const existing = existingStateLicenses.find(e => e.id === cleanLicense.id);
                 if (!existing) {
-                  console.error('[save-draft] SECURITY: Attempted to update state license not owned by employee');
-                  throw new Error('Cannot update state license not owned by this employee');
+                  // ID doesn't exist for this employee - treat as new record
+                  console.log('[save-draft] State license ID not found, treating as new record:', cleanLicense.id);
+                  const { id, ...insertData } = cleanLicense;
+                  await tx
+                    .insert(stateLicenses)
+                    .values({
+                      ...insertData,
+                      employeeId
+                    } as any);
+                } else {
+                  // ID exists and is owned by this employee - update it
+                  await tx
+                    .update(stateLicenses)
+                    .set({
+                      ...cleanLicense,
+                      employeeId
+                    } as any)
+                    .where(eq(stateLicenses.id, cleanLicense.id));
                 }
-                await tx
-                  .update(stateLicenses)
-                  .set({
-                    ...sanitizedLicense,
-                    employeeId
-                  } as any)
-                  .where(eq(stateLicenses.id, sanitizedLicense.id));
               } else {
+                // No ID or temporary ID - treat as new record
+                const { id, ...insertData } = cleanLicense;
                 await tx
                   .insert(stateLicenses)
                   .values({
-                    ...sanitizedLicense,
+                    ...insertData,
                     employeeId
                   } as any);
               }
@@ -6606,29 +6921,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Handle DEA licenses using tx
           if (deaLicensesData && Array.isArray(deaLicensesData)) {
             console.log('[save-draft] Processing', deaLicensesData.length, 'DEA licenses');
-            for (const license of deaLicensesData) {
+            // Filter out items with invalid string IDs (like "credentials-dea")
+            const validDeaLicenses = deaLicensesData.filter((license: any) => {
+              if (license.id && typeof license.id === 'string' && !license.id.match(/^\d+$/)) {
+                return false;
+              }
+              return true;
+            });
+            for (const license of validDeaLicenses) {
               const sanitizedLicense = sanitizeDateFields(license);
-              if (sanitizedLicense.id) {
-                // SECURITY: Verify ownership before update
-                const existing = existingDeaLicenses.find(e => e.id === sanitizedLicense.id);
+              const { source, state, ...cleanLicense } = sanitizedLicense as any;
+
+              const licenseNumberValue = cleanLicense.deaNumber
+                ?? cleanLicense.licenseNumber
+                ?? (license as any).deaNumber
+                ?? (license as any).licenseNumber;
+
+              if (!licenseNumberValue) {
+                console.warn('[save-draft] Skipping DEA license without license number', sanitizedLicense);
+                continue;
+              }
+
+              // Filter out temporary IDs that are too large (timestamp-based IDs)
+              const isTemporaryId = cleanLicense.id &&
+                typeof cleanLicense.id === 'number' &&
+                cleanLicense.id > 1000000000000;
+
+              const buildPayload = (base: any) => {
+                const { id: ignoredId, deaNumber, licenseNumber, ...rest } = base;
+                return {
+                  ...rest,
+                  licenseNumber: licenseNumberValue,
+                  employeeId
+                };
+              };
+
+              if (cleanLicense.id && typeof cleanLicense.id === 'number' && !isTemporaryId) {
+                const existing = existingDeaLicenses.find(e => e.id === cleanLicense.id);
                 if (!existing) {
-                  console.error('[save-draft] SECURITY: Attempted to update DEA license not owned by employee');
-                  throw new Error('Cannot update DEA license not owned by this employee');
+                  console.log('[save-draft] DEA license ID not found, treating as new record:', cleanLicense.id);
+                  await tx
+                    .insert(deaLicenses)
+                    .values(buildPayload(cleanLicense));
+                } else {
+                  await tx
+                    .update(deaLicenses)
+                    .set(buildPayload(cleanLicense))
+                    .where(eq(deaLicenses.id, cleanLicense.id));
                 }
-                await tx
-                  .update(deaLicenses)
-                  .set({
-                    ...sanitizedLicense,
-                    employeeId
-                  } as any)
-                  .where(eq(deaLicenses.id, sanitizedLicense.id));
               } else {
                 await tx
                   .insert(deaLicenses)
-                  .values({
-                    ...sanitizedLicense,
-                    employeeId
-                  } as any);
+                  .values(buildPayload(cleanLicense));
               }
             }
           }
@@ -6638,25 +6982,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log('[save-draft] Processing', boardCertificationsData.length, 'board certifications');
             for (const cert of boardCertificationsData) {
               const sanitizedCert = sanitizeDateFields(cert);
-              if (sanitizedCert.id) {
+              // Remove frontend field names if present (already transformed by Zod, but ensure cleanup)
+              const { boardName, certification, ...cleanCert } = sanitizedCert as any;
+              // Ensure correct field names are used
+              if (!cleanCert.certificationName && certification) {
+                cleanCert.certificationName = certification;
+              }
+              if (!cleanCert.issuingBoard && boardName) {
+                cleanCert.issuingBoard = boardName;
+              }
+              // Filter out temporary IDs that are too large (timestamp-based IDs)
+              const isTemporaryId = cleanCert.id && 
+                typeof cleanCert.id === 'number' && 
+                cleanCert.id > 1000000000000;
+              
+              if (cleanCert.id && typeof cleanCert.id === 'number' && !isTemporaryId) {
                 // SECURITY: Verify ownership before update
-                const existing = existingBoardCertifications.find(e => e.id === sanitizedCert.id);
+                const existing = existingBoardCertifications.find(e => e.id === cleanCert.id);
                 if (!existing) {
-                  console.error('[save-draft] SECURITY: Attempted to update board certification not owned by employee');
-                  throw new Error('Cannot update board certification not owned by this employee');
+                  // ID doesn't exist for this employee - treat as new record
+                  console.log('[save-draft] Board certification ID not found, treating as new record:', cleanCert.id);
+                  const { id, ...insertData } = cleanCert;
+                  await tx
+                    .insert(boardCertifications)
+                    .values({
+                      ...insertData,
+                      employeeId
+                    } as any);
+                } else {
+                  // ID exists and is owned by this employee - update it
+                  await tx
+                    .update(boardCertifications)
+                    .set({
+                      ...cleanCert,
+                      employeeId
+                    } as any)
+                    .where(eq(boardCertifications.id, cleanCert.id));
                 }
-                await tx
-                  .update(boardCertifications)
-                  .set({
-                    ...sanitizedCert,
-                    employeeId
-                  } as any)
-                  .where(eq(boardCertifications.id, sanitizedCert.id));
               } else {
+                // No ID or temporary ID - treat as new record
+                const { id, ...insertData } = cleanCert;
                 await tx
                   .insert(boardCertifications)
                   .values({
-                    ...sanitizedCert,
+                    ...insertData,
                     employeeId
                   } as any);
               }
@@ -6667,25 +7036,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (peerReferencesData && Array.isArray(peerReferencesData)) {
             console.log('[save-draft] Processing', peerReferencesData.length, 'peer references');
             for (const reference of peerReferencesData) {
-              if (reference.id) {
+              // Filter out temporary IDs that are too large (timestamp-based IDs)
+              const isTemporaryId = reference.id && 
+                typeof reference.id === 'number' && 
+                reference.id > 1000000000000;
+              
+              if (reference.id && !isTemporaryId) {
                 // SECURITY: Verify ownership before update
                 const existing = existingPeerReferences.find(e => e.id === reference.id);
                 if (!existing) {
-                  console.error('[save-draft] SECURITY: Attempted to update peer reference not owned by employee');
-                  throw new Error('Cannot update peer reference not owned by this employee');
+                  // ID doesn't exist for this employee - treat as new record
+                  console.log('[save-draft] Peer reference ID not found, treating as new record:', reference.id);
+                  const { id, ...newReference } = reference;
+                  await tx
+                    .insert(peerReferences)
+                    .values({
+                      ...newReference,
+                      employeeId
+                    } as any);
+                } else {
+                  // ID exists and is owned by this employee - update it
+                  await tx
+                    .update(peerReferences)
+                    .set({
+                      ...reference,
+                      employeeId
+                    } as any)
+                    .where(eq(peerReferences.id, reference.id));
                 }
-                await tx
-                  .update(peerReferences)
-                  .set({
-                    ...reference,
-                    employeeId
-                  } as any)
-                  .where(eq(peerReferences.id, reference.id));
               } else {
+                // No ID or temporary ID - treat as new record
+                const { id, ...newReference } = reference;
                 await tx
                   .insert(peerReferences)
                   .values({
-                    ...reference,
+                    ...newReference,
                     employeeId
                   } as any);
               }
@@ -6696,27 +7081,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (emergencyContactsData && Array.isArray(emergencyContactsData)) {
             console.log('[save-draft] Processing', emergencyContactsData.length, 'emergency contacts');
             for (const contact of emergencyContactsData) {
-              if (contact.id) {
-                // SECURITY: Verify ownership before update
-                const existing = existingEmergencyContacts.find(e => e.id === contact.id);
+              const { name, phone, ...cleanContact } = contact as any;
+              const contactNameValue = cleanContact.contactName
+                ?? name
+                ?? (contact as any).contactName
+                ?? (contact as any).name;
+              const phoneValue = cleanContact.phoneNumber
+                ?? phone
+                ?? (contact as any).phoneNumber
+                ?? (contact as any).phone;
+
+              if (!contactNameValue) {
+                console.warn('[save-draft] Skipping emergency contact without name', contact);
+                continue;
+              }
+
+              const isTemporaryId = cleanContact.id &&
+                typeof cleanContact.id === 'number' &&
+                cleanContact.id > 1000000000000;
+
+              const buildContactPayload = (base: any) => {
+                const { id: ignoredId, contactName, phoneNumber, ...rest } = base;
+                return {
+                  ...rest,
+                  name: contactNameValue,
+                  phone: phoneValue ?? rest.phone ?? null,
+                  employeeId
+                };
+              };
+
+              if (cleanContact.id && typeof cleanContact.id === 'number' && !isTemporaryId) {
+                const existing = existingEmergencyContacts.find(e => e.id === cleanContact.id);
                 if (!existing) {
-                  console.error('[save-draft] SECURITY: Attempted to update emergency contact not owned by employee');
-                  throw new Error('Cannot update emergency contact not owned by this employee');
+                  console.log('[save-draft] Emergency contact ID not found, treating as new record:', cleanContact.id);
+                  await tx
+                    .insert(emergencyContacts)
+                    .values(buildContactPayload(cleanContact));
+                } else {
+                  await tx
+                    .update(emergencyContacts)
+                    .set(buildContactPayload(cleanContact))
+                    .where(eq(emergencyContacts.id, cleanContact.id));
                 }
-                await tx
-                  .update(emergencyContacts)
-                  .set({
-                    ...contact,
-                    employeeId
-                  } as any)
-                  .where(eq(emergencyContacts.id, contact.id));
               } else {
                 await tx
                   .insert(emergencyContacts)
-                  .values({
-                    ...contact,
-                    employeeId
-                  } as any);
+                  .values(buildContactPayload(cleanContact));
               }
             }
           }
@@ -6726,25 +7136,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log('[save-draft] Processing', taxFormsData.length, 'tax forms');
             for (const form of taxFormsData) {
               const sanitizedForm = sanitizeDateFields(form);
-              if (sanitizedForm.id) {
+              // Filter out temporary IDs that are too large (timestamp-based IDs)
+              const isTemporaryId = sanitizedForm.id && 
+                typeof sanitizedForm.id === 'number' && 
+                sanitizedForm.id > 1000000000000;
+              
+              if (sanitizedForm.id && !isTemporaryId) {
                 // SECURITY: Verify ownership before update
                 const existing = existingTaxForms.find(e => e.id === sanitizedForm.id);
                 if (!existing) {
-                  console.error('[save-draft] SECURITY: Attempted to update tax form not owned by employee');
-                  throw new Error('Cannot update tax form not owned by this employee');
+                  // ID doesn't exist for this employee - treat as new record
+                  console.log('[save-draft] Tax form ID not found, treating as new record:', sanitizedForm.id);
+                  const { id, ...newForm } = sanitizedForm;
+                  await tx
+                    .insert(taxForms)
+                    .values({
+                      ...newForm,
+                      employeeId
+                    } as any);
+                } else {
+                  // ID exists and is owned by this employee - update it
+                  await tx
+                    .update(taxForms)
+                    .set({
+                      ...sanitizedForm,
+                      employeeId
+                    } as any)
+                    .where(eq(taxForms.id, sanitizedForm.id));
                 }
-                await tx
-                  .update(taxForms)
-                  .set({
-                    ...sanitizedForm,
-                    employeeId
-                  } as any)
-                  .where(eq(taxForms.id, sanitizedForm.id));
               } else {
+                // No ID or temporary ID - treat as new record
+                const { id, ...newForm } = sanitizedForm;
                 await tx
                   .insert(taxForms)
                   .values({
-                    ...sanitizedForm,
+                    ...newForm,
                     employeeId
                   } as any);
               }
@@ -6756,25 +7182,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log('[save-draft] Processing', trainingsData.length, 'trainings');
             for (const training of trainingsData) {
               const sanitizedTraining = sanitizeDateFields(training);
-              if (sanitizedTraining.id) {
+              // Filter out temporary IDs that are too large (timestamp-based IDs)
+              const isTemporaryId = sanitizedTraining.id && 
+                typeof sanitizedTraining.id === 'number' && 
+                sanitizedTraining.id > 1000000000000;
+              
+              if (sanitizedTraining.id && !isTemporaryId) {
                 // SECURITY: Verify ownership before update
                 const existing = existingTrainings.find(e => e.id === sanitizedTraining.id);
                 if (!existing) {
-                  console.error('[save-draft] SECURITY: Attempted to update training not owned by employee');
-                  throw new Error('Cannot update training not owned by this employee');
+                  // ID doesn't exist for this employee - treat as new record
+                  console.log('[save-draft] Training ID not found, treating as new record:', sanitizedTraining.id);
+                  const { id, ...newTraining } = sanitizedTraining;
+                  await tx
+                    .insert(trainings)
+                    .values({
+                      ...newTraining,
+                      employeeId
+                    } as any);
+                } else {
+                  // ID exists and is owned by this employee - update it
+                  await tx
+                    .update(trainings)
+                    .set({
+                      ...sanitizedTraining,
+                      employeeId
+                    } as any)
+                    .where(eq(trainings.id, sanitizedTraining.id));
                 }
-                await tx
-                  .update(trainings)
-                  .set({
-                    ...sanitizedTraining,
-                    employeeId
-                  } as any)
-                  .where(eq(trainings.id, sanitizedTraining.id));
               } else {
+                // No ID or temporary ID - treat as new record
+                const { id, ...newTraining } = sanitizedTraining;
                 await tx
                   .insert(trainings)
                   .values({
-                    ...sanitizedTraining,
+                    ...newTraining,
                     employeeId
                   } as any);
               }
@@ -6786,25 +7228,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log('[save-draft] Processing', payerEnrollmentsData.length, 'payer enrollments');
             for (const enrollment of payerEnrollmentsData) {
               const sanitizedEnrollment = sanitizeDateFields(enrollment);
-              if (sanitizedEnrollment.id) {
+              // Remove frontend field names if present (already transformed by Zod, but ensure cleanup)
+              const { providerId, enrollmentStatus, ...cleanEnrollment } = sanitizedEnrollment as any;
+              // Ensure correct field names are used
+              if (!cleanEnrollment.enrollmentId && providerId) {
+                cleanEnrollment.enrollmentId = providerId;
+              }
+              if (!cleanEnrollment.status && enrollmentStatus) {
+                cleanEnrollment.status = enrollmentStatus;
+              }
+              // Filter out temporary IDs that are too large (timestamp-based IDs)
+              const isTemporaryId = cleanEnrollment.id && 
+                typeof cleanEnrollment.id === 'number' && 
+                cleanEnrollment.id > 1000000000000;
+              
+              if (cleanEnrollment.id && typeof cleanEnrollment.id === 'number' && !isTemporaryId) {
                 // SECURITY: Verify ownership before update
-                const existing = existingPayerEnrollments.find(e => e.id === sanitizedEnrollment.id);
+                const existing = existingPayerEnrollments.find(e => e.id === cleanEnrollment.id);
                 if (!existing) {
-                  console.error('[save-draft] SECURITY: Attempted to update payer enrollment not owned by employee');
-                  throw new Error('Cannot update payer enrollment not owned by this employee');
+                  // ID doesn't exist for this employee - treat as new record
+                  console.log('[save-draft] Payer enrollment ID not found, treating as new record:', cleanEnrollment.id);
+                  const { id, ...insertData } = cleanEnrollment;
+                  await tx
+                    .insert(payerEnrollments)
+                    .values({
+                      ...insertData,
+                      employeeId
+                    } as any);
+                } else {
+                  // ID exists and is owned by this employee - update it
+                  await tx
+                    .update(payerEnrollments)
+                    .set({
+                      ...cleanEnrollment,
+                      employeeId
+                    } as any)
+                    .where(eq(payerEnrollments.id, cleanEnrollment.id));
                 }
-                await tx
-                  .update(payerEnrollments)
-                  .set({
-                    ...sanitizedEnrollment,
-                    employeeId
-                  } as any)
-                  .where(eq(payerEnrollments.id, sanitizedEnrollment.id));
               } else {
+                // No ID or temporary ID - treat as new record
+                const { id, ...insertData } = cleanEnrollment;
                 await tx
                   .insert(payerEnrollments)
                   .values({
-                    ...sanitizedEnrollment,
+                    ...insertData,
+                    employeeId
+                  } as any);
+              }
+            }
+          }
+
+          // Handle incident logs using tx
+          if (incidentLogsData && Array.isArray(incidentLogsData)) {
+            console.log('[save-draft] Processing', incidentLogsData.length, 'incident logs');
+            for (const incident of incidentLogsData) {
+              const sanitizedIncident = sanitizeDateFields(incident);
+              const isTemporaryId = sanitizedIncident.id &&
+                typeof sanitizedIncident.id === 'number' &&
+                sanitizedIncident.id > 1000000000000;
+
+              if (sanitizedIncident.id && typeof sanitizedIncident.id === 'number' && !isTemporaryId) {
+                const existing = existingIncidentLogs.find(e => e.id === sanitizedIncident.id);
+                if (!existing) {
+                  const { id, ...insertData } = sanitizedIncident;
+                  await tx
+                    .insert(incidentLogs)
+                    .values({
+                      ...insertData,
+                      employeeId
+                    } as any);
+                } else {
+                  await tx
+                    .update(incidentLogs)
+                    .set({
+                      ...sanitizedIncident,
+                      employeeId
+                    } as any)
+                    .where(eq(incidentLogs.id, sanitizedIncident.id));
+                }
+              } else {
+                const { id, ...insertData } = sanitizedIncident;
+                await tx
+                  .insert(incidentLogs)
+                  .values({
+                    ...insertData,
                     employeeId
                   } as any);
               }
@@ -6842,22 +7349,923 @@ export async function registerRoutes(app: Express): Promise<Server> {
           employeeId,
           timestamp: new Date().toISOString()
         });
-      } catch (error) {
+      } catch (error: any) {
         // Comprehensive error logging with stack traces
         console.error('[save-draft] ERROR saving draft:', error);
-        console.error('[save-draft] Error name:', (error as Error).name);
-        console.error('[save-draft] Error message:', (error as Error).message);
-        console.error('[save-draft] Error stack:', (error as Error).stack);
+        console.error('[save-draft] Error name:', error?.name);
+        console.error('[save-draft] Error message:', error?.message);
+        console.error('[save-draft] Error stack:', error?.stack);
+        console.error('[save-draft] Error code:', error?.code);
         
         // Log additional context
         console.error('[save-draft] User ID:', req.user?.id);
         console.error('[save-draft] Request body keys:', req.body ? Object.keys(req.body) : 'No body');
         
+        // Check if it's a date conversion error
+        if (error?.message?.includes('toISOString') || error?.message?.includes('is not a function')) {
+          console.error('[save-draft] Date conversion error detected - check date field handling');
+        }
+        
         // Return appropriate error response
         res.status(500).json({ 
           success: false,
           error: 'Failed to save draft',
-          message: (error as Error).message,
+          message: error?.message || 'Unknown error occurred',
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+  );
+
+  /**
+   * PUT /api/onboarding/save-draft/:id
+   * Update an existing onboarding draft by employee ID
+   * @route PUT /api/onboarding/save-draft/:id
+   * @group Onboarding - Draft operations
+   * @security session
+   * @param {number} id.path.required - Employee ID
+   * @returns {object} 200 - Success response with employeeId
+   */
+  app.put('/api/onboarding/save-draft/:id',
+    requireAnyAuth,
+    requireRole(['prospective_employee']),
+    validateId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.id);
+        const currentUserId = req.user!.id;
+        
+        console.log('[save-draft PUT] Updating draft for employeeId:', employeeId, 'userId:', currentUserId);
+        
+        // SECURITY: Verify employee belongs to current user
+        const existingEmployeeRows = await db
+          .select()
+          .from(employees)
+          .where(and(eq(employees.id, employeeId), eq(employees.userId, currentUserId)));
+        
+        if (!existingEmployeeRows.length) {
+          return res.status(404).json({ 
+            success: false,
+            error: 'Employee not found or access denied',
+            message: 'The employee record does not exist or you do not have permission to update it'
+          });
+        }
+        
+        const employee = existingEmployeeRows[0];
+        
+        // Step 1: Sanitize date fields first
+        const sanitizedData = sanitizeDateFields(req.body);
+        console.log('[save-draft PUT] Date fields sanitized');
+        
+        // Step 2: Use the same validation schema as POST
+        // Define validation schema manually to avoid drizzle-zod .shape issues
+        const employeeDraftSchema = z.object({
+          // Basic personal information
+          firstName: z.string().max(50),
+          middleName: z.string().max(50).nullable().optional(),
+          lastName: z.string().max(50),
+          dateOfBirth: z.coerce.date().nullable().optional(),
+          
+          // Contact information
+          personalEmail: z.string().max(100).email().nullable().optional(),
+          workEmail: z.string().max(100).email(),
+          cellPhone: z.string().max(20).nullable().optional(),
+          workPhone: z.string().max(20).nullable().optional(),
+          
+          // Home address information
+          homeAddress1: z.string().max(100).nullable().optional(),
+          homeAddress2: z.string().max(100).nullable().optional(),
+          homeCity: z.string().max(50).nullable().optional(),
+          homeState: z.string().max(50).nullable().optional(),
+          homeZip: z.string().max(10).nullable().optional(),
+          
+          // Demographic information
+          gender: z.string().max(20).nullable().optional(),
+          birthCity: z.string().max(50).nullable().optional(),
+          birthState: z.string().max(50).nullable().optional(),
+          birthCountry: z.string().max(50).nullable().optional(),
+          
+          // Department
+          department: z.string().max(100).nullable().optional(),
+          
+          // Driver's license information
+          driversLicenseNumber: z.string().max(50).nullable().optional(),
+          dlStateIssued: z.string().max(50).nullable().optional(),
+          dlIssueDate: z.coerce.date().nullable().optional(),
+          dlExpirationDate: z.coerce.date().nullable().optional(),
+          
+          // Sensitive identification
+          ssn: z.string().max(255).nullable().optional(), // Increased for encrypted format
+          
+          // National Provider Identifier (NPI)
+          npiNumber: z.string().max(20).nullable().optional(),
+          enumerationDate: z.coerce.date().nullable().optional(),
+          
+          // Employment information
+          jobTitle: z.string().max(100).nullable().optional(),
+          workLocation: z.string().max(100).nullable().optional(),
+          qualification: z.string().nullable().optional(),
+          
+          // Medical licensing information
+          medicalLicenseNumber: z.string().max(50).nullable().optional(),
+          medicalLicenseState: z.string().max(50).nullable().optional(),
+          medicalLicenseIssueDate: z.coerce.date().nullable().optional(),
+          medicalLicenseExpirationDate: z.coerce.date().nullable().optional(),
+          medicalLicenseStatus: z.string().max(50).nullable().optional(),
+          medicalQualification: z.string().nullable().optional(),
+          substanceUseLicenseNumber: z.string().max(50).nullable().optional(),
+          substanceUseLicenseState: z.string().max(50).nullable().optional(),
+          substanceUseLicenseIssueDate: z.coerce.date().nullable().optional(),
+          substanceUseLicenseExpirationDate: z.coerce.date().nullable().optional(),
+          substanceUseLicenseStatus: z.string().max(50).nullable().optional(),
+          substanceUseQualification: z.string().nullable().optional(),
+          mentalHealthLicenseNumber: z.string().max(50).nullable().optional(),
+          mentalHealthLicenseState: z.string().max(50).nullable().optional(),
+          mentalHealthLicenseIssueDate: z.coerce.date().nullable().optional(),
+          mentalHealthLicenseExpirationDate: z.coerce.date().nullable().optional(),
+          mentalHealthLicenseStatus: z.string().max(50).nullable().optional(),
+          mentalHealthQualification: z.string().nullable().optional(),
+          
+          // DEA License
+          deaNumber: z.string().max(50).nullable().optional(),
+          
+          // Payer/billing identifiers
+          medicaidNumber: z.string().max(50).nullable().optional(),
+          medicarePtanNumber: z.string().max(50).nullable().optional(),
+          
+          // CAQH integration
+          caqhProviderId: z.string().max(50).nullable().optional(),
+          caqhIssueDate: z.coerce.date().nullable().optional(),
+          caqhLastAttestationDate: z.coerce.date().nullable().optional(),
+          caqhEnabled: z.boolean().nullable().optional(),
+          caqhReattestationDueDate: z.coerce.date().nullable().optional(),
+          caqhLoginId: z.string().max(50).nullable().optional(),
+          caqhPassword: z.string().max(100).nullable().optional(),
+          
+          // NPPES integration
+          nppesLoginId: z.string().max(50).nullable().optional(),
+          nppesPassword: z.string().max(100).nullable().optional()
+        })
+        .partial()             // All fields optional for draft
+        .strict();             // Reject unknown fields
+        
+        // Define array schemas with proper validation and length limits
+        const MAX_ARRAY_LENGTH = 50;
+        
+        // Reuse the same nested entity schemas as POST endpoint
+        const educationDraftSchema = z.object({
+          id: z.number().optional(),
+          employeeId: z.number().optional(),
+          educationType: z.string().max(50).nullable().optional(),
+          schoolInstitution: z.string().max(100).nullable().optional(),
+          degree: z.string().max(50).nullable().optional(),
+          specialtyMajor: z.string().max(100).nullable().optional(),
+          startDate: z.coerce.date().nullable().optional(),
+          endDate: z.coerce.date().nullable().optional()
+        }).partial().strict();
+        
+        const employmentDraftSchema = z.object({
+          id: z.number().optional(),
+          employeeId: z.number().optional(),
+          employer: z.string().max(100).nullable().optional(),
+          position: z.string().max(100).nullable().optional(),
+          startDate: z.coerce.date().nullable().optional(),
+          endDate: z.coerce.date().nullable().optional(),
+          description: z.string().nullable().optional()
+        }).partial().strict();
+        
+        const stateLicenseDraftSchema = z.preprocess((data: any) => {
+          if (data && typeof data === 'object') {
+            const cleaned: any = { ...data };
+            if (cleaned.id && typeof cleaned.id === 'string' && !cleaned.id.match(/^\d+$/)) {
+              delete cleaned.id;
+            }
+            delete cleaned.source;
+            return cleaned;
+          }
+          return data;
+        }, z.object({
+          id: z.union([z.number(), z.string()]).optional().transform((val) => {
+            if (typeof val === 'string' && val.match(/^\d+$/)) {
+              return parseInt(val);
+            }
+            return typeof val === 'number' ? val : undefined;
+          }),
+          employeeId: z.number().optional(),
+          licenseNumber: z.string().max(50).optional(),
+          state: z.string().max(50).optional(),
+          licenseType: z.string().max(50).nullable().optional(),
+          issueDate: z.coerce.date().nullable().optional(),
+          expirationDate: z.coerce.date().nullable().optional(),
+          status: z.string().max(50).nullable().optional()
+        }).passthrough());
+        
+        const deaLicenseDraftSchema = z.preprocess((data: any) => {
+          if (data && typeof data === 'object') {
+            const cleaned: any = { ...data };
+            if (cleaned.id && typeof cleaned.id === 'string' && !cleaned.id.match(/^\d+$/)) {
+              delete cleaned.id;
+            }
+            if (cleaned.licenseNumber && !cleaned.deaNumber) {
+              cleaned.deaNumber = cleaned.licenseNumber;
+            }
+            delete cleaned.licenseNumber;
+            delete cleaned.state;
+            delete cleaned.source;
+            return cleaned;
+          }
+          return data;
+        }, z.object({
+          id: z.union([z.number(), z.string()]).optional().transform((val) => {
+            if (typeof val === 'string' && val.match(/^\d+$/)) {
+              return parseInt(val);
+            }
+            return typeof val === 'number' ? val : undefined;
+          }),
+          employeeId: z.number().optional(),
+          deaNumber: z.string().max(50).optional(),
+          issueDate: z.coerce.date().nullable().optional(),
+          expirationDate: z.coerce.date().nullable().optional(),
+          status: z.string().max(50).nullable().optional()
+        }).passthrough());
+        
+        const boardCertificationDraftSchema = z.preprocess((data: any) => {
+          if (data && typeof data === 'object') {
+            const cleaned: any = { ...data };
+            if (cleaned.certification && !cleaned.certificationName) {
+              cleaned.certificationName = cleaned.certification;
+            }
+            if (cleaned.boardName && !cleaned.issuingBoard) {
+              cleaned.issuingBoard = cleaned.boardName;
+            }
+            delete cleaned.certification;
+            delete cleaned.boardName;
+            return cleaned;
+          }
+          return data;
+        }, z.object({
+          id: z.number().optional(),
+          employeeId: z.number().optional(),
+          certificationName: z.string().max(100).optional(),
+          issuingBoard: z.string().max(100).nullable().optional(),
+          certificationNumber: z.string().max(50).nullable().optional(),
+          issueDate: z.coerce.date().nullable().optional(),
+          expirationDate: z.coerce.date().nullable().optional()
+        }).passthrough());
+        
+        const peerReferenceDraftSchema = z.object({
+          id: z.number().optional(),
+          employeeId: z.number().optional(),
+          referenceName: z.string().max(100).nullable().optional(),
+          contactInfo: z.string().max(100).nullable().optional(),
+          relationship: z.string().max(100).nullable().optional(),
+          comments: z.string().nullable().optional()
+        }).partial().strict();
+        
+        const emergencyContactDraftSchema = z.preprocess((data: any) => {
+          if (data && typeof data === 'object') {
+            const cleaned: any = { ...data };
+            if (cleaned.name && !cleaned.contactName) {
+              cleaned.contactName = cleaned.name;
+            }
+            if (cleaned.phone && !cleaned.phoneNumber) {
+              cleaned.phoneNumber = cleaned.phone;
+            }
+            delete cleaned.name;
+            delete cleaned.phone;
+            return cleaned;
+          }
+          return data;
+        }, z.object({
+          id: z.number().optional(),
+          employeeId: z.number().optional(),
+          contactName: z.string().max(100).nullable().optional(),
+          relationship: z.string().max(50).nullable().optional(),
+          phoneNumber: z.string().max(20).nullable().optional(),
+          email: z.string().max(100).nullable().optional()
+        }).passthrough());
+        
+        const taxFormDraftSchema = z.object({
+          id: z.number().optional(),
+          employeeId: z.number().optional(),
+          formType: z.string().max(50).nullable().optional(),
+          w9Completed: z.boolean().nullable().optional(),
+          signedDate: z.coerce.date().nullable().optional()
+        }).partial().strict();
+        
+        const trainingDraftSchema = z.preprocess((data: any) => {
+          if (data && typeof data === 'object') {
+            const cleaned: any = { ...data };
+            if (cleaned.trainingName && !cleaned.trainingType) {
+              cleaned.trainingType = cleaned.trainingName;
+            }
+            if (cleaned.certificateNumber && !cleaned.certificatePath) {
+              cleaned.certificatePath = cleaned.certificateNumber;
+            }
+            if (typeof cleaned.credits === 'string' && cleaned.credits.trim() === '') {
+              cleaned.credits = null;
+            }
+            delete cleaned.trainingName;
+            delete cleaned.certificateNumber;
+            return cleaned;
+          }
+          return data;
+        }, z.object({
+          id: z.union([z.number(), z.string()]).optional().transform((val) => {
+            if (typeof val === 'string' && val.match(/^\d+$/)) {
+              return parseInt(val);
+            }
+            return typeof val === 'number' ? val : undefined;
+          }),
+          employeeId: z.number().optional(),
+          trainingType: z.string().max(100).nullable().optional(),
+          provider: z.string().max(100).nullable().optional(),
+          completionDate: z.coerce.date().nullable().optional(),
+          expirationDate: z.coerce.date().nullable().optional(),
+          credits: z.preprocess((val) => {
+            if (val === '' || val === undefined) return null;
+            return val;
+          }, z.coerce.number().nullable().optional()),
+          certificatePath: z.string().max(255).nullable().optional()
+        }).partial().strict());
+        
+        const incidentLogDraftSchema = z.object({
+          id: z.union([z.number(), z.string()]).optional().transform((val) => {
+            if (typeof val === 'string' && val.match(/^\d+$/)) {
+              return parseInt(val);
+            }
+            return typeof val === 'number' ? val : undefined;
+          }),
+          employeeId: z.number().optional(),
+          incidentDate: z.coerce.date().nullable().optional(),
+          incidentType: z.string().max(100).nullable().optional(),
+          description: z.string().nullable().optional(),
+          severity: z.string().max(20).nullable().optional(),
+          resolution: z.string().nullable().optional(),
+          reportedBy: z.string().max(50).nullable().optional()
+        }).partial().strict();
+
+        const payerEnrollmentDraftSchema = z.preprocess((data: any) => {
+          if (data && typeof data === 'object') {
+            const cleaned: any = { ...data };
+            if (cleaned.providerId && !cleaned.enrollmentId) {
+              cleaned.enrollmentId = cleaned.providerId;
+            }
+            if (cleaned.enrollmentStatus && !cleaned.status) {
+              cleaned.status = cleaned.enrollmentStatus;
+            }
+            delete cleaned.providerId;
+            delete cleaned.enrollmentStatus;
+            return cleaned;
+          }
+          return data;
+        }, z.object({
+          id: z.number().optional(),
+          employeeId: z.number().optional(),
+          payerName: z.string().max(100).nullable().optional(),
+          enrollmentId: z.string().max(50).nullable().optional(),
+          effectiveDate: z.coerce.date().nullable().optional(),
+          terminationDate: z.coerce.date().nullable().optional(),
+          status: z.string().max(20).nullable().optional()
+        }).passthrough());
+        
+        const onboardingDraftSchema = z.object({
+          ...employeeDraftSchema.shape,
+          educations: z.array(educationDraftSchema).max(MAX_ARRAY_LENGTH).optional(),
+          employments: z.array(employmentDraftSchema).max(MAX_ARRAY_LENGTH).optional(),
+          stateLicenses: z.array(stateLicenseDraftSchema).max(MAX_ARRAY_LENGTH).optional(),
+          deaLicenses: z.array(deaLicenseDraftSchema).max(MAX_ARRAY_LENGTH).optional(),
+          boardCertifications: z.array(boardCertificationDraftSchema).max(MAX_ARRAY_LENGTH).optional(),
+          peerReferences: z.array(peerReferenceDraftSchema).max(MAX_ARRAY_LENGTH).optional(),
+          emergencyContacts: z.array(emergencyContactDraftSchema).max(MAX_ARRAY_LENGTH).optional(),
+          taxForms: z.array(taxFormDraftSchema).max(MAX_ARRAY_LENGTH).optional(),
+          trainings: z.array(trainingDraftSchema).max(MAX_ARRAY_LENGTH).optional(),
+          payerEnrollments: z.array(payerEnrollmentDraftSchema).max(MAX_ARRAY_LENGTH).optional(),
+          incidentLogs: z.array(incidentLogDraftSchema).max(MAX_ARRAY_LENGTH).optional(),
+          status: z.string().optional(),
+          documentUploads: z.array(z.any()).optional(),
+          allRequiredDocumentsUploaded: z.boolean().optional(),
+          uploadedRequiredCount: z.number().optional(),
+          requiredDocumentsCount: z.number().optional(),
+          allFormsCompleted: z.boolean().optional(),
+          completedForms: z.number().optional(),
+          totalRequiredForms: z.number().optional(),
+          submissions: z.array(z.any()).optional()
+        }).passthrough();
+        
+        // Step 3: Validate the sanitized data
+        const validationResult = onboardingDraftSchema.safeParse(sanitizedData);
+        if (!validationResult.success) {
+          console.error('[save-draft PUT] Validation failed:', validationResult.error.errors);
+          return res.status(400).json({ 
+            error: 'Validation failed', 
+            details: validationResult.error.errors 
+          });
+        }
+        
+        let data = validationResult.data;
+        console.log('[save-draft PUT] Validation successful');
+        
+        // Convert any Date objects back to strings (Zod coerces dates to Date objects, but DB expects strings)
+        const convertDatesToStrings = (obj: any): any => {
+          if (!obj || typeof obj !== 'object') return obj;
+          if (Array.isArray(obj)) {
+            return obj.map(convertDatesToStrings);
+          }
+          const result: any = {};
+          for (const [key, value] of Object.entries(obj)) {
+            if (value instanceof Date) {
+              // For date-only fields, convert to YYYY-MM-DD
+              if (DATE_ONLY_FIELDS.has(key)) {
+                result[key] = value.toISOString().split('T')[0];
+              } else {
+                // For timestamp fields, keep full ISO string
+                result[key] = value.toISOString();
+              }
+            } else if (typeof value === 'object' && value !== null) {
+              result[key] = convertDatesToStrings(value);
+            } else {
+              result[key] = value;
+            }
+          }
+          return result;
+        };
+        
+        data = convertDatesToStrings(data);
+        console.log('[save-draft PUT] Converted Date objects to strings');
+        
+        // Step 4: Extract employee and related entity data
+        let {
+          educations: educationsData,
+          employments: employmentsData,
+          stateLicenses: stateLicensesData,
+          deaLicenses: deaLicensesData,
+          boardCertifications: boardCertificationsData,
+          peerReferences: peerReferencesData,
+          emergencyContacts: emergencyContactsData,
+          taxForms: taxFormsData,
+          trainings: trainingsData,
+          payerEnrollments: payerEnrollmentsData,
+          incidentLogs: incidentLogsDataExisting,
+          id,
+          userId: reqUserId,
+          createdAt,
+          updatedAt,
+          created_at,
+          updated_at,
+          status,
+          applicationStatus,
+          onboardingStatus,
+          invitationId,
+          onboardingCompletedAt,
+          approvedAt,
+          approvedBy,
+          documentUploads,
+          allRequiredDocumentsUploaded,
+          uploadedRequiredCount,
+          requiredDocumentsCount,
+          allFormsCompleted,
+          completedForms,
+          totalRequiredForms,
+          submissions,
+          ...employeeData
+        } = data;
+        
+        console.log('[save-draft PUT] Extracted data structure');
+        
+        // Step 5: ATOMIC TRANSACTION - Update employee and related entities
+        await db.transaction(async (tx) => {
+          console.log('[save-draft PUT] Starting database transaction');
+          
+          // Update existing employee record using tx
+          console.log('[save-draft PUT] Updating employee id:', employeeId);
+          const cleanEmployeeData = Object.fromEntries(
+            Object.entries(employeeData)
+              .filter(([_, v]) => v !== undefined && v !== null && v !== '')
+              .map(([k, v]) => {
+                // Convert Date objects to ISO strings for database insertion
+                if (v instanceof Date) {
+                  if (DATE_ONLY_FIELDS.has(k)) {
+                    return [k, v.toISOString().split('T')[0]];
+                  }
+                  return [k, v.toISOString()];
+                }
+                return [k, v];
+              })
+          );
+          
+          await tx
+            .update(employees)
+            .set({
+              ...cleanEmployeeData,
+              userId: employee.userId,           // Never allow changing userId
+              status: employee.status,           // Never allow changing status
+              onboardingStatus: 'in_progress',   // Server-controlled
+              updatedAt: new Date()
+            } as any)
+            .where(eq(employees.id, employeeId));
+          console.log('[save-draft PUT] Employee updated');
+          
+          // Fetch existing entities for ownership verification
+          const [
+            existingEducations,
+            existingEmployments,
+            existingStateLicenses,
+            existingDeaLicenses,
+            existingBoardCertifications,
+            existingPeerReferences,
+            existingEmergencyContacts,
+            existingTaxForms,
+            existingTrainings,
+            existingPayerEnrollments,
+            existingIncidentLogs
+          ] = await Promise.all([
+            tx.select().from(educations).where(eq(educations.employeeId, employeeId)),
+            tx.select().from(employments).where(eq(employments.employeeId, employeeId)),
+            tx.select().from(stateLicenses).where(eq(stateLicenses.employeeId, employeeId)),
+            tx.select().from(deaLicenses).where(eq(deaLicenses.employeeId, employeeId)),
+            tx.select().from(boardCertifications).where(eq(boardCertifications.employeeId, employeeId)),
+            tx.select().from(peerReferences).where(eq(peerReferences.employeeId, employeeId)),
+            tx.select().from(emergencyContacts).where(eq(emergencyContacts.employeeId, employeeId)),
+            tx.select().from(taxForms).where(eq(taxForms.employeeId, employeeId)),
+            tx.select().from(trainings).where(eq(trainings.employeeId, employeeId)),
+            tx.select().from(payerEnrollments).where(eq(payerEnrollments.employeeId, employeeId)),
+            tx.select().from(incidentLogs).where(eq(incidentLogs.employeeId, employeeId))
+          ]);
+          
+          try {
+            // Process nested entities (same logic as POST endpoint)
+            // Handle educations
+            if (educationsData && Array.isArray(educationsData)) {
+              for (const education of educationsData) {
+                const educationWithStringDates = convertDatesToStrings(education);
+                const sanitizedEducation = sanitizeDateFields(educationWithStringDates);
+                const isTemporaryId = sanitizedEducation.id && 
+                  typeof sanitizedEducation.id === 'number' && 
+                  sanitizedEducation.id > 1000000000000;
+                
+                if (sanitizedEducation.id && !isTemporaryId) {
+                  const existing = existingEducations.find(e => e.id === sanitizedEducation.id);
+                  if (!existing) {
+                    const { id, ...newEducation } = sanitizedEducation;
+                    await tx.insert(educations).values({ ...newEducation, employeeId } as any);
+                  } else {
+                    await tx.update(educations).set({ ...sanitizedEducation, employeeId } as any)
+                      .where(eq(educations.id, sanitizedEducation.id));
+                  }
+                } else {
+                  const { id, ...newEducation } = sanitizedEducation;
+                  await tx.insert(educations).values({ ...newEducation, employeeId } as any);
+                }
+              }
+            }
+            
+            // Handle employments
+            if (employmentsData && Array.isArray(employmentsData)) {
+              for (const employment of employmentsData) {
+                const employmentWithStringDates = convertDatesToStrings(employment);
+                const sanitizedEmployment = sanitizeDateFields(employmentWithStringDates);
+                const isTemporaryId = sanitizedEmployment.id && 
+                  typeof sanitizedEmployment.id === 'number' && 
+                  sanitizedEmployment.id > 1000000000000;
+                
+                if (sanitizedEmployment.id && !isTemporaryId) {
+                  const existing = existingEmployments.find(e => e.id === sanitizedEmployment.id);
+                  if (!existing) {
+                    const { id, ...newEmployment } = sanitizedEmployment;
+                    await tx.insert(employments).values({ ...newEmployment, employeeId } as any);
+                  } else {
+                    await tx.update(employments).set({ ...sanitizedEmployment, employeeId } as any)
+                      .where(eq(employments.id, sanitizedEmployment.id));
+                  }
+                } else {
+                  const { id, ...newEmployment } = sanitizedEmployment;
+                  await tx.insert(employments).values({ ...newEmployment, employeeId } as any);
+                }
+              }
+            }
+            
+            // Handle state licenses (simplified - full implementation would mirror POST)
+            if (stateLicensesData && Array.isArray(stateLicensesData)) {
+              const validStateLicenses = stateLicensesData.filter((license: any) => {
+                if (license.id && typeof license.id === 'string' && !license.id.match(/^\d+$/)) {
+                  return false;
+                }
+                return true;
+              });
+              for (const license of validStateLicenses) {
+                const licenseWithStringDates = convertDatesToStrings(license);
+                const sanitizedLicense = sanitizeDateFields(licenseWithStringDates);
+                const { source, ...cleanLicense } = sanitizedLicense as any;
+                const isTemporaryId = cleanLicense.id && 
+                  typeof cleanLicense.id === 'number' && 
+                  cleanLicense.id > 1000000000000;
+                
+                if (cleanLicense.id && typeof cleanLicense.id === 'number' && !isTemporaryId) {
+                  const existing = existingStateLicenses.find(e => e.id === cleanLicense.id);
+                  if (!existing) {
+                    const { id, ...insertData } = cleanLicense;
+                    await tx.insert(stateLicenses).values({ ...insertData, employeeId } as any);
+                  } else {
+                    await tx.update(stateLicenses).set({ ...cleanLicense, employeeId } as any)
+                      .where(eq(stateLicenses.id, cleanLicense.id));
+                  }
+                } else {
+                  const { id, ...insertData } = cleanLicense;
+                  await tx.insert(stateLicenses).values({ ...insertData, employeeId } as any);
+                }
+              }
+            }
+            
+            // Handle DEA licenses
+            if (deaLicensesData && Array.isArray(deaLicensesData)) {
+              const validDeaLicenses = deaLicensesData.filter((license: any) => {
+                if (license.id && typeof license.id === 'string' && !license.id.match(/^\d+$/)) {
+                  return false;
+                }
+                return true;
+              });
+              for (const license of validDeaLicenses) {
+                const licenseWithStringDates = convertDatesToStrings(license);
+                const sanitizedLicense = sanitizeDateFields(licenseWithStringDates);
+                const { source, state, ...cleanLicense } = sanitizedLicense as any;
+
+                const licenseNumberValue = cleanLicense.deaNumber
+                  ?? cleanLicense.licenseNumber
+                  ?? (license as any).deaNumber
+                  ?? (license as any).licenseNumber;
+
+                if (!licenseNumberValue) {
+                  console.warn('[save-draft PUT] Skipping DEA license without license number', sanitizedLicense);
+                  continue;
+                }
+
+                const isTemporaryId = cleanLicense.id &&
+                  typeof cleanLicense.id === 'number' &&
+                  cleanLicense.id > 1000000000000;
+
+                const buildPayload = (base: any) => {
+                  const { id: ignoredId, deaNumber, licenseNumber, ...rest } = base;
+                  return {
+                    ...rest,
+                    licenseNumber: licenseNumberValue,
+                    employeeId
+                  };
+                };
+
+                if (cleanLicense.id && typeof cleanLicense.id === 'number' && !isTemporaryId) {
+                  const existing = existingDeaLicenses.find(e => e.id === cleanLicense.id);
+                  if (!existing) {
+                    await tx.insert(deaLicenses).values(buildPayload(cleanLicense));
+                  } else {
+                    await tx.update(deaLicenses).set(buildPayload(cleanLicense))
+                      .where(eq(deaLicenses.id, cleanLicense.id));
+                  }
+                } else {
+                  await tx.insert(deaLicenses).values(buildPayload(cleanLicense));
+                }
+              }
+            }
+            
+            // Handle board certifications
+            if (boardCertificationsData && Array.isArray(boardCertificationsData)) {
+              for (const cert of boardCertificationsData) {
+                const certWithStringDates = convertDatesToStrings(cert);
+                const sanitizedCert = sanitizeDateFields(certWithStringDates);
+                const { boardName, certification, ...cleanCert } = sanitizedCert as any;
+                if (!cleanCert.certificationName && certification) {
+                  cleanCert.certificationName = certification;
+                }
+                if (!cleanCert.issuingBoard && boardName) {
+                  cleanCert.issuingBoard = boardName;
+                }
+                const isTemporaryId = cleanCert.id && 
+                  typeof cleanCert.id === 'number' && 
+                  cleanCert.id > 1000000000000;
+                
+                if (cleanCert.id && typeof cleanCert.id === 'number' && !isTemporaryId) {
+                  const existing = existingBoardCertifications.find(e => e.id === cleanCert.id);
+                  if (!existing) {
+                    const { id, ...insertData } = cleanCert;
+                    await tx.insert(boardCertifications).values({ ...insertData, employeeId } as any);
+                  } else {
+                    await tx.update(boardCertifications).set({ ...cleanCert, employeeId } as any)
+                      .where(eq(boardCertifications.id, cleanCert.id));
+                  }
+                } else {
+                  const { id, ...insertData } = cleanCert;
+                  await tx.insert(boardCertifications).values({ ...insertData, employeeId } as any);
+                }
+              }
+            }
+            
+            // Handle peer references
+            if (peerReferencesData && Array.isArray(peerReferencesData)) {
+              for (const reference of peerReferencesData) {
+                const isTemporaryId = reference.id && 
+                  typeof reference.id === 'number' && 
+                  reference.id > 1000000000000;
+                
+                if (reference.id && !isTemporaryId) {
+                  const existing = existingPeerReferences.find(e => e.id === reference.id);
+                  if (!existing) {
+                    const { id, ...newReference } = reference;
+                    await tx.insert(peerReferences).values({ ...newReference, employeeId } as any);
+                  } else {
+                    await tx.update(peerReferences).set({ ...reference, employeeId } as any)
+                      .where(eq(peerReferences.id, reference.id));
+                  }
+                } else {
+                  const { id, ...newReference } = reference;
+                  await tx.insert(peerReferences).values({ ...newReference, employeeId } as any);
+                }
+              }
+            }
+            
+            // Handle emergency contacts
+            if (emergencyContactsData && Array.isArray(emergencyContactsData)) {
+              for (const contact of emergencyContactsData) {
+                const { name, phone, ...cleanContact } = contact as any;
+                const contactNameValue = cleanContact.contactName
+                  ?? name
+                  ?? (contact as any).contactName
+                  ?? (contact as any).name;
+                const phoneValue = cleanContact.phoneNumber
+                  ?? phone
+                  ?? (contact as any).phoneNumber
+                  ?? (contact as any).phone;
+
+                if (!contactNameValue) {
+                  console.warn('[save-draft PUT] Skipping emergency contact without name', contact);
+                  continue;
+                }
+
+                const isTemporaryId = cleanContact.id &&
+                  typeof cleanContact.id === 'number' &&
+                  cleanContact.id > 1000000000000;
+
+                const buildContactPayload = (base: any) => {
+                  const { id: ignoredId, contactName, phoneNumber, ...rest } = base;
+                  return {
+                    ...rest,
+                    name: contactNameValue,
+                    phone: phoneValue ?? rest.phone ?? null,
+                    employeeId
+                  };
+                };
+
+                if (cleanContact.id && typeof cleanContact.id === 'number' && !isTemporaryId) {
+                  const existing = existingEmergencyContacts.find(e => e.id === cleanContact.id);
+                  if (!existing) {
+                    await tx.insert(emergencyContacts).values(buildContactPayload(cleanContact));
+                  } else {
+                    await tx.update(emergencyContacts).set(buildContactPayload(cleanContact))
+                      .where(eq(emergencyContacts.id, cleanContact.id));
+                  }
+                } else {
+                  await tx.insert(emergencyContacts).values(buildContactPayload(cleanContact));
+                }
+              }
+            }
+            
+            // Handle tax forms
+            if (taxFormsData && Array.isArray(taxFormsData)) {
+              for (const form of taxFormsData) {
+                const formWithStringDates = convertDatesToStrings(form);
+                const sanitizedForm = sanitizeDateFields(formWithStringDates);
+                const isTemporaryId = sanitizedForm.id && 
+                  typeof sanitizedForm.id === 'number' && 
+                  sanitizedForm.id > 1000000000000;
+                
+                if (sanitizedForm.id && !isTemporaryId) {
+                  const existing = existingTaxForms.find(e => e.id === sanitizedForm.id);
+                  if (!existing) {
+                    const { id, ...newForm } = sanitizedForm;
+                    await tx.insert(taxForms).values({ ...newForm, employeeId } as any);
+                  } else {
+                    await tx.update(taxForms).set({ ...sanitizedForm, employeeId } as any)
+                      .where(eq(taxForms.id, sanitizedForm.id));
+                  }
+                } else {
+                  const { id, ...newForm } = sanitizedForm;
+                  await tx.insert(taxForms).values({ ...newForm, employeeId } as any);
+                }
+              }
+            }
+            
+            // Handle trainings
+            if (trainingsData && Array.isArray(trainingsData)) {
+              for (const training of trainingsData) {
+                const trainingWithStringDates = convertDatesToStrings(training);
+                const sanitizedTraining = sanitizeDateFields(trainingWithStringDates);
+                const isTemporaryId = sanitizedTraining.id && 
+                  typeof sanitizedTraining.id === 'number' && 
+                  sanitizedTraining.id > 1000000000000;
+                
+                if (sanitizedTraining.id && !isTemporaryId) {
+                  const existing = existingTrainings.find(e => e.id === sanitizedTraining.id);
+                  if (!existing) {
+                    const { id, ...newTraining } = sanitizedTraining;
+                    await tx.insert(trainings).values({ ...newTraining, employeeId } as any);
+                  } else {
+                    await tx.update(trainings).set({ ...sanitizedTraining, employeeId } as any)
+                      .where(eq(trainings.id, sanitizedTraining.id));
+                  }
+                } else {
+                  const { id, ...newTraining } = sanitizedTraining;
+                  await tx.insert(trainings).values({ ...newTraining, employeeId } as any);
+                }
+              }
+            }
+            
+            // Handle payer enrollments
+            if (payerEnrollmentsData && Array.isArray(payerEnrollmentsData)) {
+              for (const enrollment of payerEnrollmentsData) {
+                const enrollmentWithStringDates = convertDatesToStrings(enrollment);
+                const sanitizedEnrollment = sanitizeDateFields(enrollmentWithStringDates);
+                const { providerId, enrollmentStatus, ...cleanEnrollment } = sanitizedEnrollment as any;
+                if (!cleanEnrollment.enrollmentId && providerId) {
+                  cleanEnrollment.enrollmentId = providerId;
+                }
+                if (!cleanEnrollment.status && enrollmentStatus) {
+                  cleanEnrollment.status = enrollmentStatus;
+                }
+                const isTemporaryId = cleanEnrollment.id && 
+                  typeof cleanEnrollment.id === 'number' && 
+                  cleanEnrollment.id > 1000000000000;
+                
+                if (cleanEnrollment.id && typeof cleanEnrollment.id === 'number' && !isTemporaryId) {
+                  const existing = existingPayerEnrollments.find(e => e.id === cleanEnrollment.id);
+                  if (!existing) {
+                    const { id, ...insertData } = cleanEnrollment;
+                    await tx.insert(payerEnrollments).values({ ...insertData, employeeId } as any);
+                  } else {
+                    await tx.update(payerEnrollments).set({ ...cleanEnrollment, employeeId } as any)
+                      .where(eq(payerEnrollments.id, cleanEnrollment.id));
+                  }
+                } else {
+                  const { id, ...insertData } = cleanEnrollment;
+                  await tx.insert(payerEnrollments).values({ ...insertData, employeeId } as any);
+                }
+              }
+            }
+
+            if (incidentLogsDataExisting && Array.isArray(incidentLogsDataExisting)) {
+              for (const incident of incidentLogsDataExisting) {
+                const incidentWithStringDates = convertDatesToStrings(incident);
+                const sanitizedIncident = sanitizeDateFields(incidentWithStringDates);
+                const isTemporaryId = sanitizedIncident.id &&
+                  typeof sanitizedIncident.id === 'number' &&
+                  sanitizedIncident.id > 1000000000000;
+
+                if (sanitizedIncident.id && typeof sanitizedIncident.id === 'number' && !isTemporaryId) {
+                  const existing = existingIncidentLogs.find(e => e.id === sanitizedIncident.id);
+                  if (!existing) {
+                    const { id, ...insertData } = sanitizedIncident;
+                    await tx.insert(incidentLogs).values({ ...insertData, employeeId } as any);
+                  } else {
+                    await tx.update(incidentLogs).set({ ...sanitizedIncident, employeeId } as any)
+                      .where(eq(incidentLogs.id, sanitizedIncident.id));
+                  }
+                } else {
+                  const { id, ...insertData } = sanitizedIncident;
+                  await tx.insert(incidentLogs).values({ ...insertData, employeeId } as any);
+                }
+              }
+            }
+            
+            console.log('[save-draft PUT] All related entities processed successfully');
+          } catch (relatedError) {
+            console.error('[save-draft PUT] Error processing related entities:', relatedError);
+            throw new Error(`Failed to save related entities: ${(relatedError as Error).message}`);
+          }
+        });
+        
+        console.log('[save-draft PUT] Transaction completed successfully for employeeId:', employeeId);
+        
+        // Log audit trail
+        await logAudit(req, employeeId, employeeId, { 
+          action: 'onboarding_draft_updated',
+          timestamp: new Date().toISOString()
+        });
+        
+        // Return success response
+        res.json({ 
+          success: true,
+          message: 'Draft updated successfully',
+          employeeId,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error: any) {
+        console.error('[save-draft PUT] ERROR updating draft:', error);
+        console.error('[save-draft PUT] Error message:', error?.message);
+        console.error('[save-draft PUT] Error stack:', error?.stack);
+        
+        res.status(500).json({ 
+          success: false,
+          error: 'Failed to update draft',
+          message: error?.message || 'Unknown error occurred',
           timestamp: new Date().toISOString()
         });
       }
@@ -6916,8 +8324,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ...data,
             userId,
             status: 'pending_approval',
-            onboarding_completed_at: new Date() // Set completion timestamp
-          };
+            onboardingStatus: 'completed',
+            onboardingCompletedAt: new Date(),
+            onboarding_completed_at: new Date() // legacy field
+          } as any;
           
           // Log the data being sent to createEmployee
           console.log('[/api/onboarding/submit] Employee data for creation (including NPI):', {
@@ -6970,8 +8380,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const updateData = {
             ...data,
             status: 'pending_approval',
-            onboarding_completed_at: new Date() // Set completion timestamp
-          };
+            onboardingStatus: 'completed',
+            onboardingCompletedAt: new Date(),
+            onboarding_completed_at: new Date() // legacy field
+          } as any;
           
           // Log the data being sent to updateEmployee
           console.log('[/api/onboarding/submit] Employee data for update (including NPI):', {
@@ -8390,7 +9802,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/responsible-persons/by-employee/:employeeId - Get by employee
   app.get('/api/responsible-persons/by-employee/:employeeId',
     requireAuth,
-    validateId(),
+    validateParamId('employeeId'),
     handleValidationErrors,
     auditMiddleware('READ'),
     async (req: AuditRequest, res: Response) => {
@@ -9144,27 +10556,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/onboarding/document-uploads',
     requireAuth,
     requireRole(['prospective_employee']),
+    upload.single('file'),
     async (req: AuditRequest, res: Response) => {
       try {
-        // For onboarding, we store the upload info temporarily
-        // These will be linked to the employee record when onboarding is complete
-        const uploadData = {
-          ...req.body,
-          uploadedBy: req.user?.id,
-          status: 'pending',
-          uploadDate: new Date().toISOString()
+        // Check if file was uploaded
+        if (!req.file) {
+          return res.status(400).json({ 
+            error: 'Validation failed',
+            details: [{
+              type: 'field',
+              msg: 'File is required',
+              path: 'file',
+              location: 'body'
+            }]
+          });
+        }
+
+        // Check authentication
+        if (!req.user || !req.user.id) {
+          return res.status(401).json({ error: 'Authentication required' });
+        }
+
+        // Find employee by userId for onboarding
+        const existingEmployeeRows = await db
+          .select()
+          .from(employees)
+          .where(eq(employees.userId, req.user!.id));
+        const employee = existingEmployeeRows[0];
+
+        if (!employee) {
+          return res.status(404).json({ error: 'Employee record not found. Please complete initial onboarding steps first.' });
+        }
+
+        // Extract documentTypeId from form data
+        const documentTypeId = req.body.documentTypeId ? parseInt(req.body.documentTypeId) : undefined;
+        const documentTypeName = req.body.documentTypeName || req.file.originalname;
+
+        // Prepare upload data from file metadata
+        const uploadData: any = {
+          employeeId: employee.id,
+          documentTypeId,
+          fileName: req.file.originalname,
+          filePath: req.file.path || req.file.filename,
+          fileSize: req.file.size,
+          mimeType: req.file.mimetype,
+          status: 'pending'
         };
+
+        const upload = await storage.createEmployeeDocumentUpload(uploadData);
+        await logAudit(req, upload.id, null, upload);
         
-        // Here you would handle the actual file upload to S3 or local storage
-        // For now, we'll return a mock response
-        const result = {
-          id: Date.now(),
-          ...uploadData,
-          fileName: uploadData.fileName || uploadData.name || 'unknown',
-          fileUrl: `/uploads/temp/${uploadData.fileName || uploadData.name || 'unknown'}` // Mock URL
-        };
-        
-        res.status(201).json(result);
+        // Return upload record with file URL
+        res.status(201).json({
+          ...upload,
+          fileUrl: `/uploads/${req.file.filename}`,
+          documentTypeName
+        });
       } catch (error) {
         console.error('Error uploading onboarding document:', error);
         res.status(500).json({ error: 'Failed to upload onboarding document' });
@@ -9179,7 +10626,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/employees/:employeeId/document-uploads - Get all document uploads for an employee
   app.get('/api/employees/:employeeId/document-uploads',
     requireAuth,
-    validateId(),
+    validateParamId('employeeId'),
     handleValidationErrors,
     auditMiddleware('READ'),
     async (req: AuditRequest, res: Response) => {
@@ -9193,10 +10640,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
   );
+
+  // Back-compat: GET /api/employees/:id/document-uploads - Support legacy id param
+  app.get('/api/employees/:id/document-uploads',
+    requireAuth,
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.id);
+        const uploads = await storage.getEmployeeDocumentUploads(employeeId);
+        res.json(uploads);
+      } catch (error) {
+        console.error('Error fetching employee document uploads:', error);
+        res.status(500).json({ error: 'Failed to fetch employee document uploads' });
+      }
+    }
+  );
   
   // GET /api/employees/:employeeId/document-uploads/type/:typeId - Get uploads by type
   app.get('/api/employees/:employeeId/document-uploads/type/:typeId',
     requireAuth,
+    validateParamId('employeeId'),
+    validateParamId('typeId'),
     handleValidationErrors,
     auditMiddleware('READ'),
     async (req: AuditRequest, res: Response) => {
@@ -9215,25 +10682,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // POST /api/employees/:employeeId/document-uploads - Create new upload record
   app.post('/api/employees/:employeeId/document-uploads',
     requireAuth,
-    validateId(),
-    body('documentTypeId').optional().isInt().withMessage('documentTypeId must be an integer'),
-    body('fileName').notEmpty().isLength({ max: 255 }).withMessage('fileName is required and must be less than 255 characters'),
-    body('filePath').notEmpty().isLength({ max: 500 }).withMessage('filePath is required and must be less than 500 characters'),
-    body('fileSize').isInt({ min: 1 }).withMessage('fileSize must be a positive integer'),
-    body('mimeType').notEmpty().isLength({ max: 100 }).withMessage('mimeType is required and must be less than 100 characters'),
-    body('status').optional().isIn(['pending', 'approved', 'rejected']).withMessage('Invalid status'),
-    handleValidationErrors,
-    auditMiddleware('employee_document_uploads'),
+    upload.single('file'),
     async (req: AuditRequest, res: Response) => {
       try {
+        // Validate employeeId parameter
         const employeeId = parseInt(req.params.employeeId);
-        const uploadData = {
-          ...req.body,
-          employeeId
+        if (isNaN(employeeId) || employeeId < 1) {
+          return res.status(400).json({
+            error: 'Validation failed',
+            details: [{
+              type: 'field',
+              msg: 'Employee ID must be a positive integer',
+              path: 'employeeId',
+              location: 'params'
+            }]
+          });
+        }
+        
+        // Check if file was uploaded
+        if (!req.file) {
+          return res.status(400).json({ 
+            error: 'Validation failed',
+            details: [{
+              type: 'field',
+              msg: 'File is required',
+              path: 'file',
+              location: 'body'
+            }]
+          });
+        }
+
+        // Extract documentTypeId from form data
+        const documentTypeId = req.body.documentTypeId ? parseInt(req.body.documentTypeId) : undefined;
+        const documentTypeName = req.body.documentTypeName || req.file.originalname;
+
+        // Prepare upload data from file metadata
+        const uploadData: any = {
+          employeeId,
+          documentTypeId,
+          fileName: req.file.originalname,
+          filePath: req.file.path || req.file.filename,
+          fileSize: req.file.size,
+          mimeType: req.file.mimetype,
+          status: 'pending'
         };
+
         const upload = await storage.createEmployeeDocumentUpload(uploadData);
         await logAudit(req, upload.id, null, upload);
-        res.status(201).json(upload);
+        
+        // Return upload record with file URL
+        res.status(201).json({
+          ...upload,
+          fileUrl: `/uploads/${req.file.filename}`,
+          documentTypeName
+        });
       } catch (error) {
         console.error('Error creating employee document upload:', error);
         res.status(500).json({ error: 'Failed to create employee document upload' });
@@ -9304,8 +10806,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied. Employee access only." });
       }
 
-      // Get employee data for this user by matching work email with username
-      const employee = await storage.getEmployeeByWorkEmail(req.user.username);
+      // Resolve employee for current user: prefer userId, then email, then username
+      const allEmployees = await storage.getAllEmployees();
+      const normalize = (v: any) => (typeof v === 'string' ? v.trim().toLowerCase() : '');
+      const userId = req.user.id;
+      const email = normalize(req.user.email);
+      const username = normalize(req.user.username);
+
+      let employee = allEmployees.find((e: any) => e.userId === userId);
+      if (!employee && email) {
+        employee = allEmployees.find((e: any) => normalize(e.workEmail) === email);
+      }
+      if (!employee && username) {
+        employee = allEmployees.find((e: any) => normalize(e.workEmail) === username);
+      }
+
       if (!employee) {
         return res.status(404).json({ message: "Employee profile not found" });
       }
@@ -9328,6 +10843,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     employeeSelfServiceAuth,
     async (req: any, res: Response) => {
       try {
+        console.log("<<<<<<<req.employee>>>>>>>",req.employee);
+
         const employee = req.employee;
         
         // Decrypt sensitive fields before sending
