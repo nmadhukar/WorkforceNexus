@@ -43,7 +43,8 @@ import {
   validateClinicLicense,
   validateComplianceDocument,
   validateLicenseRenewal,
-  handleValidationErrors 
+  handleValidationErrors,
+  validateParamId 
 } from "./middleware/validation";
 import { 
   apiKeyAuth, 
@@ -9801,7 +9802,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/responsible-persons/by-employee/:employeeId - Get by employee
   app.get('/api/responsible-persons/by-employee/:employeeId',
     requireAuth,
-    validateId(),
+    validateParamId('employeeId'),
     handleValidationErrors,
     auditMiddleware('READ'),
     async (req: AuditRequest, res: Response) => {
@@ -10625,7 +10626,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/employees/:employeeId/document-uploads - Get all document uploads for an employee
   app.get('/api/employees/:employeeId/document-uploads',
     requireAuth,
-    validateId(),
+    validateParamId('employeeId'),
     handleValidationErrors,
     auditMiddleware('READ'),
     async (req: AuditRequest, res: Response) => {
@@ -10639,10 +10640,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
   );
+
+  // Back-compat: GET /api/employees/:id/document-uploads - Support legacy id param
+  app.get('/api/employees/:id/document-uploads',
+    requireAuth,
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.id);
+        const uploads = await storage.getEmployeeDocumentUploads(employeeId);
+        res.json(uploads);
+      } catch (error) {
+        console.error('Error fetching employee document uploads:', error);
+        res.status(500).json({ error: 'Failed to fetch employee document uploads' });
+      }
+    }
+  );
   
   // GET /api/employees/:employeeId/document-uploads/type/:typeId - Get uploads by type
   app.get('/api/employees/:employeeId/document-uploads/type/:typeId',
     requireAuth,
+    validateParamId('employeeId'),
+    validateParamId('typeId'),
     handleValidationErrors,
     auditMiddleware('READ'),
     async (req: AuditRequest, res: Response) => {
