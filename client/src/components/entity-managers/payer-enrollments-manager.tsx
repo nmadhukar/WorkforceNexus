@@ -18,10 +18,10 @@ import { Plus, Edit, Trash2, DollarSign } from "lucide-react";
 
 const enrollmentSchema = z.object({
   payerName: z.string().min(1, "Payer name is required"),
-  enrollmentStatus: z.string().optional(),
+  status: z.string().optional().default("active"),
   effectiveDate: z.string().optional(),
   terminationDate: z.string().optional(),
-  providerId: z.string().optional()
+  enrollmentId: z.string().optional()
 });
 
 type EnrollmentFormData = z.infer<typeof enrollmentSchema>;
@@ -36,28 +36,30 @@ export function PayerEnrollmentsManager({ employeeId }: PayerEnrollmentsManagerP
   const [deleteEnrollment, setDeleteEnrollment] = useState<any>(null);
   const { toast } = useToast();
 
-  const { data: enrollments = [], isLoading } = useQuery({
+  const { data, isLoading } = useQuery<any[]>({
     queryKey: ["/api/employees", employeeId, "payer-enrollments"],
     enabled: !!employeeId
   });
+  const enrollments = data ?? [];
 
   const form = useForm<EnrollmentFormData>({
     resolver: zodResolver(enrollmentSchema),
     defaultValues: {
       payerName: "",
-      enrollmentStatus: "active",
+      status: "active",
       effectiveDate: "",
       terminationDate: "",
-      providerId: ""
+      enrollmentId: "",
     }
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: EnrollmentFormData) =>
-      apiRequest(`/api/employees/${employeeId}/payer-enrollments`, {
-        method: "POST",
-        body: JSON.stringify(data)
-      }),
+    mutationFn: async (data: EnrollmentFormData) =>
+      await apiRequest(
+        "POST",
+        `/api/employees/${employeeId}/payer-enrollments`,
+        data,
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "payer-enrollments"] });
       toast({ title: "Payer enrollment added successfully" });
@@ -70,11 +72,12 @@ export function PayerEnrollmentsManager({ employeeId }: PayerEnrollmentsManagerP
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data: EnrollmentFormData) =>
-      apiRequest(`/api/payer-enrollments/${selectedEnrollment?.id}`, {
-        method: "PUT",
-        body: JSON.stringify(data)
-      }),
+    mutationFn: async (data: EnrollmentFormData) =>
+      await apiRequest(
+        "PUT",
+        `/api/payer-enrollments/${selectedEnrollment?.id}`,
+        data,
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "payer-enrollments"] });
       toast({ title: "Payer enrollment updated successfully" });
@@ -89,9 +92,10 @@ export function PayerEnrollmentsManager({ employeeId }: PayerEnrollmentsManagerP
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) =>
-      apiRequest(`/api/payer-enrollments/${id}`, {
-        method: "DELETE"
-      }),
+      apiRequest(
+        "DELETE",
+        `/api/payer-enrollments/${id}`,
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "payer-enrollments"] });
       toast({ title: "Payer enrollment deleted successfully" });
@@ -114,10 +118,10 @@ export function PayerEnrollmentsManager({ employeeId }: PayerEnrollmentsManagerP
     setSelectedEnrollment(enrollment);
     form.reset({
       payerName: enrollment.payerName || "",
-      enrollmentStatus: enrollment.enrollmentStatus || "active",
+      status: enrollment.status || "active",
       effectiveDate: enrollment.effectiveDate || "",
       terminationDate: enrollment.terminationDate || "",
-      providerId: enrollment.providerId || ""
+      enrollmentId: enrollment.enrollmentId || "",
     });
     setIsDialogOpen(true);
   };
@@ -186,8 +190,8 @@ export function PayerEnrollmentsManager({ employeeId }: PayerEnrollmentsManagerP
               {enrollments.map((enrollment: any) => (
                 <TableRow key={enrollment.id} data-testid={`row-enrollment-${enrollment.id}`}>
                   <TableCell>{enrollment.payerName}</TableCell>
-                  <TableCell>{enrollment.providerId || "-"}</TableCell>
-                  <TableCell>{getStatusBadge(enrollment.enrollmentStatus || "active")}</TableCell>
+                  <TableCell>{enrollment.enrollmentId || "-"}</TableCell>
+                  <TableCell>{getStatusBadge(enrollment.status || "active")}</TableCell>
                   <TableCell>{enrollment.effectiveDate || "-"}</TableCell>
                   <TableCell>{enrollment.terminationDate || "-"}</TableCell>
                   <TableCell className="text-right">
@@ -240,7 +244,7 @@ export function PayerEnrollmentsManager({ employeeId }: PayerEnrollmentsManagerP
 
               <FormField
                 control={form.control}
-                name="providerId"
+                name="enrollmentId"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Provider ID</FormLabel>
@@ -254,7 +258,7 @@ export function PayerEnrollmentsManager({ employeeId }: PayerEnrollmentsManagerP
 
               <FormField
                 control={form.control}
-                name="enrollmentStatus"
+                name="status"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Status</FormLabel>

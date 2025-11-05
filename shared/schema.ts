@@ -705,6 +705,26 @@ export const incidentLogs = pgTable("incident_logs", {
 });
 
 /**
+ * EMPLOYEE TASKS TABLE
+ * 
+ * Simple task tracking per employee with assignee linkage.
+ */
+export const employeeTasks = pgTable("employee_tasks", {
+  id: serial("id").primaryKey(),
+  employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }).notNull(),
+  name: varchar("name", { length: 200 }).notNull(),
+  description: text("description"),
+  dueDate: date("due_date"),
+  assigneeId: integer("assignee_id").references(() => employees.id, { onDelete: "set null" }),
+  assigneeName: varchar("assignee_name", { length: 150 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+}, (table) => ({
+  employeeIdx: index("idx_employee_tasks_employee").on(table.employeeId),
+  assigneeIdx: index("idx_employee_tasks_assignee").on(table.assigneeId)
+}));
+
+/**
  * AUDITS TABLE
  * 
  * Comprehensive audit logging system for all data changes.
@@ -1109,6 +1129,10 @@ export const incidentLogsRelations = relations(incidentLogs, ({ one }) => ({
   employee: one(employees, { fields: [incidentLogs.employeeId], references: [employees.id] })
 }));
 
+export const employeeTasksRelations = relations(employeeTasks, ({ one }) => ({
+  employee: one(employees, { fields: [employeeTasks.employeeId], references: [employees.id] })
+}));
+
 export const auditsRelations = relations(audits, ({ one }) => ({
   user: one(users, { fields: [audits.changedBy], references: [users.id] })
 }));
@@ -1231,6 +1255,9 @@ export const insertPayerEnrollmentSchema = createInsertSchema(payerEnrollments, 
   return true; // Allow if either date is missing
 }, { message: "Termination date cannot be before effective date", path: ["terminationDate"] });
 export const insertIncidentLogSchema = createInsertSchema(incidentLogs).omit({ id: true });
+export const insertEmployeeTaskSchema = createInsertSchema(employeeTasks, {
+  dueDate: z.coerce.date().nullable().optional()
+}).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAuditSchema = createInsertSchema(audits).omit({ id: true, changedAt: true });
 
 // Types
@@ -1262,6 +1289,8 @@ export type PayerEnrollment = typeof payerEnrollments.$inferSelect;
 export type InsertPayerEnrollment = z.infer<typeof insertPayerEnrollmentSchema>;
 export type IncidentLog = typeof incidentLogs.$inferSelect;
 export type InsertIncidentLog = z.infer<typeof insertIncidentLogSchema>;
+export type EmployeeTask = typeof employeeTasks.$inferSelect;
+export type InsertEmployeeTask = z.infer<typeof insertEmployeeTaskSchema>;
 export type Audit = typeof audits.$inferSelect;
 export type InsertAudit = z.infer<typeof insertAuditSchema>;
 

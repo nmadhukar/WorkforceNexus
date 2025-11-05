@@ -340,7 +340,7 @@ const __dirname = path.dirname(__filename);
  */
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  max:process.env.NODE_ENV === 'development'?1000:100 // limit each IP to 100 requests per windowMs
 });
 
 /**
@@ -349,7 +349,7 @@ const limiter = rateLimit({
  */
 const apiKeyLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 5, // limit each IP to 5 requests per hour
+  max: process.env.NODE_ENV === 'development' ? 100 : 5, // limit each IP to 5 requests per hour
   message: 'Too many API key requests, please try again later'
 });
 
@@ -359,7 +359,7 @@ const apiKeyLimiter = rateLimit({
  */
 const passwordResetLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 requests per windowMs
+  max: process.env.NODE_ENV === 'development' ? 100 : 5, // limit each IP to 5 requests per windowMs
   message: 'Too many password reset attempts, please try again later'
 });
 
@@ -1355,6 +1355,117 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
+  // Employee Tasks CRUD
+  app.get('/api/employees/:id/tasks',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('read:employees'),
+    validateId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.id);
+        const tasks = await storage.getEmployeeTasks(employeeId);
+        res.json({ tasks });
+      } catch (error) {
+        console.error('Error fetching employee tasks:', error);
+        res.status(500).json({ error: 'Failed to fetch tasks' });
+      }
+    }
+  );
+
+  app.post('/api/employees/:id/tasks',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:employees'),
+    requireRole(['admin','hr']),
+    validateId(),
+    auditMiddleware('employee_tasks'),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.id);
+        const { name, description, dueDate, assigneeId, assigneeName } = req.body || {};
+        if (!name) return res.status(400).json({ error: 'Task name is required' });
+
+        const created = await storage.createEmployeeTask({
+          employeeId,
+          name,
+          description: description || null,
+          dueDate: dueDate || null,
+          assigneeId: assigneeId || null,
+          assigneeName: assigneeName || null,
+        } as any);
+
+        await logAudit(req, created.id, null, created);
+        res.status(201).json(created);
+      } catch (error) {
+        console.error('Error creating employee task:', error);
+        res.status(500).json({ error: 'Failed to create task' });
+      }
+    }
+  );
+
+  app.patch('/api/employees/:id/tasks/:taskId',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:employees'),
+    requireRole(['admin','hr']),
+    validateId(),
+    auditMiddleware('employee_tasks'),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.id);
+        const taskId = parseInt(req.params.taskId);
+        if (isNaN(taskId)) return res.status(400).json({ error: 'Invalid task ID' });
+
+        const existing = (await storage.getEmployeeTasks(employeeId)).find(t => t.id === taskId);
+        if (!existing) return res.status(404).json({ error: 'Task not found' });
+
+        const { name, description, dueDate, assigneeId, assigneeName } = req.body || {};
+        const updated = await storage.updateEmployeeTask(taskId, {
+          name,
+          description,
+          dueDate: dueDate ?? undefined,
+          assigneeId,
+          assigneeName
+        } as any);
+        await logAudit(req, taskId, existing, updated);
+        res.json(updated);
+      } catch (error) {
+        console.error('Error updating employee task:', error);
+        res.status(500).json({ error: 'Failed to update task' });
+      }
+    }
+  );
+
+  app.delete('/api/employees/:id/tasks/:taskId',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:employees'),
+    requireRole(['admin','hr']),
+    validateId(),
+    auditMiddleware('employee_tasks'),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const employeeId = parseInt(req.params.id);
+        const taskId = parseInt(req.params.taskId);
+        if (isNaN(taskId)) return res.status(400).json({ error: 'Invalid task ID' });
+        const existing = (await storage.getEmployeeTasks(employeeId)).find(t => t.id === taskId);
+        if (!existing) return res.status(404).json({ error: 'Task not found' });
+
+        await storage.deleteEmployeeTask(taskId);
+        await logAudit(req, taskId, existing, null);
+        res.status(204).end();
+      } catch (error) {
+        console.error('Error deleting employee task:', error);
+        res.status(500).json({ error: 'Failed to delete task' });
+      }
+    }
+  );
+
   // Get current user's employee record
   app.get('/api/employees/current-user',
     requireAuth,
@@ -2290,11 +2401,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const limit = parseInt(req.query.limit as string) || 10;
         const offset = (page - 1) * limit;
         
+        // Support both single and multiple type filters (CSV or repeated params)
+        const typeParam = req.query.type as string | string[] | undefined;
+        let types: string[] | undefined;
+        if (Array.isArray(typeParam)) {
+          types = typeParam.flatMap(v => v.split(',')).map(v => v.trim()).filter(Boolean);
+        } else if (typeof typeParam === 'string') {
+          const trimmed = typeParam.trim();
+          types = trimmed ? trimmed.split(',').map(v => v.trim()).filter(Boolean) : undefined;
+        }
+
         const result = await storage.getDocuments({
           limit,
           offset,
           search: req.query.search as string,
-          type: req.query.type as string,
+          // Preserve backward compatibility if only a single type provided
+          type: !types || types.length !== 1 ? undefined : types[0],
+          types: types && types.length > 1 ? types : (types && types.length === 1 ? [types[0]] : undefined),
           employeeId: req.query.employeeId ? parseInt(req.query.employeeId as string) : undefined
         });
         

@@ -79,6 +79,7 @@ import { IncidentLogsManager } from "@/components/entity-managers/incident-logs-
 import { FormsManager } from "@/components/entity-managers/forms-manager";
 import { DocumentUploader } from "@/components/documents/DocumentUploader";
 import { DocumentList } from "@/components/documents/DocumentList";
+import { EmployeeTasks } from "@/components/tasks/EmployeeTasks";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -163,6 +164,7 @@ export default function EmployeeProfile() {
     enabled: !!employeeId,
   });
   
+
   // Radio button selections (default to 'no')
   const [approvalSelections, setApprovalSelections] = useState<Record<string, 'yes' | 'no'>>({
     cpiTraining: 'no',
@@ -1309,6 +1311,14 @@ export default function EmployeeProfile() {
                       <FileCheck className="w-4 h-4 mr-3 flex-shrink-0" />
                       <span className="text-left">Documents</span>
                     </TabsTrigger>
+                  <TabsTrigger 
+                    value="tasks"
+                    className="w-full justify-start data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-l-2 data-[state=active]:border-primary rounded-md h-10 px-3 hover:bg-muted/50 transition-colors"
+                    data-testid="tab-tasks"
+                  >
+                    <FileText className="w-4 h-4 mr-3 flex-shrink-0" />
+                    <span className="text-left">Tasks</span>
+                  </TabsTrigger>
                     <TabsTrigger 
                       value="checklist-documents"
                       className="w-full justify-start data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-l-2 data-[state=active]:border-primary rounded-md h-10 px-3 hover:bg-muted/50 transition-colors"
@@ -1388,6 +1398,10 @@ export default function EmployeeProfile() {
                       <DocumentUploader employeeId={employeeId} />
                       <DocumentList employeeId={employeeId} />
                     </div>
+                  </TabsContent>
+                  
+                  <TabsContent value="tasks" className="mt-0 animate-in fade-in-50 duration-300">
+                    <EmployeeTasks employeeId={employeeId} employeeName={`${employee.firstName} ${employee.lastName}`} />
                   </TabsContent>
                   
                   <TabsContent value="checklist-documents" className="mt-0 animate-in fade-in-50 duration-300">
