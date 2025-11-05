@@ -56,7 +56,7 @@ export default function Documents() {
   const { toast } = useToast();
   const [location, setLocation] = useLocation();
   const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useState<{ search: string; type: string | string[] }>({
     search: "",
     type: ""
   });
@@ -65,9 +65,13 @@ export default function Documents() {
   // Parse URL parameters for initial filter
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const typeFilter = params.get('type');
-    if (typeFilter) {
-      setFilters(prev => ({ ...prev, type: typeFilter }));
+    const typeFilters = params.getAll('type');
+    if (typeFilters && typeFilters.length > 1) {
+      setFilters(prev => ({ ...prev, type: typeFilters }));
+    } else if (typeFilters.length === 1) {
+      const single = typeFilters[0];
+      const parts = single.includes(',') ? single.split(',').map(s => s.trim()).filter(Boolean) : [];
+      setFilters(prev => ({ ...prev, type: parts.length > 0 ? parts : single }));
     }
   }, []);
 
@@ -79,12 +83,16 @@ export default function Documents() {
     queryKey: ["/api/documents", page, filters],
     queryFn: async ({ queryKey }) => {
       const [url, currentPage, currentFilters] = queryKey;
-      const params = new URLSearchParams({
-        page: String(currentPage),
-        limit: "10",
-        ...Object.fromEntries(
-          Object.entries(currentFilters as any).filter(([_, value]) => value)
-        )
+      const params = new URLSearchParams();
+      params.set('page', String(currentPage));
+      params.set('limit', '10');
+      Object.entries(currentFilters as any).forEach(([key, value]) => {
+        if (!value || (Array.isArray(value) && value.length === 0)) return;
+        if (Array.isArray(value)) {
+          value.forEach(v => params.append(key, String(v)));
+        } else {
+          params.set(key, String(value));
+        }
       });
       
       const res = await fetch(`${url}?${params}`, { credentials: "include" });
@@ -124,7 +132,7 @@ export default function Documents() {
    * @param {string} key - Filter property to update
    * @param {string} value - New filter value
    */
-  const handleFilterChange = (key: string, value: string) => {
+  const handleFilterChange = (key: string, value: string | string[]) => {
     setFilters(prev => ({ ...prev, [key]: value }));
     setPage(1);
   };
@@ -141,7 +149,7 @@ export default function Documents() {
    * Handles category card clicks to filter documents
    * @param {string} documentType - Document type to filter by
    */
-  const handleCardClick = (documentType: string) => {
+  const handleCardClick = (documentType: string | string[]) => {
     handleFilterChange('type', documentType);
   };
 
@@ -199,7 +207,7 @@ export default function Documents() {
           <Card 
             className="hover:shadow-md transition-shadow cursor-pointer" 
             data-testid="card-licenses"
-            onClick={() => handleCardClick('License')}
+            onClick={() => handleCardClick(['Medical License', 'DEA License', 'State License'])}
           >
             <CardContent className="p-6">
               <div className="flex items-center space-x-4">
@@ -220,7 +228,7 @@ export default function Documents() {
           <Card 
             className="hover:shadow-md transition-shadow cursor-pointer" 
             data-testid="card-certifications"
-            onClick={() => handleCardClick('Certification')}
+            onClick={() => handleCardClick(['Board Certification', 'Training Certificate'])}
           >
             <CardContent className="p-6">
               <div className="flex items-center space-x-4">
@@ -241,7 +249,7 @@ export default function Documents() {
           <Card 
             className="hover:shadow-md transition-shadow cursor-pointer" 
             data-testid="card-tax-forms"
-            onClick={() => handleCardClick('Tax')}
+            onClick={() => handleCardClick(['I-9 Form', 'W-4 Form'])}
           >
             <CardContent className="p-6">
               <div className="flex items-center space-x-4">
@@ -264,7 +272,7 @@ export default function Documents() {
           <Card 
             className="hover:shadow-md transition-shadow cursor-pointer" 
             data-testid="card-other"
-            onClick={() => handleCardClick('')}
+            onClick={() => handleCardClick(['Insurance Document', 'Other'])}
           >
             <CardContent className="p-6">
               <div className="flex items-center space-x-4">
@@ -298,15 +306,19 @@ export default function Documents() {
 
         {/* Search and Filters */}
         <SearchFilters
-          filters={filters}
+          filters={{ ...filters, type: Array.isArray(filters.type) ? "" : filters.type }}
           onFilterChange={handleFilterChange}
           filterOptions={{
             types: [
               { value: "", label: "All Types" },
-              { value: "License", label: "Licenses" },
-              { value: "Certification", label: "Certifications" },
-              { value: "Tax", label: "Tax Forms" },
-              { value: "Contract", label: "Contracts" },
+              { value: "Medical License", label: "Medical License" },
+              { value: "DEA License", label: "DEA License" },
+              { value: "Board Certification", label: "Board Certification" },
+              { value: "I-9 Form", label: "I-9 Form" },
+              { value: "W-4 Form", label: "W-4 Form" },
+              { value: "State License", label: "State License" },
+              { value: "Training Certificate", label: "Training Certificate" },
+              { value: "Insurance Document", label: "Insurance Document" },
               { value: "Other", label: "Other" }
             ]
           }}

@@ -32,6 +32,7 @@ import {
   trainings,
   payerEnrollments,
   incidentLogs,
+  employeeTasks,
   audits,
   apiKeys,
   apiKeyRotations,
@@ -72,6 +73,8 @@ import {
   type InsertPayerEnrollment,
   type IncidentLog,
   type InsertIncidentLog,
+  type EmployeeTask,
+  type InsertEmployeeTask,
   type Audit,
   type InsertAudit,
   type ApiKey,
@@ -114,7 +117,7 @@ import {
   type InsertEmployeeDocumentUpload
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, asc, like, and, or, lte, sql, count } from "drizzle-orm";
+import { eq, desc, asc, like, and, or, lte, sql, count, inArray } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 
@@ -385,6 +388,14 @@ export interface IStorage {
    * console.log('Employee and all related records deleted');
    */
   deleteEmployee(id: number): Promise<void>;
+
+  /**
+   * Employee Tasks CRUD
+   */
+  getEmployeeTasks(employeeId: number): Promise<EmployeeTask[]>;
+  createEmployeeTask(task: InsertEmployeeTask): Promise<EmployeeTask>;
+  updateEmployeeTask(id: number, task: Partial<InsertEmployeeTask>): Promise<EmployeeTask>;
+  deleteEmployeeTask(id: number): Promise<void>;
   
   /**
    * Employee Education Management
@@ -1714,10 +1725,11 @@ export class DatabaseStorage implements IStorage {
     limit?: number;
     offset?: number;
     search?: string;
-    type?: string;
+    type?: string; // single type backward compat
+    types?: string[]; // multiple types support
     employeeId?: number;
   }): Promise<{ documents: Document[]; total: number }> {
-    const { limit = 10, offset = 0, search, type, employeeId } = options || {};
+    const { limit = 10, offset = 0, search, type, types, employeeId } = options || {};
     
     let conditions = [];
     
@@ -1725,7 +1737,9 @@ export class DatabaseStorage implements IStorage {
       conditions.push(like(documents.documentType, `%${search}%`));
     }
     
-    if (type) {
+    if (types && types.length > 0) {
+      conditions.push(inArray(documents.documentType, types));
+    } else if (type) {
       conditions.push(eq(documents.documentType, type));
     }
     
@@ -1783,6 +1797,42 @@ export class DatabaseStorage implements IStorage {
       s3Count: s3Docs[0]?.count || 0,
       localCount: localDocs[0]?.count || 0
     };
+  }
+
+  // Employee Tasks
+  async getEmployeeTasks(employeeId: number): Promise<EmployeeTask[]> {
+    return await db.select()
+      .from(employeeTasks)
+      .where(eq(employeeTasks.employeeId, employeeId))
+      .orderBy(desc(employeeTasks.createdAt));
+  }
+
+  async createEmployeeTask(task: InsertEmployeeTask): Promise<EmployeeTask> {
+    const [created] = await db.insert(employeeTasks).values({
+      ...task,
+      // Normalize date to string (YYYY-MM-DD) if provided as Date
+      dueDate: task.dueDate && typeof task.dueDate !== 'string' ? (task.dueDate as unknown as Date).toISOString().slice(0,10) as any : (task.dueDate as any)
+    } as any).returning();
+    return created;
+  }
+
+  async updateEmployeeTask(id: number, task: Partial<InsertEmployeeTask>): Promise<EmployeeTask> {
+    const normalized: any = {
+      ...task,
+      updatedAt: new Date()
+    };
+    if (typeof task.dueDate !== 'undefined') {
+      normalized.dueDate = task.dueDate && typeof task.dueDate !== 'string' ? (task.dueDate as unknown as Date).toISOString().slice(0,10) : task.dueDate;
+    }
+    const [updated] = await db.update(employeeTasks)
+      .set(normalized as any)
+      .where(eq(employeeTasks.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteEmployeeTask(id: number): Promise<void> {
+    await db.delete(employeeTasks).where(eq(employeeTasks.id, id));
   }
   
   // Compliance Document operations

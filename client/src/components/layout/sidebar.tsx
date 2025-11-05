@@ -53,6 +53,24 @@ const allNavigationItems = [
     roles: ["admin", "hr", "employee"] 
   },
   { 
+    path: "/reports", 
+    label: "Reports", 
+    icon: BarChart2, 
+    roles: ["admin", "hr"] 
+  },
+  { 
+    path: "/audits", 
+    label: "Audits", 
+    icon: Shield, 
+    roles: ["admin", "hr"] 
+  },
+  { 
+    path: "/settings", 
+    label: "Settings", 
+    icon: Settings, 
+    roles: ["admin", "hr"] 
+  },
+  { 
     path: "/compliance", 
     label: "Compliance", 
     icon: Award,
@@ -95,24 +113,6 @@ const allNavigationItems = [
         roles: ["admin", "hr"] 
       }
     ]
-  },
-  { 
-    path: "/reports", 
-    label: "Reports", 
-    icon: BarChart2, 
-    roles: ["admin", "hr"] 
-  },
-  { 
-    path: "/audits", 
-    label: "Audits", 
-    icon: Shield, 
-    roles: ["admin", "hr"] 
-  },
-  { 
-    path: "/settings", 
-    label: "Settings", 
-    icon: Settings, 
-    roles: ["admin", "hr"] 
   }
 ];
 
