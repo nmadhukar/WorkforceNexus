@@ -66,7 +66,7 @@ export default function Reports() {
   const [selectedDays, setSelectedDays] = useState("30");
   const [filters, setFilters] = useState({
     search: "",
-    itemType: "",
+    type: "",
     priority: ""
   });
 
@@ -126,20 +126,38 @@ export default function Reports() {
    */
   const handleExportCSV = async (reportType: string) => {
     try {
-      const response = await fetch(`/api/export/${reportType}`, {
-        credentials: "include"
+      const query = reportType === 'expiring-items' ? `?days=${selectedDays}` : '';
+      const response = await fetch(`/api/export/${reportType}${query}`, {
+        credentials: "include",
+        headers: {
+          Accept: 'text/csv,application/octet-stream'
+        }
       });
-      
       if (!response.ok) {
         throw new Error("Failed to export data");
       }
-      
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('text/csv') && !contentType.includes('octet-stream')) {
+        const text = await response.text();
+        throw new Error(`Unexpected content-type: ${contentType}. Body preview: ${text.slice(0, 120)}...`);
+      }
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.style.display = 'none';
       a.href = url;
-      a.download = `${reportType}-${new Date().toISOString().split('T')[0]}.csv`;
+
+      const disposition = response.headers.get('content-disposition');
+      const fallbackName = `${reportType}-${new Date().toISOString().split('T')[0]}.csv`;
+      let filename = fallbackName;
+      if (disposition && disposition.includes('filename=')) {
+        const match = disposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+        if (match) {
+          filename = decodeURIComponent(match[1] || match[2]);
+        }
+      }
+
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -168,7 +186,7 @@ export default function Reports() {
         !item.licenseNumber.toLowerCase().includes(filters.search.toLowerCase())) {
       return false;
     }
-    if (filters.itemType && item.itemType !== filters.itemType) {
+    if (filters.type && item.itemType !== filters.type) {
       return false;
     }
     if (filters.priority) {
@@ -193,7 +211,7 @@ export default function Reports() {
         </div>
 
         {/* Report Types */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 gap-6">
           <Card 
             className={`hover:shadow-md transition-shadow cursor-pointer ${selectedReport === 'expiring' ? 'ring-2 ring-primary' : ''}`}
             data-testid="card-expiring-report"
@@ -278,7 +296,7 @@ export default function Reports() {
             </CardContent>
           </Card>
 
-          <Card 
+          {/* <Card 
             className={`hover:shadow-md transition-shadow cursor-pointer ${selectedReport === 'analytics' ? 'ring-2 ring-primary' : ''}`}
             data-testid="card-analytics-report"
             onClick={() => handleReportClick('analytics')}
@@ -306,7 +324,7 @@ export default function Reports() {
                 Export Report
               </Button>
             </CardContent>
-          </Card>
+          </Card> */}
         </div>
 
         {/* Report Display based on selected report */}
@@ -499,7 +517,7 @@ export default function Reports() {
         )}
 
         {/* Summary Stats */}
-        {stats && (
+        {/* {stats && (
           <Card>
             <CardHeader>
               <CardTitle>Summary Statistics</CardTitle>
@@ -533,7 +551,7 @@ export default function Reports() {
               </div>
             </CardContent>
           </Card>
-        )}
+        )} */}
       </div>
     </MainLayout>
   );
