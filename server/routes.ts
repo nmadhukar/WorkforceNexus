@@ -9428,6 +9428,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   // CSV Export routes
+  app.get('/api/export/expiring-items', 
+    requireAuth,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const days = parseInt(req.query.days as string) || 30;
+        const items = await storage.getExpiringItems(days);
+
+        const csvHeaders = 'Employee,Item Type,License/Cert Number,Expiration Date,Days Remaining\n';
+        const csvData = items.map(item => 
+          `"${item.employeeName}","${item.itemType}","${item.licenseNumber || ''}","${new Date(item.expirationDate).toISOString().split('T')[0]}","${item.daysRemaining}"`
+        ).join('\n');
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="expiring-items-${new Date().toISOString().split('T')[0]}.csv"`);
+        res.send(csvHeaders + csvData);
+      } catch (error) {
+        console.error('Error exporting expiring items:', error);
+        res.status(500).json({ error: 'Failed to export expiring items' });
+      }
+    }
+  );
+
   app.get('/api/export/employees', 
     requireAuth,
     async (req: AuditRequest, res: Response) => {
