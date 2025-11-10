@@ -76,9 +76,7 @@ export default function TasksDashboard() {
   // Complete task mutation
   const completeTaskMutation = useMutation({
     mutationFn: async (taskId: number) => {
-      return apiRequest(`/api/tasks/${taskId}/complete`, {
-        method: "PATCH"
-      });
+      return apiRequest("PATCH", `/api/tasks/${taskId}/complete`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks/dashboard"] });

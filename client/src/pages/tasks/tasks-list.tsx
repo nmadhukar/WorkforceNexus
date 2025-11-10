@@ -85,9 +85,7 @@ export default function TasksList() {
   // Complete task mutation
   const completeTaskMutation = useMutation({
     mutationFn: async (taskId: number) => {
-      return apiRequest(`/api/tasks/${taskId}/complete`, {
-        method: "PATCH"
-      });
+      return apiRequest("PATCH", `/api/tasks/${taskId}/complete`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
@@ -108,9 +106,7 @@ export default function TasksList() {
   // Delete task mutation
   const deleteTaskMutation = useMutation({
     mutationFn: async (taskId: number) => {
-      return apiRequest(`/api/tasks/${taskId}`, {
-        method: "DELETE"
-      });
+      return apiRequest("DELETE", `/api/tasks/${taskId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });

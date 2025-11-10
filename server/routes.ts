@@ -1578,7 +1578,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireAnyAuth,
     requirePermission('read:employees'),
     requireRole(['admin', 'hr']),
-    validateParamId(),
+    validateParamId('id'),
     handleValidationErrors,
     async (req: AuditRequest, res: Response) => {
       try {
@@ -1631,7 +1631,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         if (existingTasks.length === 0) {
           // Create sample tasks
-          const [employees, locations, users] = await Promise.all([
+          const [employees, locations, usersResult] = await Promise.all([
             storage.getAllEmployees(),
             storage.getAllLocations(),
             storage.getAllUsers()
@@ -1639,6 +1639,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           const firstEmployee = employees[0];
           const firstLocation = locations[0];
+          const users = usersResult.users; // Extract the users array from the result
           const hrUser = users.find(u => u.role === 'hr') || users[0];
 
           if (firstEmployee && firstLocation) {
@@ -1707,7 +1708,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireAnyAuth,
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']),
-    validateParamId(),
+    validateParamId('id'),
     auditMiddleware('tasks'),
     handleValidationErrors,
     async (req: AuditRequest, res: Response) => {
@@ -1742,7 +1743,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireAnyAuth,
     requirePermission('write:employees'),
     requireRole(['admin', 'hr', 'employee']),
-    validateParamId(),
+    validateParamId('id'),
     auditMiddleware('tasks'),
     handleValidationErrors,
     async (req: AuditRequest, res: Response) => {
@@ -1780,7 +1781,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireAnyAuth,
     requirePermission('write:employees'),
     requireRole(['admin', 'hr']),
-    validateParamId(),
+    validateParamId('id'),
     auditMiddleware('tasks'),
     handleValidationErrors,
     async (req: AuditRequest, res: Response) => {
@@ -1809,7 +1810,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireAnyAuth,
     requirePermission('write:employees'),
     requireRole(['admin', 'hr', 'employee']),
-    validateParamId(),
+    validateParamId('id'),
     handleValidationErrors,
     async (req: AuditRequest, res: Response) => {
       try {
@@ -1855,7 +1856,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireAnyAuth,
     requirePermission('read:employees'),
     requireRole(['admin', 'hr', 'employee']),
-    validateParamId(),
+    validateParamId('id'),
     handleValidationErrors,
     async (req: AuditRequest, res: Response) => {
       try {

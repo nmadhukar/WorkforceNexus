@@ -123,7 +123,7 @@ import {
   type InsertEmployeeDocumentUpload
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, asc, like, and, or, lte, sql, count, inArray } from "drizzle-orm";
+import { eq, desc, asc, like, and, or, lte, ne, sql, count, inArray } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 
@@ -1048,6 +1048,7 @@ export interface IStorage {
     status?: string;
     parentId?: number | null;
   }): Promise<{ locations: Location[]; total: number }>;
+  getAllLocations(): Promise<Location[]>;
   getLocation(id: number): Promise<Location | undefined>;
   createLocation(location: InsertLocation): Promise<Location>;
   updateLocation(id: number, location: Partial<InsertLocation>): Promise<Location>;
@@ -3166,6 +3167,12 @@ export class DatabaseStorage implements IStorage {
       locations: locationsList,
       total: totalResult?.count || 0
     };
+  }
+
+  async getAllLocations(): Promise<Location[]> {
+    return await db.select()
+      .from(locations)
+      .where(ne(locations.status, 'deleted'));
   }
   
   async getLocation(id: number): Promise<Location | undefined> {
