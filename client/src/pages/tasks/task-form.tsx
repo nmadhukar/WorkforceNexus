@@ -47,7 +47,7 @@ const taskFormSchema = z.object({
   priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
   status: z.enum(["open", "in_progress", "completed", "cancelled"]).default("open"),
   isRecurring: z.boolean().default(false),
-  recurringPattern: z.enum(["daily", "weekly", "monthly", "quarterly", "yearly"]).optional()
+  recurrencePattern: z.enum(["annual", "quarterly", "monthly", "weekly"]).optional()
 }).refine(data => {
   if (data.relatedType === "employee") {
     return data.relatedEmployeeId && data.relatedEmployeeId > 0;
@@ -93,7 +93,9 @@ export default function TaskForm() {
         credentials: "include"
       });
       if (!response.ok) throw new Error("Failed to fetch employees");
-      return response.json();
+      const data = await response.json();
+      // Handle paginated response
+      return data.employees || data;
     }
   });
 
@@ -105,22 +107,13 @@ export default function TaskForm() {
         credentials: "include"
       });
       if (!response.ok) throw new Error("Failed to fetch locations");
-      return response.json();
+      const data = await response.json();
+      // Handle array or paginated response
+      return Array.isArray(data) ? data : (data.locations || data);
     }
   });
 
-  // Fetch users for assignee dropdown
-  const { data: users = [] } = useQuery<User[]>({
-    queryKey: ["/api/admin/users"],
-    queryFn: async () => {
-      const response = await fetch("/api/admin/users", {
-        credentials: "include"
-      });
-      if (!response.ok) throw new Error("Failed to fetch users");
-      const data = await response.json();
-      return data.filter((u: User) => u.role === "admin" || u.role === "hr");
-    }
-  });
+  // Note: We don't need users anymore since tasks are assigned to employees
 
   // Fetch existing task if in edit mode
   const { data: existingTask, isLoading: isLoadingTask } = useQuery({
@@ -150,7 +143,7 @@ export default function TaskForm() {
       priority: "medium",
       status: "open",
       isRecurring: false,
-      recurringPattern: undefined
+      recurrencePattern: undefined
     }
   });
 
@@ -171,7 +164,7 @@ export default function TaskForm() {
         priority: existingTask.priority || "medium",
         status: existingTask.status || "open",
         isRecurring: existingTask.isRecurring || false,
-        recurringPattern: existingTask.recurringPattern || undefined
+        recurrencePattern: existingTask.recurrencePattern || undefined
       });
     }
   }, [existingTask, form]);
@@ -327,9 +320,9 @@ export default function TaskForm() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {users.map((user) => (
-                            <SelectItem key={user.id} value={user.id.toString()}>
-                              {user.username}
+                          {employees.map((employee) => (
+                            <SelectItem key={employee.id} value={employee.id.toString()}>
+                              {employee.firstName} {employee.lastName}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -545,7 +538,7 @@ export default function TaskForm() {
                 {form.watch("isRecurring") && (
                   <FormField
                     control={form.control}
-                    name="recurringPattern"
+                    name="recurrencePattern"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Recurring Pattern</FormLabel>
@@ -556,11 +549,10 @@ export default function TaskForm() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="daily">Daily</SelectItem>
                             <SelectItem value="weekly">Weekly</SelectItem>
                             <SelectItem value="monthly">Monthly</SelectItem>
                             <SelectItem value="quarterly">Quarterly</SelectItem>
-                            <SelectItem value="yearly">Yearly</SelectItem>
+                            <SelectItem value="annual">Annual</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
