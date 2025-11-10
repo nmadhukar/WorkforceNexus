@@ -705,7 +705,7 @@ export default function EmployeePortal() {
                   <Button 
                     size="sm"
                     variant="outline"
-                    onClick={() => setIsAddingContact(true)}
+                    onClick={() => setIsAddngContact(true)}
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Add Contact

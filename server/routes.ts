@@ -4785,21 +4785,176 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(404).json({ error: 'Template not found' });
         }
 
-        // Generate a submission ID (in a real implementation, this would come from DocuSeal API)
-        const submissionId = `sub_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        // Initialize DocuSeal service
+        const { docuSealService } = await import('./services/docusealService');
+        const initialized = await docuSealService.initialize();
+        if (!initialized) {
+          return res.status(503).json({ error: 'DocuSeal service is not configured' });
+        }
 
-        // Create form submission for employee (not linked to onboarding)
+        // Determine signer details
+        const signerEmail: string = req.body.signerEmail || employee.workEmail;
+        if (!signerEmail) {
+          return res.status(400).json({ error: 'Signer email is required' });
+        }
+
+        const signerName =
+          (employee.firstName && employee.lastName)
+            ? `${employee.firstName} ${employee.lastName}`
+            : signerEmail;
+
+        // Create DocuSeal submission (sends email invites when send_email = true)
+        const dsSubmission = await docuSealService.createSubmission({
+          template_id: template.templateId,
+          submitters: [
+            {
+              email: signerEmail,
+              name: signerName,
+              role: 'employee'
+            }
+          ],
+          send_email: true,
+          message: {
+            subject: 'Form Completion Required',
+            body: 'Please complete and sign this form at your earliest convenience.'
+          }
+        });
+
+        // Normalize DocuSeal response and validate submission id
+        const dsSubmissionId =
+          (dsSubmission as any)?.id ||
+          (dsSubmission as any)?.submission?.id ||
+          (dsSubmission as any)?.data?.id ||
+          (dsSubmission as any)?.data?.submission?.id ||
+          (dsSubmission as any)?.result?.id ||
+          (dsSubmission as any)?.uuid ||
+          (dsSubmission as any)?.submission_uuid ||
+          (dsSubmission as any)?.submission_id ||
+          (Array.isArray((dsSubmission as any)?.submissions) && (dsSubmission as any).submissions[0]?.id ? (dsSubmission as any).submissions[0]?.id : undefined);
+
+        if (!dsSubmissionId || typeof dsSubmissionId !== 'string') {
+          await logAudit(req, 4, null, {
+            action: 'docuseal_create_submission_invalid_response',
+            templateExternalId: template.templateId,
+            employeeId,
+            signerEmail,
+            dsResponseShape: dsSubmission ? Object.keys(dsSubmission as any).slice(0, 10) : [],
+            dsRawPreview: dsSubmission ? JSON.stringify(dsSubmission).slice(0, 500) : null
+          });
+          return res.status(502).json({
+            error: 'Invalid response from DocuSeal',
+            details: 'Missing submission id'
+          });
+        }
+
+        // Build metadata and signing URL for primary signer
+        const dsSubmitters =
+          (dsSubmission as any)?.submitters ||
+          (dsSubmission as any)?.submission?.submitters ||
+          (dsSubmission as any)?.data?.submitters ||
+          (dsSubmission as any)?.data?.submission?.submitters ||
+          [];
+
+        const signingUrls: Record<string, string> = {};
+        if (Array.isArray(dsSubmitters) && (dsSubmitters[0]?.slug || dsSubmitters[0]?.id)) {
+          const token = dsSubmitters[0]?.slug || dsSubmitters[0]?.id;
+          signingUrls.employee = `https://docuseal.com/s/${token}`;
+        }
+
+        // Persist form submission linked to DocuSeal submission
         const submission = await storage.createFormSubmission({
           employeeId,
-          templateId: template.id,  // Use numeric ID from docuseal_templates table
-          submissionId,
-          recipientEmail: req.body.signerEmail,
+          templateId: template.id,  // numeric ID from docuseal_templates table
+          submissionId: dsSubmissionId,
+          recipientEmail: signerEmail,
+          recipientName: signerName,
           status: 'sent',
+          documentsUrl: signingUrls.employee || null,
+          submissionData: { signingUrls },
           createdBy: req.user!.id
         });
 
+        // Optionally send our own email with the Sign-Now link (DocuSeal also emails)
+        try {
+          if (signingUrls.employee) {
+            const { mailtrapService } = await import('./services/mailtrapService');
+            const subject = `Action required: Sign "${template.name}"`;
+            const link = signingUrls.employee;
+            const bodyText = `Please complete and sign this form:\n\n${link}\n\nIf you have issues opening the link, copy and paste it into your browser.`;
+            const bodyHtml = `
+              <!DOCTYPE html>
+              <html lang="en">
+                <head>
+                  <meta charset="UTF-8" />
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                  <title>Action required: Sign "${template.name}"</title>
+                </head>
+                <body style="margin:0;padding:0;background:#F8FAFC;">
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#F8FAFC;padding:24px 0;">
+                    <tr>
+                      <td align="center">
+                        <table role="presentation" width="640" cellspacing="0" cellpadding="0" border="0" style="background:#ffffff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden;font-family:Inter,Segoe UI,Arial,sans-serif;color:#0F172A;">
+                          <tr>
+                            <td style="padding:0;">
+                              <div style="background:linear-gradient(135deg,#2563EB 0%,#1D4ED8 100%);padding:24px 28px;">
+                                <h1 style="margin:0;font-size:20px;line-height:28px;color:#ffffff;">Document Signing Request</h1>
+                                <p style="margin:6px 0 0 0;font-size:13px;line-height:18px;color:#DBEAFE;">HR Management System</p>
+                              </div>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="padding:24px 28px;">
+                              <p style="margin:0 0 12px 0;font-size:16px;line-height:24px;">Hello ${signerName},</p>
+                              <p style="margin:0 0 16px 0;font-size:15px;line-height:22px;">
+                                You have a document awaiting your signature:
+                                <strong>${template.name}</strong>
+                              </p>
+                              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:18px 0 8px 0;">
+                                <tr>
+                                  <td align="center" bgcolor="#2563EB" style="border-radius:8px;">
+                                    <a href="${link}" target="_blank" rel="noopener noreferrer"
+                                       style="display:inline-block;padding:12px 22px;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;border-radius:8px;background:#2563EB;">
+                                      Review & Sign
+                                    </a>
+                                  </td>
+                                </tr>
+                              </table>
+                              <p style="margin:12px 0 0 0;font-size:12px;line-height:18px;color:#6B7280;">
+                                If the button above does not work, copy and paste this link into your browser:
+                              </p>
+                              <p style="margin:6px 0 0 0;font-size:12px;line-height:18px;word-break:break-all;color:#1D4ED8;">
+                                <a href="${link}" target="_blank" rel="noopener noreferrer" style="color:#1D4ED8;text-decoration:underline;">${link}</a>
+                              </p>
+                              <hr style="border:none;border-top:1px solid #E5E7EB;margin:24px 0;" />
+                              <p style="margin:0;font-size:12px;line-height:18px;color:#64748B;">
+                                This request was generated by your organization’s HR Management System. 
+                                If you were not expecting this email, please contact your HR department.
+                              </p>
+                            </td>
+                          </tr>
+                        </table>
+                        <p style="margin:12px 0 0 0;font-size:11px;line-height:16px;color:#94A3B8;font-family:Inter,Segoe UI,Arial,sans-serif;">
+                          © ${new Date().getFullYear()} HR Management System
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+                </body>
+              </html>
+            `;
+            await mailtrapService.sendEmail({
+              to: signerEmail,
+              subject,
+              bodyText,
+              bodyHtml
+            });
+          }
+        } catch (notifyErr) {
+          console.error('Non-blocking: failed to send sign link email via Mailtrap:', notifyErr);
+        }
+
         await logAudit(req, 1, null, { 
-          formSent: submissionId, 
+          formSent: dsSubmissionId, 
           employeeId,
           templateId: req.body.templateId
         });
@@ -5177,6 +5332,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error('Error downloading form documents:', error);
         res.status(500).json({ error: 'Failed to download form documents' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/docuseal/webhook
+   * DocuSeal webhook endpoint to update submission status based on events
+   * Note: Signature verification can be added when a webhook secret is configured
+   */
+  app.post('/api/docuseal/webhook',
+    async (req: Express.Request, res: Response) => {
+      try {
+        const signature = (req.headers['x-docuseal-signature'] as string) || '';
+        const event = (req.body && (req.body as any).event) || '';
+        const data = (req.body && (req.body as any).data) || {};
+
+        if (!data || !data.id) {
+          return res.status(400).json({ success: false, error: 'Invalid webhook payload: missing data.id' });
+        }
+
+        // Initialize DocuSeal service and update status from DocuSeal API
+        const { docuSealService } = await import('./services/docusealService');
+        await docuSealService.initialize();
+
+        try {
+          await docuSealService.updateSubmissionStatus(data.id);
+        } catch (err) {
+          // Swallow errors to avoid retries storm; we can reprocess later via admin action
+          console.error('Webhook status update failed:', err);
+        }
+
+        // Best-effort audit log without blocking webhook ack
+        try {
+          await logAudit(req as any, 8, null, {
+            action: 'docuseal_webhook',
+            event,
+            submissionId: data.id,
+            signaturePresent: Boolean(signature)
+          });
+        } catch {}
+
+        return res.status(200).json({ success: true });
+      } catch (error) {
+        console.error('Error handling DocuSeal webhook:', error);
+        // Acknowledge with 200 to prevent repeated retries; include flag
+        return res.status(200).json({ success: false });
       }
     }
   );
