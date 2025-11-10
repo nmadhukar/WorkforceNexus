@@ -517,7 +517,7 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
     onError: (error: any) => {
       console.error('Error creating employee:', error);
       const errorMessage = error?.response?.data?.details
-        ? `Validation errors:\n${JSON.stringify(error.response.data.details, null, 2)}`
+        ? `Validation errors:\n${JSON.stringify(error.respose.data.details, null, 2)}`
         : error.message || 'Failed to create employee';
 
       toast({
@@ -950,7 +950,7 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : (isOnboarding ? employeeId : undefined)}
           allowFetch={!isOnboarding}
-          registerValidation={registerStepValidation}
+          registerValidation={registerStepValidation} 
           data-testid="step-incidents"
         />
       )

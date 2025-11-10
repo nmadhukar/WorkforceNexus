@@ -146,10 +146,12 @@ export function EmployeeDocumentsSubmission({
 
   // Calculate validation state for required documents
   const requiredDocumentsCount = requiredDocumentTypes.filter((dt: RequiredDocumentType) => dt.isRequired).length;
+  // Count a required document as uploaded if any matching upload exists.
+  // Avoid relying on server-specific status strings which may vary (e.g., "stored").
   const uploadedRequiredCount = requiredDocumentTypes
     .filter((dt: RequiredDocumentType) => dt.isRequired)
-    .filter((dt: RequiredDocumentType) => 
-      documentUploads.some(u => u.documentTypeId === dt.id && u.status === "uploaded")
+    .filter((dt: RequiredDocumentType) =>
+      documentUploads.some(u => u.documentTypeId === dt.id)
     ).length;
   
   const allRequiredDocumentsUploaded = requiredDocumentsCount > 0 && uploadedRequiredCount === requiredDocumentsCount;

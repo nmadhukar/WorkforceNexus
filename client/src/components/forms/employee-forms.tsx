@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -118,6 +118,7 @@ export function EmployeeForms({
   registerValidation
 }: EmployeeFormsProps) {
   const { toast } = useToast();
+  const watchersRef = useRef<Record<string, any>>({});
   const [selectedSubmission, setSelectedSubmission] = useState<SubmissionDetail | null>(null);
   const [submissionModalOpen, setSubmissionModalOpen] = useState(false);
   const [sendingForm, setSendingForm] = useState<string | null>(null);
@@ -135,6 +136,61 @@ export function EmployeeForms({
     enabled: canShowForms,
     retry: 2,
   });
+
+  // Helpers to manage optimistic status and background refresh
+  const getListKey = () => (onboardingId 
+    ? [`/api/onboarding/${onboardingId}/form-submissions`]
+    : [`/api/employees/${employeeId}/form-submissions`]);
+
+  const updateSubmissionCache = (localId: number | string, updates: Partial<FormSubmission>, signerEmail?: string) => {
+    const key = getListKey();
+    queryClient.setQueryData(key, (prev: any) => {
+      const previous: any[] = Array.isArray(prev) ? prev : [];
+      const idx = previous.findIndex(s => String(s.id) === String(localId));
+      if (idx < 0) return previous;
+      const current = previous[idx];
+      const next: any = { ...current, ...updates };
+      if (signerEmail && Array.isArray(current.signers) && current.signers.length > 0) {
+        next.signers = current.signers.map((sg: any) => 
+          (sg.email && sg.email.toLowerCase() === signerEmail.toLowerCase())
+            ? { ...sg, status: updates.status || sg.status, openedAt: updates.openedAt || sg.openedAt, completedAt: updates.completedAt || sg.completedAt, sentAt: updates.sentAt || sg.sentAt }
+            : sg
+        );
+      }
+      const clone = previous.slice();
+      clone[idx] = next;
+      return clone;
+    });
+  };
+
+  const updateStatusFromServer = async (localId: number | string) => {
+    try {
+      await apiRequest("POST", `/api/forms/submission/${localId}/update-status`);
+      refetchSubmissions();
+    } catch {}
+  };
+
+  const startSubmissionWatcher = (localId: number | string) => {
+    const key = String(localId);
+    if (watchersRef.current[key]) return;
+    let ticks = 0;
+    const interval = setInterval(async () => {
+      ticks += 1;
+      await updateStatusFromServer(localId);
+      if (ticks >= 12) {
+        clearInterval(interval);
+        delete watchersRef.current[key];
+      }
+    }, 10000);
+    watchersRef.current[key] = interval;
+  };
+
+  useEffect(() => {
+    return () => {
+      Object.values(watchersRef.current).forEach((i: any) => clearInterval(i));
+      watchersRef.current = {};
+    };
+  }, []);
 
   // Fetch form submissions for onboarding or employee
   const { 
@@ -174,6 +230,29 @@ export function EmployeeForms({
     }
   }, [submissions, requiredTemplates, data, onChange]);
 
+  // Helper: find the most relevant/latest submission for a template
+  const matchesTemplate = (tmpl: RequiredTemplate, row: FormSubmission) => {
+    // Match internal numeric id OR external DocuSeal templateId string
+    return (String((row as any).templateId) === String((tmpl as any).id)) ||
+           (String((row as any).templateId) === String((tmpl as any).templateId));
+  };
+
+  const pickLatestSubmission = (tmpl: RequiredTemplate) => {
+    const rows = submissions.filter(r => matchesTemplate(tmpl, r));
+    if (rows.length === 0) return undefined;
+    // Prefer non-pending status; then newest createdAt
+    const scored = rows.map(r => ({
+      row: r,
+      score: (r.status === 'completed' ? 3 : r.status === 'opened' ? 2 : r.status === 'sent' ? 1 : 0),
+      created: r.createdAt ? new Date(r.createdAt).getTime() : 0
+    }));
+    scored.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return b.created - a.created;
+    });
+    return scored[0].row;
+  };
+
   // Send form mutation
   const sendFormMutation = useMutation({
     mutationFn: async ({ templateId, email }: { templateId: string; email: string }) => {
@@ -187,13 +266,66 @@ export function EmployeeForms({
         ? `/api/onboarding/${onboardingId}/send-form`
         : `/api/employees/${employeeId}/send-form`;
       
-      return await apiRequest("POST", endpoint, {
+      const res = await apiRequest("POST", endpoint, {
         templateId,
         signerEmail: email,
         employeeId: employeeId || null
       });
+      const submission = await res.json();
+      return { submission, templateId, email };
     },
-    onSuccess: () => {
+    onSuccess: (payload) => {
+      // Optimistically mark the corresponding submission as "sent" in the cache
+      try {
+        const key = onboardingId 
+          ? [`/api/onboarding/${onboardingId}/form-submissions`]
+          : [`/api/employees/${employeeId}/form-submissions`];
+        
+        queryClient.setQueryData(key, (prev: any) => {
+          const previous: any[] = Array.isArray(prev) ? prev : [];
+          const newSubmission = payload?.submission;
+          
+          if (!newSubmission) return previous;
+          
+          const updated: any = {
+            id: newSubmission.id,
+            templateId: newSubmission.templateId,
+            submissionId: newSubmission.submissionId,
+            status: 'sent',
+            signerEmail: payload?.email || newSubmission.recipientEmail,
+            employeeId: newSubmission.employeeId,
+            sentAt: new Date().toISOString(),
+            openedAt: null,
+            completedAt: null,
+            createdAt: newSubmission.createdAt || new Date().toISOString(),
+            signers: newSubmission.signers || []
+          };
+          
+          // Replace if same id exists, else prepend
+          const idx = previous.findIndex(s => s.id === updated.id);
+          if (idx >= 0) {
+            const clone = previous.slice();
+            clone[idx] = { ...previous[idx], ...updated };
+            return clone;
+          }
+          
+          // If an entry exists for same template without id (edge), update first match by templateId
+          const tIdx = previous.findIndex(s => s.templateId === updated.templateId);
+          if (tIdx >= 0) {
+            const clone = previous.slice();
+            clone[tIdx] = { ...previous[tIdx], ...updated };
+            return clone;
+          }
+          
+          return [updated, ...previous];
+        });
+
+        // Trigger server-side status fetch to populate timestamps
+        if (payload?.submission?.id) {
+          updateStatusFromServer(payload.submission.id);
+        }
+      } catch {}
+
       toast({
         title: "Form Sent",
         description: "The form has been sent successfully to the employee.",
@@ -211,6 +343,19 @@ export function EmployeeForms({
     },
   });
 
+  // Derive a UI status from a row; avoid showing "Pending" for stale/placeholder rows
+  const getDisplayStatus = (row?: FormSubmission): 'not_sent' | 'pending' | 'sent' | 'opened' | 'completed' => {
+    if (!row) return 'not_sent';
+    if (row.status === 'completed') return 'completed';
+    if (row.status === 'opened') return 'opened';
+    if (row.status === 'sent') return 'sent';
+    if (row.status === 'pending') {
+      // Only treat as pending if we actually attempted to send (have a sentAt)
+      return row.sentAt ? 'pending' : 'not_sent';
+    }
+    return 'not_sent';
+  };
+
   // Get signing URL mutation
   const getSigningUrlMutation = useMutation({
     mutationFn: async ({ submissionId, signerEmail }: { submissionId: string; signerEmail: string }) => {
@@ -227,6 +372,15 @@ export function EmployeeForms({
           title: "Opening Signing Page",
           description: "The document has been opened in a new tab for signing.",
         });
+        // Optimistically mark as "opened" and refresh from server
+        if (data.submissionId) {
+          updateSubmissionCache(String(data.submissionId), {
+            status: 'opened',
+            openedAt: new Date().toISOString()
+          }, data.signerEmail);
+          updateStatusFromServer(String(data.submissionId));
+          startSubmissionWatcher(String(data.submissionId));
+        }
       }
       setSubmissionModalOpen(false);
     },
@@ -298,6 +452,15 @@ export function EmployeeForms({
           </Badge>
         );
       case 'pending':
+        return (
+          <Badge 
+            className="bg-orange-100 text-orange-800 border-orange-200"
+            data-testid={testId}
+          >
+            <Clock className="w-3 h-3 mr-1" />
+            Pending
+          </Badge>
+        );
       default:
         return (
           <Badge 
@@ -401,7 +564,7 @@ export function EmployeeForms({
     const email = signerEmail || submission.signerEmail || data?.workEmail || data?.email || "";
     if (email) {
       getSigningUrlMutation.mutate({
-        submissionId: submission.submissionId,
+        submissionId: String(submission.id), // Backend expects local DB row id
         signerEmail: email,
       });
     }
@@ -409,7 +572,7 @@ export function EmployeeForms({
 
   const handleSignerReminder = (submission: FormSubmission, signerEmail: string) => {
     sendReminderMutation.mutate({
-      submissionId: submission.submissionId,
+      submissionId: String(submission.id), // Backend expects local DB row id
       signerEmail: signerEmail,
     });
   };
@@ -530,9 +693,10 @@ export function EmployeeForms({
               </Alert>
 
               {requiredTemplates.map((template) => {
-                const submission = submissions.find(s => s.templateId === template.templateId);
+                const submission = pickLatestSubmission(template);
                 const templateSigners = template.signers || [{ id: 'default', name: 'Employee', role: 'employee', required: true }];
                 const submissionSigners = submission?.signers || [];
+                const baseStatus = getDisplayStatus(submission);
                 
                 return (
                   <Card 
@@ -561,10 +725,10 @@ export function EmployeeForms({
                                 s => s.role === templateSigner.role || s.id === templateSigner.id
                               ) || submissionSigners[index];
                               
-                              const signerStatus = submissionSigner?.status || (submission ? 'pending' : 'pending');
+                              const signerStatus = (submissionSigner?.status as any) || baseStatus;
                               const signerEmail = submissionSigner?.email || 
                                                   (templateSigner.role === 'employee' ? (data?.workEmail || data?.email || '') : '');
-                              const canSignerSign = submissionSigner && ['sent', 'opened'].includes(signerStatus);
+                              const canSignerSign = ['sent', 'opened'].includes(signerStatus as any);
                               
                               return (
                                 <div 
@@ -679,10 +843,11 @@ export function EmployeeForms({
               </Alert>
 
               {requiredTemplates.map((template) => {
-                const submission = submissions.find(s => s.templateId === template.templateId);
+                const submission = pickLatestSubmission(template);
                 const isSending = sendingForm === template.templateId;
                 const templateSigners = template.signers || [{ id: 'default', name: 'Employee', role: 'employee', required: true }];
                 const submissionSigners = submission?.signers || [];
+                const baseStatus = getDisplayStatus(submission);
                 
                 return (
                   <Card 
@@ -711,7 +876,7 @@ export function EmployeeForms({
                                 s => s.role === templateSigner.role || s.id === templateSigner.id
                               ) || submissionSigners[index];
                               
-                              const signerStatus = submissionSigner?.status || (submission ? 'pending' : 'pending');
+                              const signerStatus = (submissionSigner?.status as any) || baseStatus;
                               const signerEmail = submissionSigner?.email || 
                                                   (templateSigner.role === 'employee' ? (data?.workEmail || data?.email || '') : '');
                               const isCompleted = signerStatus === 'completed';
@@ -769,7 +934,7 @@ export function EmployeeForms({
                                         </Button>
                                       ) : (
                                         <div className="flex gap-2">
-                                          {signerStatus !== 'pending' && signerEmail && (
+                                          {/* {signerStatus !== 'pending' && signerEmail && (
                                             <Button
                                               size="sm"
                                               variant="outline"
@@ -780,7 +945,7 @@ export function EmployeeForms({
                                               <RefreshCw className="h-4 w-4 mr-2" />
                                               Remind
                                             </Button>
-                                          )}
+                                          )} */}
                                           {signerEmail && (
                                             <Button
                                               size="sm"

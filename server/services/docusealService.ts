@@ -358,8 +358,109 @@ export class DocuSealService {
         throw new Error(`Failed to create submission: ${response.status} ${errorText}`);
       }
 
-      const submission = await response.json();
-      return submission;
+      const raw = await response.json();
+
+      // Extract submission id from a variety of possible shapes
+      let submissionId: string | undefined =
+        (raw && raw.id) ||
+        (raw && raw.uuid) ||
+        (raw && raw.submission_uuid) ||
+        (raw && raw.submission_id) ||
+        (raw && raw.submission && (raw.submission.id || raw.submission.uuid || raw.submission.submission_uuid)) ||
+        (raw && raw.data && (raw.data.id || raw.data.uuid || raw.data.submission_uuid)) ||
+        (raw && raw.data && raw.data.submission && (raw.data.submission.id || raw.data.submission.uuid || raw.data.submission.submission_uuid)) ||
+        (Array.isArray(raw?.submissions) && (raw.submissions[0]?.id || raw.submissions[0]?.uuid || raw.submissions[0]?.submission_uuid)) ||
+        undefined;
+
+      // Special-case: some DocuSeal responses return an array of submitters with submission_id
+      let submittersArrayFromRaw: any[] | null = null;
+      if (!submissionId && Array.isArray(raw) && raw.length > 0 && (raw[0]?.submission_id || raw[0]?.submission_uuid)) {
+        submissionId = String(raw[0].submission_uuid || raw[0].submission_id);
+        submittersArrayFromRaw = raw;
+      }
+
+      if (!submissionId) {
+        console.error("DocuSeal createSubmission: unexpected response shape", {
+          keys: raw ? Object.keys(raw) : [],
+          preview: raw ? JSON.stringify(raw).slice(0, 600) : null
+        });
+        throw new Error("DocuSeal createSubmission returned no submission id");
+      }
+
+      // Extract submitters from common locations
+      let submitters: DocuSealSubmitter[] =
+        (raw && raw.submitters) ||
+        (raw && raw.submission && raw.submission.submitters) ||
+        (raw && raw.data && raw.data.submitters) ||
+        (raw && raw.data && raw.data.submission && raw.data.submission.submitters) ||
+        (Array.isArray(raw?.submissions) && raw.submissions[0]?.submitters) ||
+        [];
+
+      // Normalize submitters so id is always a URL token (slug if available), and strings where needed
+      if (submittersArrayFromRaw) {
+        submitters = submittersArrayFromRaw.map((s: any) => ({
+          id: String(s.slug || s.id),
+          email: s.email,
+          name: s.name,
+          phone: s.phone || undefined,
+          status: s.status || 'sent',
+          sent_at: s.sent_at || undefined,
+          opened_at: s.opened_at || undefined,
+          completed_at: s.completed_at || undefined,
+          values: Array.isArray(s.values) ? {} : (s.values || {})
+        })) as DocuSealSubmitter[];
+      } else if (Array.isArray(submitters) && submitters.length > 0) {
+        submitters = submitters.map((s: any) => ({
+          id: String(s.slug || s.id),
+          email: s.email,
+          name: s.name,
+          phone: s.phone || undefined,
+          status: s.status || 'sent',
+          sent_at: s.sent_at || undefined,
+          opened_at: s.opened_at || undefined,
+          completed_at: s.completed_at || undefined,
+          values: Array.isArray(s.values) ? {} : (s.values || {})
+        })) as DocuSealSubmitter[];
+      }
+
+      // Build a normalized submission object so callers can rely on .id and .submitters
+      const normalized: DocuSealSubmission = {
+        id: submissionId,
+        template_id:
+          (raw && raw.template_id) ||
+          (raw && raw.submission && raw.submission.template_id) ||
+          (raw && raw.data && raw.data.template_id) ||
+          (raw && raw.data && raw.data.submission && raw.data.submission.template_id) ||
+          (Array.isArray(raw?.submissions) && raw.submissions[0]?.template_id) ||
+          (options.template_id as string),
+        status:
+          (raw && raw.status) ||
+          (raw && raw.submission && raw.submission.status) ||
+          (raw && raw.data && raw.data.status) ||
+          (raw && raw.data && raw.data.submission && raw.data.submission.status) ||
+          (Array.isArray(raw?.submissions) && raw.submissions[0]?.status) ||
+          'sent',
+        submitters: submitters as any,
+        created_at:
+          (raw && raw.created_at) ||
+          (raw && raw.submission && raw.submission.created_at) ||
+          (raw && raw.data && raw.data.created_at) ||
+          (raw && raw.data && raw.data.submission && raw.data.submission.created_at) ||
+          (Array.isArray(raw?.submissions) && raw.submissions[0]?.created_at) ||
+          new Date().toISOString(),
+        completed_at:
+          (raw && raw.completed_at) ||
+          (raw && raw.submission && raw.submission.completed_at) ||
+          (raw && raw.data && raw.data.completed_at) ||
+          (raw && raw.data && raw.data.submission && raw.data.submission.completed_at),
+        documents_url:
+          (raw && raw.documents_url) ||
+          (raw && raw.submission && raw.submission.documents_url) ||
+          (raw && raw.data && raw.data.documents_url) ||
+          (raw && raw.data && raw.data.submission && raw.data.submission.documents_url)
+      } as DocuSealSubmission;
+
+      return normalized;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       console.error("Failed to create DocuSeal submission:", {
@@ -598,18 +699,20 @@ export class DocuSealService {
       if (apiSubmission.submitters) {
         // Employee signing URL (first submitter)
         if (apiSubmission.submitters[0]) {
-          metadata.signingUrls.employee = `https://docuseal.co/s/${apiSubmission.submitters[0].id}`;
+          const employeeToken = (apiSubmission.submitters[0] as any).slug || apiSubmission.submitters[0].id;
+          metadata.signingUrls.employee = `https://docuseal.com/s/${employeeToken}`;
         }
         
         // HR signing URL (second submitter if exists)
         if (requiresHrSignature && apiSubmission.submitters[1]) {
-          metadata.signingUrls.hr = `https://docuseal.co/s/${apiSubmission.submitters[1].id}`;
+          const hrToken = (apiSubmission.submitters[1] as any).slug || apiSubmission.submitters[1].id;
+          metadata.signingUrls.hr = `https://docuseal.com/s/${hrToken}`;
         }
       }
 
       // Store the primary submission URL (for the employee)
       const submissionUrl = metadata.signingUrls.employee || 
-                          `https://docuseal.co/submissions/${apiSubmission.id}`;
+                          `https://docuseal.com/submissions/${apiSubmission.id}`;
 
       // Save submission to database with metadata
       // Validate employee has email before sending
@@ -789,9 +892,9 @@ export class DocuSealService {
         return null;
       }
 
-      // Generate signing URL based on submitter ID
-      // DocuSeal uses the pattern: https://docuseal.co/s/{submitter_id}
-      const signingUrl = `https://docuseal.co/s/${submitter.id}`;
+      // Prefer provider-provided embed_src, then slug token, then id as fallback
+      const token = (submitter as any).slug || submitter.id;
+      const signingUrl = (submitter as any).embed_src || `https://docuseal.com/s/${token}`;
       
       return signingUrl;
     } catch (error) {
