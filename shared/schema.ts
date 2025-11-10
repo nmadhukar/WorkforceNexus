@@ -723,7 +723,7 @@ export const tasks = pgTable("tasks", {
   relatedEmployeeId: integer("related_employee_id").references(() => employees.id),
   relatedLocationId: integer("related_location_id").references(() => locations.id),
   isRecurring: boolean("is_recurring").default(false).notNull(),
-  recurringPattern: varchar("recurring_pattern", { length: 50 }), // daily, weekly, monthly, quarterly, yearly
+  recurrencePattern: varchar("recurrence_pattern", { length: 50 }), // annual, quarterly, monthly, weekly
   completedAt: timestamp("completed_at"),
   completedById: integer("completed_by_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),

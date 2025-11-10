@@ -180,17 +180,9 @@ export default function TaskForm() {
       delete (payload as any).relatedType;
 
       if (isEditMode) {
-        return apiRequest(`/api/tasks/${id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
+        return apiRequest("PUT", `/api/tasks/${id}`, payload);
       } else {
-        return apiRequest("/api/tasks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
+        return apiRequest("POST", "/api/tasks", payload);
       }
     },
     onSuccess: () => {
