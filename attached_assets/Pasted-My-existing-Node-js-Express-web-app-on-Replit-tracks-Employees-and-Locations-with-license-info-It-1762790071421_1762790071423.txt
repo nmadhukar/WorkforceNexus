@@ -1,0 +1,81 @@
+My existing Node.js (Express) web app on Replit tracks Employees and Locations with license info. It uses Sequelize ORM with SQLite (or PostgreSQL if available), EJS templates (or Handlebars), and has routes like /employees, /locations, /dashboard, etc.
+
+Add a complete Task Management System with the following:
+
+### 1. New Sequelize Model: `Task`
+```js
+- id: INTEGER, primaryKey, autoIncrement
+- title: STRING(200), allowNull: false
+- description: TEXT
+- due_date: DATEONLY, allowNull: false
+- assigned_to_id: INTEGER, references Employee.id, allowNull: false  // employee assigned to do the task
+- related_employee_id: INTEGER, references Employee.id  // optional: task about this employee (e.g. annual review)
+- related_location_id: INTEGER, references Location.id   // optional: task about this location (e.g. fire inspection)
+- status: ENUM('open', 'in_progress', 'completed'), default: 'open'
+- created_at: DATE, default: now
+- updated_at: DATE, default: now on update
+- completed_at: DATE, nullable
+- created_by_id: INTEGER, references Employee.id, allowNull: false  // who created the task
+2. Associations
+
+Task belongsTo Employee (assigned_to), (related_employee), (created_by)
+Task belongsTo Location (related_location)
+Employee hasMany Tasks (as assigned tasks, related tasks, created tasks)
+Location hasMany Tasks
+
+3. New Routes (CRUD + Dashboard)
+
+GET /tasks → List all tasks (filterable by status, due date, employee, location)
+GET /tasks/new → Form to create task (dropdowns for assigned_to, related_employee, related_location)
+POST /tasks → Create task
+GET /tasks/:id → View single task
+GET /tasks/:id/edit → Edit form
+PUT /tasks/:id → Update task (including status change)
+DELETE /tasks/:id → Delete task
+PATCH /tasks/:id/complete → Quick complete action
+
+4. Dashboard Enhancements
+Update /dashboard (or create /tasks/dashboard) to show:
+
+"Tasks Due in Next 45 Days" card with count
+Table of upcoming tasks: Title, Due Date, Assigned To, Related (Employee/Location), Status, Days Left
+Filter: Show only 'open' or 'in_progress'
+Highlight overdue tasks in red, due <7 days in orange
+Links to view/edit each task
+
+5. Task Creation Form Logic
+
+User selects eitherrelated_employee OR related_location (not both required, but one encouraged)
+Example: "Annual Fire Inspection" → select Location, assign to Employee
+Example: "Annual Performance Review" → select Employee (as related), assign to Manager
+
+6. Status Updates
+
+When status → 'completed', auto-set completed_at = now
+Show completion date on task view
+
+7. UI/UX
+
+Add "Tasks" to main navbar
+Flash messages for create/update/complete
+Responsive table on mobile
+Use Bootstrap (if already in project) or Tailwind
+
+8. Seed Example (optional)
+Add 2 sample tasks:
+
+"Annual Fire Inspection - Downtown Office" → due in 30 days, assigned to John, related to Location
+"2025 Performance Review - Jane Doe" → due in 60 days, assigned to HR Manager, related to Employee
+
+Generate all necessary:
+
+Model file (models/Task.js)
+Migration file
+Routes (routes/tasks.js)
+Controller logic
+EJS templates: tasks/index, tasks/new, tasks/show, tasks/edit
+Update dashboard template
+Navbar update
+Any required middleware (auth if exists)
+
+Assume current user is available via req.user or req.session.user.
