@@ -81,6 +81,8 @@ import {
   trainings,
   payerEnrollments,
   incidentLogs,
+  tasks,
+  taskUpdates,
   insertEmployeeSchema,
   insertEducationSchema,
   insertEmploymentSchema,
@@ -92,7 +94,11 @@ import {
   insertTaxFormSchema,
   insertTrainingSchema,
   insertPayerEnrollmentSchema,
-  type Employee
+  insertTaskSchema,
+  insertTaskUpdateSchema,
+  type Employee,
+  type Task,
+  type TaskUpdate
 } from "@shared/schema";
 import { z } from "zod";
 import { eq, or, sql, count, and } from "drizzle-orm";
@@ -1462,6 +1468,419 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error('Error deleting employee task:', error);
         res.status(500).json({ error: 'Failed to delete task' });
+      }
+    }
+  );
+
+  // ============================================================
+  // COMPREHENSIVE TASK MANAGEMENT SYSTEM API ROUTES
+  // ============================================================
+
+  // GET /api/tasks - List all tasks with filters
+  app.get('/api/tasks',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('read:employees'),
+    requireRole(['admin', 'hr']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const { status, assignedTo, dueInDays, relatedEmployee, relatedLocation } = req.query;
+        
+        const filters: any = {};
+        if (status) filters.status = status as string;
+        if (assignedTo) filters.assignedToId = parseInt(assignedTo as string);
+        if (dueInDays) filters.daysAhead = parseInt(dueInDays as string);
+        if (relatedEmployee) filters.relatedEmployeeId = parseInt(relatedEmployee as string);
+        if (relatedLocation) filters.relatedLocationId = parseInt(relatedLocation as string);
+
+        const tasks = await storage.getTasks(filters);
+        
+        // Enhance tasks with related data
+        const enhancedTasks = await Promise.all(tasks.map(async (task) => {
+          const [assignedUser, relatedEmp, relatedLoc] = await Promise.all([
+            task.assignedToId ? storage.getUser(task.assignedToId) : null,
+            task.relatedEmployeeId ? storage.getEmployee(task.relatedEmployeeId) : null,
+            task.relatedLocationId ? storage.getLocation(task.relatedLocationId) : null
+          ]);
+
+          return {
+            ...task,
+            assignedToName: assignedUser ? assignedUser.username : null,
+            relatedEmployeeName: relatedEmp ? `${relatedEmp.firstName} ${relatedEmp.lastName}` : null,
+            relatedLocationName: relatedLoc ? relatedLoc.name : null,
+            isOverdue: new Date(task.dueDate) < new Date() && task.status !== 'completed',
+            daysUntilDue: Math.ceil((new Date(task.dueDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+          };
+        }));
+
+        res.json(enhancedTasks);
+      } catch (error) {
+        console.error('Error fetching tasks:', error);
+        res.status(500).json({ error: 'Failed to fetch tasks' });
+      }
+    }
+  );
+
+  // GET /api/tasks/dashboard - Get dashboard data
+  app.get('/api/tasks/dashboard',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('read:employees'),
+    requireRole(['admin', 'hr']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const tasks = await storage.getDueSoonTasks(45);
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const weekFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+        const monthFromNow = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+        const overdue = tasks.filter(t => new Date(t.dueDate) < today && t.status !== 'completed');
+        const dueThisWeek = tasks.filter(t => {
+          const due = new Date(t.dueDate);
+          return due >= today && due <= weekFromNow && t.status !== 'completed';
+        });
+        const dueThisMonth = tasks.filter(t => {
+          const due = new Date(t.dueDate);
+          return due > weekFromNow && due <= monthFromNow && t.status !== 'completed';
+        });
+        const dueLater = tasks.filter(t => {
+          const due = new Date(t.dueDate);
+          return due > monthFromNow && t.status !== 'completed';
+        });
+
+        const totalOpen = tasks.filter(t => t.status === 'open').length;
+
+        res.json({
+          summary: {
+            totalOpen,
+            overdue: overdue.length,
+            dueThisWeek: dueThisWeek.length,
+            dueThisMonth: dueThisMonth.length
+          },
+          tasks: {
+            overdue,
+            dueThisWeek,
+            dueThisMonth,
+            dueLater
+          }
+        });
+      } catch (error) {
+        console.error('Error fetching task dashboard:', error);
+        res.status(500).json({ error: 'Failed to fetch task dashboard' });
+      }
+    }
+  );
+
+  // GET /api/tasks/:id - Get single task details
+  app.get('/api/tasks/:id',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('read:employees'),
+    requireRole(['admin', 'hr']),
+    validateParamId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const taskId = parseInt(req.params.id);
+        const task = await storage.getTask(taskId);
+        
+        if (!task) {
+          return res.status(404).json({ error: 'Task not found' });
+        }
+
+        // Enhance with related data
+        const [assignedUser, relatedEmp, relatedLoc, updates] = await Promise.all([
+          task.assignedToId ? storage.getUser(task.assignedToId) : null,
+          task.relatedEmployeeId ? storage.getEmployee(task.relatedEmployeeId) : null,
+          task.relatedLocationId ? storage.getLocation(task.relatedLocationId) : null,
+          storage.getTaskUpdates(taskId)
+        ]);
+
+        res.json({
+          ...task,
+          assignedToName: assignedUser ? assignedUser.username : null,
+          relatedEmployeeName: relatedEmp ? `${relatedEmp.firstName} ${relatedEmp.lastName}` : null,
+          relatedLocationName: relatedLoc ? relatedLoc.name : null,
+          updates
+        });
+      } catch (error) {
+        console.error('Error fetching task:', error);
+        res.status(500).json({ error: 'Failed to fetch task' });
+      }
+    }
+  );
+
+  // POST /api/tasks - Create new task
+  app.post('/api/tasks',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:employees'),
+    requireRole(['admin', 'hr']),
+    auditMiddleware('tasks'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        // Validate the request body against the schema
+        const validatedData = insertTaskSchema.parse({
+          ...req.body,
+          createdById: req.user!.id
+        });
+
+        // Check if this is the first task and create samples if needed
+        const existingTasks = await storage.getTasks();
+        
+        if (existingTasks.length === 0) {
+          // Create sample tasks
+          const [employees, locations, users] = await Promise.all([
+            storage.getAllEmployees(),
+            storage.getAllLocations(),
+            storage.getAllUsers()
+          ]);
+
+          const firstEmployee = employees[0];
+          const firstLocation = locations[0];
+          const hrUser = users.find(u => u.role === 'hr') || users[0];
+
+          if (firstEmployee && firstLocation) {
+            const sampleTasks = [
+              {
+                title: "Annual Fire Inspection - Main Office",
+                description: "Complete annual fire safety inspection for main office location",
+                dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+                assignedToId: hrUser?.id || req.user!.id,
+                createdById: req.user!.id,
+                relatedLocationId: firstLocation.id,
+                category: "inspection" as const,
+                priority: "high" as const,
+                status: "open" as const
+              },
+              {
+                title: "2025 Performance Review - " + firstEmployee.firstName + " " + firstEmployee.lastName,
+                description: "Complete annual performance review for employee",
+                dueDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+                assignedToId: hrUser?.id || req.user!.id,
+                createdById: req.user!.id,
+                relatedEmployeeId: firstEmployee.id,
+                category: "review" as const,
+                priority: "medium" as const,
+                status: "open" as const
+              },
+              {
+                title: "OSHA Compliance Training",
+                description: "Complete mandatory OSHA compliance training for location",
+                dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+                assignedToId: hrUser?.id || req.user!.id,
+                createdById: req.user!.id,
+                relatedLocationId: firstLocation.id,
+                category: "compliance" as const,
+                priority: "urgent" as const,
+                status: "open" as const
+              }
+            ];
+
+            // Create sample tasks
+            await Promise.all(sampleTasks.map(task => storage.createTask(task)));
+          }
+        }
+
+        // Create the requested task
+        const newTask = await storage.createTask(validatedData);
+        await logAudit(req, newTask.id, null, newTask);
+
+        res.status(201).json(newTask);
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({ 
+            error: 'Validation error', 
+            details: error.errors 
+          });
+        }
+        console.error('Error creating task:', error);
+        res.status(500).json({ error: 'Failed to create task' });
+      }
+    }
+  );
+
+  // PUT /api/tasks/:id - Update task
+  app.put('/api/tasks/:id',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:employees'),
+    requireRole(['admin', 'hr']),
+    validateParamId(),
+    auditMiddleware('tasks'),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const taskId = parseInt(req.params.id);
+        const existing = await storage.getTask(taskId);
+        
+        if (!existing) {
+          return res.status(404).json({ error: 'Task not found' });
+        }
+
+        const updates = { ...req.body };
+        delete updates.id;
+        delete updates.createdAt;
+        delete updates.updatedAt;
+        delete updates.createdById;
+
+        const updated = await storage.updateTask(taskId, updates);
+        await logAudit(req, taskId, existing, updated);
+
+        res.json(updated);
+      } catch (error) {
+        console.error('Error updating task:', error);
+        res.status(500).json({ error: 'Failed to update task' });
+      }
+    }
+  );
+
+  // PATCH /api/tasks/:id/complete - Mark task as complete
+  app.patch('/api/tasks/:id/complete',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:employees'),
+    requireRole(['admin', 'hr', 'employee']),
+    validateParamId(),
+    auditMiddleware('tasks'),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const taskId = parseInt(req.params.id);
+        const existing = await storage.getTask(taskId);
+        
+        if (!existing) {
+          return res.status(404).json({ error: 'Task not found' });
+        }
+
+        const completed = await storage.completeTask(taskId, req.user!.id);
+        await logAudit(req, taskId, existing, completed);
+
+        // Add completion update
+        await storage.addTaskUpdate({
+          taskId,
+          userId: req.user!.id,
+          comment: "Task marked as complete",
+          previousStatus: existing.status,
+          newStatus: "completed"
+        });
+
+        res.json(completed);
+      } catch (error) {
+        console.error('Error completing task:', error);
+        res.status(500).json({ error: 'Failed to complete task' });
+      }
+    }
+  );
+
+  // DELETE /api/tasks/:id - Delete task
+  app.delete('/api/tasks/:id',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:employees'),
+    requireRole(['admin', 'hr']),
+    validateParamId(),
+    auditMiddleware('tasks'),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const taskId = parseInt(req.params.id);
+        const existing = await storage.getTask(taskId);
+        
+        if (!existing) {
+          return res.status(404).json({ error: 'Task not found' });
+        }
+
+        await storage.deleteTask(taskId);
+        await logAudit(req, taskId, existing, null);
+
+        res.status(204).end();
+      } catch (error) {
+        console.error('Error deleting task:', error);
+        res.status(500).json({ error: 'Failed to delete task' });
+      }
+    }
+  );
+
+  // POST /api/tasks/:id/update - Add comment/status update to task
+  app.post('/api/tasks/:id/update',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('write:employees'),
+    requireRole(['admin', 'hr', 'employee']),
+    validateParamId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const taskId = parseInt(req.params.id);
+        const task = await storage.getTask(taskId);
+        
+        if (!task) {
+          return res.status(404).json({ error: 'Task not found' });
+        }
+
+        const { comment, newStatus } = req.body;
+        
+        if (!comment && !newStatus) {
+          return res.status(400).json({ error: 'Either comment or newStatus is required' });
+        }
+
+        const updateData = {
+          taskId,
+          userId: req.user!.id,
+          comment: comment || `Status changed to ${newStatus}`,
+          previousStatus: newStatus ? task.status : undefined,
+          newStatus: newStatus || undefined
+        };
+
+        const update = await storage.addTaskUpdate(updateData);
+
+        // Update task status if changed
+        if (newStatus && newStatus !== task.status) {
+          await storage.updateTask(taskId, { status: newStatus });
+        }
+
+        res.status(201).json(update);
+      } catch (error) {
+        console.error('Error adding task update:', error);
+        res.status(500).json({ error: 'Failed to add task update' });
+      }
+    }
+  );
+
+  // GET /api/tasks/:id/updates - Get task update history
+  app.get('/api/tasks/:id/updates',
+    apiKeyAuth,
+    requireAnyAuth,
+    requirePermission('read:employees'),
+    requireRole(['admin', 'hr', 'employee']),
+    validateParamId(),
+    handleValidationErrors,
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const taskId = parseInt(req.params.id);
+        const task = await storage.getTask(taskId);
+        
+        if (!task) {
+          return res.status(404).json({ error: 'Task not found' });
+        }
+
+        const updates = await storage.getTaskUpdates(taskId);
+        
+        // Enhance updates with user names
+        const enhancedUpdates = await Promise.all(updates.map(async (update) => {
+          const user = await storage.getUser(update.userId);
+          return {
+            ...update,
+            userName: user ? user.username : 'Unknown'
+          };
+        }));
+
+        res.json(enhancedUpdates);
+      } catch (error) {
+        console.error('Error fetching task updates:', error);
+        res.status(500).json({ error: 'Failed to fetch task updates' });
       }
     }
   );

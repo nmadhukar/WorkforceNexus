@@ -705,9 +705,60 @@ export const incidentLogs = pgTable("incident_logs", {
 });
 
 /**
- * EMPLOYEE TASKS TABLE
+ * TASKS TABLE
+ * 
+ * Comprehensive task management system for HR staff with advanced tracking,
+ * assignments, priorities, and status management.
+ */
+export const tasks = pgTable("tasks", {
+  id: serial("id").primaryKey(),
+  title: varchar("title", { length: 200 }).notNull(),
+  description: text("description"),
+  dueDate: date("due_date").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("open"), // open, in_progress, completed, cancelled
+  priority: varchar("priority", { length: 20 }).notNull().default("medium"), // low, medium, high, urgent
+  category: varchar("category", { length: 50 }), // inspection, review, compliance, training, other
+  assignedToId: integer("assigned_to_id").references(() => users.id),
+  createdById: integer("created_by_id").references(() => users.id).notNull(),
+  relatedEmployeeId: integer("related_employee_id").references(() => employees.id),
+  relatedLocationId: integer("related_location_id").references(() => locations.id),
+  isRecurring: boolean("is_recurring").default(false).notNull(),
+  recurringPattern: varchar("recurring_pattern", { length: 50 }), // daily, weekly, monthly, quarterly, yearly
+  completedAt: timestamp("completed_at"),
+  completedById: integer("completed_by_id").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+}, (table) => ({
+  assignedToIdx: index("idx_tasks_assigned_to").on(table.assignedToId),
+  relatedEmployeeIdx: index("idx_tasks_related_employee").on(table.relatedEmployeeId),
+  relatedLocationIdx: index("idx_tasks_related_location").on(table.relatedLocationId),
+  dueDateIdx: index("idx_tasks_due_date").on(table.dueDate),
+  statusIdx: index("idx_tasks_status").on(table.status)
+}));
+
+/**
+ * TASK UPDATES TABLE
+ * 
+ * Tracks comments and status updates on tasks for communication
+ * and audit trail purposes.
+ */
+export const taskUpdates = pgTable("task_updates", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id").references(() => tasks.id, { onDelete: "cascade" }).notNull(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  comment: text("comment").notNull(),
+  previousStatus: varchar("previous_status", { length: 20 }),
+  newStatus: varchar("new_status", { length: 20 }),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+}, (table) => ({
+  taskIdx: index("idx_task_updates_task").on(table.taskId)
+}));
+
+/**
+ * EMPLOYEE TASKS TABLE (DEPRECATED - kept for backward compatibility)
  * 
  * Simple task tracking per employee with assignee linkage.
+ * NOTE: This table is deprecated. Use the new tasks table instead.
  */
 export const employeeTasks = pgTable("employee_tasks", {
   id: serial("id").primaryKey(),
@@ -1255,6 +1306,10 @@ export const insertPayerEnrollmentSchema = createInsertSchema(payerEnrollments, 
   return true; // Allow if either date is missing
 }, { message: "Termination date cannot be before effective date", path: ["terminationDate"] });
 export const insertIncidentLogSchema = createInsertSchema(incidentLogs).omit({ id: true });
+export const insertTaskSchema = createInsertSchema(tasks, {
+  dueDate: z.coerce.date()
+}).omit({ id: true, createdAt: true, updatedAt: true, completedAt: true, completedById: true });
+export const insertTaskUpdateSchema = createInsertSchema(taskUpdates).omit({ id: true, createdAt: true });
 export const insertEmployeeTaskSchema = createInsertSchema(employeeTasks, {
   dueDate: z.coerce.date().nullable().optional()
 }).omit({ id: true, createdAt: true, updatedAt: true });
@@ -1289,6 +1344,10 @@ export type PayerEnrollment = typeof payerEnrollments.$inferSelect;
 export type InsertPayerEnrollment = z.infer<typeof insertPayerEnrollmentSchema>;
 export type IncidentLog = typeof incidentLogs.$inferSelect;
 export type InsertIncidentLog = z.infer<typeof insertIncidentLogSchema>;
+export type Task = typeof tasks.$inferSelect;
+export type InsertTask = z.infer<typeof insertTaskSchema>;
+export type TaskUpdate = typeof taskUpdates.$inferSelect;
+export type InsertTaskUpdate = z.infer<typeof insertTaskUpdateSchema>;
 export type EmployeeTask = typeof employeeTasks.$inferSelect;
 export type InsertEmployeeTask = z.infer<typeof insertEmployeeTaskSchema>;
 export type Audit = typeof audits.$inferSelect;
@@ -1747,3 +1806,6 @@ export const insertEmployeeApprovalChecklistSchema = createInsertSchema(employee
 // Types for employee approval checklists
 export type EmployeeApprovalChecklist = typeof employeeApprovalChecklists.$inferSelect;
 export type InsertEmployeeApprovalChecklist = z.infer<typeof insertEmployeeApprovalChecklistSchema>;
+
+// Remove duplicate task tables - these are already defined above
+// Insert schemas and types for new tasks table are already included in the main type definitions section

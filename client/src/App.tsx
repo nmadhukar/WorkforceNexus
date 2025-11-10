@@ -27,6 +27,9 @@ import LicenseTypesPage from "@/pages/compliance/license-types";
 import ResponsiblePersonsPage from "@/pages/compliance/responsible-persons";
 import ComplianceDocumentsPage from "@/pages/compliance/compliance-documents";
 import ComplianceDashboard from "@/pages/compliance/compliance-dashboard";
+import TasksList from "@/pages/tasks/tasks-list";
+import TaskForm from "@/pages/tasks/task-form";
+import TasksDashboard from "@/pages/tasks/tasks-dashboard";
 import { DateValidationTest } from "./test-date-validation";
 
 function Router() {
@@ -36,8 +39,8 @@ function Router() {
       <ProtectedRoute path="/onboarding" component={OnboardingPage} />
       <ProtectedRoute path="/employee-portal" component={EmployeePortal} />
       {/* More specific routes must come before less specific ones */}
-      <ProtectedRoute path="/employees/new" component={EmployeeForm} />
-      <ProtectedRoute path="/employees/:id/edit" component={EmployeeForm} />
+      <ProtectedRoute path="/employees/new" component={() => <EmployeeForm />} />
+      <ProtectedRoute path="/employees/:id/edit" component={() => <EmployeeForm />} />
       <ProtectedRoute path="/employees/:id" component={EmployeeProfile} />
       <ProtectedRoute path="/employees" component={EmployeesList} />
       <ProtectedRoute path="/documents" component={Documents} />
@@ -49,6 +52,10 @@ function Router() {
       <ProtectedRoute path="/responsible-persons" component={ResponsiblePersonsPage} />
       <ProtectedRoute path="/compliance-documents" component={ComplianceDocumentsPage} />
       <ProtectedRoute path="/compliance-dashboard" component={ComplianceDashboard} />
+      <ProtectedRoute path="/tasks/new" component={TaskForm} />
+      <ProtectedRoute path="/tasks/:id/edit" component={TaskForm} />
+      <ProtectedRoute path="/tasks/dashboard" component={TasksDashboard} />
+      <ProtectedRoute path="/tasks" component={TasksList} />
       <ProtectedRoute path="/settings" component={Settings} />
       <ProtectedRoute path="/settings/api-keys" component={ApiKeysPage} />
       <ProtectedRoute path="/settings/users" component={UsersManagement} />

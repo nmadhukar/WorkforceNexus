@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { MainLayout } from "@/components/layout/main-layout";
 import { useAuth } from "@/hooks/use-auth";
-import { Users, UserCheck, AlertTriangle, UserPlus, Download, Upload, TrendingUp, Award, Clock, FileText, AlertCircle, CheckCircle, Building2, ClipboardList, User, Lock, Calendar } from "lucide-react";
+import { Users, UserCheck, AlertTriangle, UserPlus, Download, Upload, TrendingUp, Award, Clock, FileText, AlertCircle, CheckCircle, Building2, ClipboardList, User, Lock, Calendar, CheckSquare, ArrowRight } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
 
@@ -117,6 +117,23 @@ export default function Dashboard() {
   const { data: complianceAlerts = [] } = useQuery<ComplianceAlert[]>({
     queryKey: ["/api/compliance/alerts"],
     enabled: shouldFetchAdminData
+  });
+
+  // Fetch tasks due soon for the widget
+  const { data: tasksDueSoon, isLoading: isTasksLoading } = useQuery({
+    queryKey: ["/api/tasks", { dueInDays: 7 }],
+    enabled: shouldFetchAdminData,
+    queryFn: async () => {
+      const response = await fetch("/api/tasks?dueInDays=7", {
+        credentials: "include"
+      });
+      if (!response.ok) throw new Error("Failed to fetch tasks");
+      const tasks = await response.json();
+      return {
+        count: tasks.filter((t: any) => t.status !== "completed").length,
+        tasks: tasks.filter((t: any) => t.status !== "completed").slice(0, 5)
+      };
+    }
   });
 
   // Calculate compliance score
@@ -583,6 +600,79 @@ export default function Dashboard() {
                   </Button>
                 </Link>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Tasks Widget */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckSquare className="w-5 h-5" />
+                  <span>Tasks Due Soon</span>
+                </div>
+                <Link href="/tasks/dashboard">
+                  <Button variant="outline" size="sm" data-testid="button-view-all-tasks">
+                    View All
+                  </Button>
+                </Link>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isTasksLoading ? (
+                <div className="text-center py-4">Loading tasks...</div>
+              ) : (
+                <>
+                  <div className="mb-4 p-4 bg-muted rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Tasks Due in 7 Days</p>
+                        <p className="text-3xl font-bold">{tasksDueSoon?.count || 0}</p>
+                      </div>
+                      <Clock className="w-8 h-8 text-muted-foreground" />
+                    </div>
+                  </div>
+
+                  {tasksDueSoon?.tasks && tasksDueSoon.tasks.length > 0 ? (
+                    <div className="space-y-3">
+                      <p className="text-sm font-medium">Upcoming Tasks</p>
+                      {tasksDueSoon.tasks.slice(0, 5).map((task: any) => (
+                        <div key={task.id} className="flex items-start justify-between p-3 border rounded-lg hover:bg-muted/50">
+                          <div className="flex-1">
+                            <p className="font-medium text-sm">{task.title}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Calendar className="w-3 h-3 text-muted-foreground" />
+                              <span className="text-xs text-muted-foreground">
+                                Due {new Date(task.dueDate).toLocaleDateString()}
+                              </span>
+                              {task.assignedToName && (
+                                <>
+                                  <span className="text-xs text-muted-foreground">•</span>
+                                  <span className="text-xs text-muted-foreground">{task.assignedToName}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <Link href={`/tasks/${task.id}/edit`}>
+                            <Button variant="ghost" size="sm">
+                              <ArrowRight className="w-4 h-4" />
+                            </Button>
+                          </Link>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4">
+                      <p className="text-sm text-muted-foreground mb-4">No upcoming tasks</p>
+                      <Link href="/tasks/new">
+                        <Button variant="outline" size="sm" data-testid="button-create-task">
+                          Create Task
+                        </Button>
+                      </Link>
+                    </div>
+                  )}
+                </>
+              )}
             </CardContent>
           </Card>
         </div>

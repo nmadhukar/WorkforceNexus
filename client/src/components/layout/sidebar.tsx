@@ -17,7 +17,10 @@ import {
   FileCheck,
   LayoutDashboard,
   ClipboardList,
-  User
+  User,
+  CheckSquare,
+  ListTodo,
+  Plus
 } from "lucide-react";
 
 // Define all navigation items with their required roles
@@ -111,6 +114,32 @@ const allNavigationItems = [
         label: "Documents", 
         icon: FileText, 
         roles: ["admin", "hr"] 
+      }
+    ]
+  },
+  {
+    path: "/tasks",
+    label: "Tasks",
+    icon: CheckSquare,
+    roles: ["admin", "hr"],
+    submenu: [
+      {
+        path: "/tasks",
+        label: "Task List",
+        icon: ListTodo,
+        roles: ["admin", "hr"]
+      },
+      {
+        path: "/tasks/new",
+        label: "New Task",
+        icon: Plus,
+        roles: ["admin", "hr"]
+      },
+      {
+        path: "/tasks/dashboard",
+        label: "Task Dashboard",
+        icon: LayoutDashboard,
+        roles: ["admin", "hr"]
       }
     ]
   }

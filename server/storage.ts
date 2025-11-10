@@ -32,6 +32,8 @@ import {
   trainings,
   payerEnrollments,
   incidentLogs,
+  tasks,
+  taskUpdates,
   employeeTasks,
   audits,
   apiKeys,
@@ -73,6 +75,10 @@ import {
   type InsertPayerEnrollment,
   type IncidentLog,
   type InsertIncidentLog,
+  type Task,
+  type InsertTask,
+  type TaskUpdate,
+  type InsertTaskUpdate,
   type EmployeeTask,
   type InsertEmployeeTask,
   type Audit,
@@ -390,12 +396,33 @@ export interface IStorage {
   deleteEmployee(id: number): Promise<void>;
 
   /**
-   * Employee Tasks CRUD
+   * Employee Tasks CRUD (DEPRECATED)
    */
   getEmployeeTasks(employeeId: number): Promise<EmployeeTask[]>;
   createEmployeeTask(task: InsertEmployeeTask): Promise<EmployeeTask>;
   updateEmployeeTask(id: number, task: Partial<InsertEmployeeTask>): Promise<EmployeeTask>;
   deleteEmployeeTask(id: number): Promise<void>;
+
+  /**
+   * Task Management System
+   */
+  getTasks(filters?: { 
+    status?: string; 
+    assignedToId?: number; 
+    daysAhead?: number;
+    relatedEmployeeId?: number;
+    relatedLocationId?: number;
+  }): Promise<Task[]>;
+  getTask(id: number): Promise<Task | undefined>;
+  createTask(task: InsertTask): Promise<Task>;
+  updateTask(id: number, updates: Partial<InsertTask>): Promise<Task>;
+  deleteTask(id: number): Promise<void>;
+  completeTask(id: number, userId: number): Promise<Task>;
+  getTasksByEmployee(employeeId: number): Promise<Task[]>;
+  getTasksByLocation(locationId: number): Promise<Task[]>;
+  getDueSoonTasks(days: number): Promise<Task[]>;
+  addTaskUpdate(update: InsertTaskUpdate): Promise<TaskUpdate>;
+  getTaskUpdates(taskId: number): Promise<TaskUpdate[]>;
   
   /**
    * Employee Education Management
@@ -1833,6 +1860,132 @@ export class DatabaseStorage implements IStorage {
 
   async deleteEmployeeTask(id: number): Promise<void> {
     await db.delete(employeeTasks).where(eq(employeeTasks.id, id));
+  }
+
+  // Task Management System operations
+  async getTasks(filters?: { 
+    status?: string; 
+    assignedToId?: number; 
+    daysAhead?: number;
+    relatedEmployeeId?: number;
+    relatedLocationId?: number;
+  }): Promise<Task[]> {
+    let query = db.select().from(tasks);
+    const conditions = [];
+
+    if (filters?.status) {
+      conditions.push(eq(tasks.status, filters.status));
+    }
+    if (filters?.assignedToId) {
+      conditions.push(eq(tasks.assignedToId, filters.assignedToId));
+    }
+    if (filters?.daysAhead) {
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + filters.daysAhead);
+      conditions.push(lte(tasks.dueDate, futureDate.toISOString().slice(0, 10) as any));
+    }
+    if (filters?.relatedEmployeeId) {
+      conditions.push(eq(tasks.relatedEmployeeId, filters.relatedEmployeeId));
+    }
+    if (filters?.relatedLocationId) {
+      conditions.push(eq(tasks.relatedLocationId, filters.relatedLocationId));
+    }
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
+    }
+
+    return await query.orderBy(asc(tasks.dueDate));
+  }
+
+  async getTask(id: number): Promise<Task | undefined> {
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
+    return task;
+  }
+
+  async createTask(task: InsertTask): Promise<Task> {
+    const [created] = await db.insert(tasks).values({
+      ...task,
+      dueDate: task.dueDate && typeof task.dueDate !== 'string' 
+        ? (task.dueDate as unknown as Date).toISOString().slice(0, 10) as any 
+        : (task.dueDate as any)
+    } as any).returning();
+    return created;
+  }
+
+  async updateTask(id: number, updates: Partial<InsertTask>): Promise<Task> {
+    const normalized: any = {
+      ...updates,
+      updatedAt: new Date()
+    };
+    
+    if (normalized.dueDate && typeof normalized.dueDate !== 'string') {
+      normalized.dueDate = (normalized.dueDate as Date).toISOString().slice(0, 10) as any;
+    }
+
+    const [updated] = await db.update(tasks)
+      .set(normalized)
+      .where(eq(tasks.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteTask(id: number): Promise<void> {
+    await db.delete(tasks).where(eq(tasks.id, id));
+  }
+
+  async completeTask(id: number, userId: number): Promise<Task> {
+    const [completed] = await db.update(tasks)
+      .set({
+        status: 'completed',
+        completedAt: new Date(),
+        completedById: userId,
+        updatedAt: new Date()
+      })
+      .where(eq(tasks.id, id))
+      .returning();
+    return completed;
+  }
+
+  async getTasksByEmployee(employeeId: number): Promise<Task[]> {
+    return await db.select()
+      .from(tasks)
+      .where(eq(tasks.relatedEmployeeId, employeeId))
+      .orderBy(asc(tasks.dueDate));
+  }
+
+  async getTasksByLocation(locationId: number): Promise<Task[]> {
+    return await db.select()
+      .from(tasks)
+      .where(eq(tasks.relatedLocationId, locationId))
+      .orderBy(asc(tasks.dueDate));
+  }
+
+  async getDueSoonTasks(days: number): Promise<Task[]> {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + days);
+    const today = new Date().toISOString().slice(0, 10);
+    const future = futureDate.toISOString().slice(0, 10);
+    
+    return await db.select()
+      .from(tasks)
+      .where(and(
+        lte(tasks.dueDate, future as any),
+        or(eq(tasks.status, 'open'), eq(tasks.status, 'in_progress'))
+      ))
+      .orderBy(asc(tasks.dueDate));
+  }
+
+  async addTaskUpdate(update: InsertTaskUpdate): Promise<TaskUpdate> {
+    const [created] = await db.insert(taskUpdates).values(update).returning();
+    return created;
+  }
+
+  async getTaskUpdates(taskId: number): Promise<TaskUpdate[]> {
+    return await db.select()
+      .from(taskUpdates)
+      .where(eq(taskUpdates.taskId, taskId))
+      .orderBy(desc(taskUpdates.createdAt));
   }
   
   // Compliance Document operations
