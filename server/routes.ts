@@ -5362,12 +5362,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 </body>
               </html>
             `;
-            await mailtrapService.sendEmail({
-              to: signerEmail,
-              subject,
-              bodyText,
-              bodyHtml
-            });
+            // await mailtrapService.sendEmail({
+            //   to: signerEmail,
+            //   subject,
+            //   bodyText,
+            //   bodyHtml
+            // });
           }
         } catch (notifyErr) {
           console.error('Non-blocking: failed to send sign link email via Mailtrap:', notifyErr);

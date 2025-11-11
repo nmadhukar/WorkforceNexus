@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,7 @@ import {
   Info,
   ExternalLink,
 } from "lucide-react";
+import { DocusealForm } from '@docuseal/react'
 
 interface EmployeeFormsProps {
   data: any;
@@ -126,7 +127,11 @@ export function EmployeeForms({
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [emailDialogData, setEmailDialogData] = useState<{templateId: string; signer: TemplateSigner} | null>(null);
   const [emailInput, setEmailInput] = useState("");
-
+  const [viewContext, setViewContext] = useState<{ submission: FormSubmission; signerEmail: string; templateName?: string; } | null>(null);
+  const [signingUrl, setSigningUrl] = useState<string | null>(null);
+  const [isDocusealLoaded, setIsDocusealLoaded] = useState(false);
+  const [formValues, setFormValues] = useState<Record<string, any>>({});
+  const valuesSetRef = useRef<string | null>(null);
   // Only show forms when we have either an employee ID or an onboarding ID
   const canShowForms = !!(employeeId || onboardingId);
 
@@ -191,6 +196,70 @@ export function EmployeeForms({
       watchersRef.current = {};
     };
   }, []);
+
+  // Map employee data to DocusealForm values
+  const getFormValues = () => {
+    if (!data) return {};
+    
+    // Map employee data to DocusealForm field names based on template
+    const values: Record<string, any> = {};
+    
+    // EmpName - Employee Name
+    if (data.firstName || data.lastName) {
+      values.EmpName = `${data.firstName || ''} ${data.lastName || ''}`.trim();
+    } else if (data.fullName) {
+      values.EmpName = data.fullName;
+    } else if (data.name) {
+      values.EmpName = data.name;
+    }
+    
+    // EmpMedicaid ID - Note: field name has a space
+    if (data.medicaidId || data.medicaidID) {
+      values['EmpMedicaid ID'] = data.medicaidId || data.medicaidID;
+    }
+    
+    // EmpNPI - Employee NPI
+    if (data.npi || data.NPI) {
+      values.EmpNPI = data.npi || data.NPI;
+    }
+    
+    // EmpSignDate - Set to current date in MM/DD/YYYY format
+    const today = new Date();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const year = today.getFullYear();
+    values.EmpSignDate = `${month}/${day}/${year}`;
+    
+    // CompName - Company Name (optional)
+    if (data.companyName || data.company || data.organizationName) {
+      values.CompName = data.companyName || data.company || data.organizationName;
+    }
+    
+    // CompOHID - Company OHID (optional)
+    if (data.companyOHID || data.compOHID || data.ohid) {
+      values.CompOHID = data.companyOHID || data.compOHID || data.ohid;
+    }
+    
+    // EmpSignature is handled by DocuSeal, no need to pre-fill
+    
+    return values;
+  };
+
+  // Memoize form values based on employee data
+  const memoizedFormValues = useMemo(() => {
+    return getFormValues();
+  }, [data?.firstName, data?.lastName, data?.fullName, data?.name, data?.medicaidId, data?.medicaidID, data?.npi, data?.NPI, data?.companyName, data?.company, data?.organizationName, data?.companyOHID, data?.compOHID, data?.ohid]);
+
+  // Update form values when signing URL is ready (only once per URL)
+  useEffect(() => {
+    if (signingUrl && submissionModalOpen && valuesSetRef.current !== signingUrl) {
+      const values = memoizedFormValues;
+      console.log("Updating form values when signing URL is ready:", values);
+      setFormValues(values);
+      valuesSetRef.current = signingUrl;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signingUrl, submissionModalOpen]);
 
   // Fetch form submissions for onboarding or employee
   const { 
@@ -358,6 +427,7 @@ export function EmployeeForms({
 
   // Get signing URL mutation
   const getSigningUrlMutation = useMutation({
+  
     mutationFn: async ({ submissionId, signerEmail }: { submissionId: string; signerEmail: string }) => {
       const response = await apiRequest(
         "GET", 
@@ -365,13 +435,12 @@ export function EmployeeForms({
       );
       return response.json();
     },
+    onSettled: () => {
+      setIsDocusealLoaded(true);
+    },
     onSuccess: (data) => {
       if (data.signingUrl) {
-        window.open(data.signingUrl, '_blank');
-        toast({
-          title: "Opening Signing Page",
-          description: "The document has been opened in a new tab for signing.",
-        });
+        setSigningUrl(data.signingUrl);
         // Optimistically mark as "opened" and refresh from server
         if (data.submissionId) {
           updateSubmissionCache(String(data.submissionId), {
@@ -382,7 +451,7 @@ export function EmployeeForms({
           startSubmissionWatcher(String(data.submissionId));
         }
       }
-      setSubmissionModalOpen(false);
+      setIsDocusealLoaded(false);
     },
     onError: (error: any) => {
       toast({
@@ -390,6 +459,7 @@ export function EmployeeForms({
         description: error.message || "Unable to open the signing page. Please try again.",
         variant: "destructive",
       });
+      setIsDocusealLoaded(false);
     },
   });
 
@@ -558,6 +628,24 @@ export function EmployeeForms({
     const emailToSend = emailInput.trim();
     await handleSendToSigner(emailDialogData.templateId, emailDialogData.signer, emailToSend);
     setEmailDialogData(null);
+  };
+
+  // Open View dialog and fetch signing URL for embedded view
+  const openViewDialog = (submission: FormSubmission, signerEmail: string, templateName?: string) => {
+    setViewContext({ submission, signerEmail, templateName });
+    setSigningUrl(null);
+    // Set form values immediately from memoized values
+    const values = getFormValues();
+    console.log("Setting form values when opening dialog:", values);
+    setFormValues(values);
+    valuesSetRef.current = null;
+    setSubmissionModalOpen(true);
+    if (submission?.id && signerEmail) {
+      getSigningUrlMutation.mutate({
+        submissionId: String(submission.id),
+        signerEmail,
+      });
+    }
   };
 
   const handleSignNow = (submission: FormSubmission, signerEmail?: string) => {
@@ -949,7 +1037,7 @@ export function EmployeeForms({
                                           {signerEmail && (
                                             <Button
                                               size="sm"
-                                              onClick={() => handleSignNow(submission, signerEmail)}
+                                              onClick={() => openViewDialog(submission, signerEmail, template.name)}
                                               disabled={getSigningUrlMutation.isPending}
                                               data-testid={`button-view-${template.templateId}-${templateSigner.id}`}
                                             >
@@ -1011,6 +1099,93 @@ export function EmployeeForms({
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* View Submission Dialog */}
+      <Dialog
+        open={submissionModalOpen}
+        onOpenChange={(open) => {
+          setSubmissionModalOpen(open);
+          if (!open) {
+            setViewContext(null);
+            setSigningUrl(null);
+            setFormValues({});
+            valuesSetRef.current = null;
+          }
+        }}
+      >
+      <DialogContent
+        data-testid="view-dialog"
+        className="max-w-[90vw] w-[90vw] h-[90vh] overflow-y-auto"
+      >
+          <DialogHeader>
+            <DialogTitle>{viewContext?.templateName || "View Document"}</DialogTitle>
+            <DialogDescription>
+              {viewContext?.signerEmail
+                ? `Open the document for ${viewContext.signerEmail} in a new tab to view or sign.`
+                : "Open the document in a new tab to view or sign."}
+            </DialogDescription>
+          </DialogHeader>
+            {signingUrl && (
+              <DocusealForm
+                key={`${signingUrl}-${JSON.stringify(memoizedFormValues)}`}
+                src={signingUrl}
+                email={viewContext?.signerEmail ?? ""}
+                values={{"822d1f02-61a5-4436-be66-225bda0bfb55":"John Doe"}}
+                onLoad={(loadData) => {
+                  console.log("Loaded DocuSeal form:", loadData);
+                  console.log("Form values being sent to DocuSeal:", memoizedFormValues);
+                  console.log("Form values in loadData:", loadData.values);
+                }}
+                rememberSignature={true}
+                onComplete={(data) => {
+                // Update submission status to completed
+                if (viewContext?.submission?.id) {
+                  updateSubmissionCache(String(viewContext.submission.id), {
+                    status: 'completed',
+                    completedAt: new Date().toISOString()
+                  }, viewContext.signerEmail);
+                  updateStatusFromServer(String(viewContext.submission.id));
+                }
+                // Show success message
+                toast({
+                  title: "Document Signed",
+                  description: "The document has been successfully signed.",
+                });
+                // Refresh submissions and close modal
+                refetchSubmissions();
+                setSubmissionModalOpen(false);
+                setViewContext(null);
+                setSigningUrl(null);
+                setFormValues({});
+                valuesSetRef.current = null;
+              }}
+              />
+            )}
+            {!signingUrl && (
+              <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                  <RefreshCw className="h-8 w-8 mx-auto mb-2 animate-spin text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Loading form...</p>
+                </div>
+              </div>
+            )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSubmissionModalOpen(false);
+                setViewContext(null);
+                setSigningUrl(null);
+                setFormValues({});
+                valuesSetRef.current = null;
+              }}
+              data-testid="button-cancel-view"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Email Input Dialog */}
       <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
