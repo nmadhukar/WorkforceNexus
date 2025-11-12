@@ -57,7 +57,7 @@ export default function Audits() {
       const [url, currentPage, currentFilters] = queryKey;
       const params = new URLSearchParams({
         page: String(currentPage),
-        limit: "25",
+        limit: "10",
         ...Object.fromEntries(
           Object.entries(currentFilters as any).filter(([_, value]) => value)
         )
@@ -119,15 +119,14 @@ export default function Audits() {
   }
 
   return (
-    <MainLayout>
       <div className="space-y-6">
-        <div className="mb-6">
+        {/* <div className="mb-6">
           <h1 className="text-3xl font-bold text-foreground flex items-center" data-testid="text-audits-title">
             <Shield className="w-8 h-8 mr-3" />
             Audit Trail
           </h1>
+          </div> */}
           <p className="text-muted-foreground">Track all system changes and user activities</p>
-        </div>
 
         {/* Audit Filters */}
         <Card>
@@ -389,6 +388,5 @@ export default function Audits() {
           </DialogContent>
         </Dialog>
       </div>
-    </MainLayout>
   );
 }

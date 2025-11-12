@@ -14,9 +14,9 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Settings as SettingsIcon, Users, Bell, Shield, Edit, Trash2, Plus, Save, Key, Cloud, Database, CheckCircle, XCircle, ArrowUpCircle, Mail, Send, MailCheck, FileSignature, RefreshCw, Link2, FileText, ChevronUp, ChevronDown, GripVertical } from "lucide-react";
 import { Link } from "wouter";
-import { 
-  insertRequiredDocumentTypeSchema, 
-  type RequiredDocumentType, 
+import {
+  insertRequiredDocumentTypeSchema,
+  type RequiredDocumentType,
   type InsertRequiredDocumentType
 } from "@shared/schema";
 import { useForm } from "react-hook-form";
@@ -28,6 +28,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import Audits from "./audits";
 
 
 /**
@@ -207,13 +208,13 @@ export default function Settings() {
     licenseExpiryWarningDays: 30,
     caqhReattestationWarningDays: 90
   });
-  
+
   // Required Documents state
   const [documentTypeDialogOpen, setDocumentTypeDialogOpen] = useState(false);
   const [editingDocumentType, setEditingDocumentType] = useState<RequiredDocumentType | null>(null);
   const [deleteDocumentTypeId, setDeleteDocumentTypeId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState("general");
-  
+
 
   // S3 Storage Status Query
   const { data: s3Status, isLoading: s3StatusLoading } = useQuery<S3Status>({
@@ -244,14 +245,14 @@ export default function Settings() {
     queryKey: ["/api/admin/docuseal-templates"],
     enabled: (isAdmin || user?.role === 'hr') && !!docusealConfig
   });
-  
+
   // Required Document Types Query (Admin only)
   const { data: requiredDocuments = [], isLoading: requiredDocumentsLoading } = useQuery<RequiredDocumentType[]>({
     queryKey: ["/api/admin/required-documents"],
     enabled: isAdmin
   });
-  
-  
+
+
   // DocuSeal Available Templates Query (Admin only)
   const { data: availableDocusealTemplates = [], isLoading: availableDocusealTemplatesLoading } = useQuery<DocusealAPITemplate[]>({
     queryKey: ["/api/forms/templates"],
@@ -303,7 +304,7 @@ export default function Settings() {
 
   // S3 Configuration Mutations
   const updateS3ConfigMutation = useMutation({
-    mutationFn: (configData: typeof s3FormData) => 
+    mutationFn: (configData: typeof s3FormData) =>
       apiRequest("PUT", "/api/admin/s3-config", configData),
     onSuccess: (data) => {
       toast({
@@ -327,7 +328,7 @@ export default function Settings() {
     mutationFn: async (configData: typeof s3FormData) => {
       const response = await apiRequest("POST", "/api/admin/s3-config/test", configData);
       const data = await response.json();
-      
+
       console.log('S3 Test Response:', {
         status: response.status,
         ok: response.ok,
@@ -335,7 +336,7 @@ export default function Settings() {
         canCreate: data.details?.canCreate,
         errorCode: data.details?.errorCode
       });
-      
+
       // Check if this is a 404 (bucket doesn't exist)
       if (response.status === 404 && data.details?.canCreate === true) {
         console.log('Bucket does not exist, showing create dialog...');
@@ -344,7 +345,7 @@ export default function Settings() {
           // Create the bucket
           const createResponse = await apiRequest("POST", "/api/admin/s3-config/create-bucket", configData);
           const createData = await createResponse.json();
-          
+
           if (createResponse.ok) {
             // Bucket created successfully, now test again
             const retestResponse = await apiRequest("POST", "/api/admin/s3-config/test", configData);
@@ -357,7 +358,7 @@ export default function Settings() {
           return data;
         }
       }
-      
+
       // Check for region mismatch
       if (!response.ok && data.details?.errorCode === 'PermanentRedirect' && data.details?.correctRegion) {
         // Automatically update the region in the form
@@ -373,12 +374,12 @@ export default function Settings() {
           return retryResponse.json();
         }
       }
-      
+
       if (!response.ok && response.status !== 404) {
         // Return the error data for display
         return data;
       }
-      
+
       return data;
     },
     onSuccess: (data) => {
@@ -432,7 +433,7 @@ export default function Settings() {
 
   // SES Configuration Mutations
   const updateSesConfigMutation = useMutation({
-    mutationFn: (configData: typeof sesFormData) => 
+    mutationFn: (configData: typeof sesFormData) =>
       apiRequest("POST", "/api/admin/ses-config", configData),
     onSuccess: () => {
       toast({
@@ -474,7 +475,7 @@ export default function Settings() {
   });
 
   const verifySesEmailMutation = useMutation({
-    mutationFn: (email: string) => 
+    mutationFn: (email: string) =>
       apiRequest("POST", "/api/admin/ses-config/verify", { email }),
     onSuccess: () => {
       toast({
@@ -491,10 +492,10 @@ export default function Settings() {
       });
     }
   });
-  
+
   // Required Document Types Mutations
   const createDocumentTypeMutation = useMutation({
-    mutationFn: (data: InsertRequiredDocumentType) => 
+    mutationFn: (data: InsertRequiredDocumentType) =>
       apiRequest("POST", "/api/admin/required-documents", data),
     onSuccess: () => {
       toast({
@@ -513,9 +514,9 @@ export default function Settings() {
       });
     }
   });
-  
+
   const updateDocumentTypeMutation = useMutation({
-    mutationFn: ({ id, ...data }: RequiredDocumentType) => 
+    mutationFn: ({ id, ...data }: RequiredDocumentType) =>
       apiRequest("PUT", `/api/admin/required-documents/${id}`, data),
     onSuccess: () => {
       toast({
@@ -534,9 +535,9 @@ export default function Settings() {
       });
     }
   });
-  
+
   const deleteDocumentTypeMutation = useMutation({
-    mutationFn: (id: number) => 
+    mutationFn: (id: number) =>
       apiRequest("DELETE", `/api/admin/required-documents/${id}`),
     onSuccess: () => {
       toast({
@@ -554,9 +555,9 @@ export default function Settings() {
       });
     }
   });
-  
+
   const reorderDocumentTypeMutation = useMutation({
-    mutationFn: ({ id, sortOrder }: { id: number; sortOrder: number }) => 
+    mutationFn: ({ id, sortOrder }: { id: number; sortOrder: number }) =>
       apiRequest("PUT", `/api/admin/required-documents/${id}`, { sortOrder }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/required-documents"] });
@@ -569,7 +570,7 @@ export default function Settings() {
       });
     }
   });
-  
+
 
   const handleSaveSettings = () => {
     saveSettingsMutation.mutate(settings);
@@ -638,22 +639,22 @@ export default function Settings() {
       verifySesEmailMutation.mutate(sesFormData.fromEmail);
     }
   };
-  
+
   const handleMoveDocumentType = (id: number, direction: "up" | "down") => {
     const sortedDocs = [...requiredDocuments].sort((a, b) => a.sortOrder - b.sortOrder);
     const currentIndex = sortedDocs.findIndex(doc => doc.id === id);
     const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-    
+
     if (targetIndex >= 0 && targetIndex < sortedDocs.length) {
       const currentDoc = sortedDocs[currentIndex];
       const targetDoc = sortedDocs[targetIndex];
-      
+
       // Swap sort orders
       reorderDocumentTypeMutation.mutate({ id: currentDoc.id, sortOrder: targetDoc.sortOrder });
       reorderDocumentTypeMutation.mutate({ id: targetDoc.id, sortOrder: currentDoc.sortOrder });
     }
   };
-  
+
   const documentTypeForm = useForm<InsertRequiredDocumentType>({
     resolver: zodResolver(insertRequiredDocumentTypeSchema),
     defaultValues: {
@@ -664,7 +665,7 @@ export default function Settings() {
       sortOrder: 0
     }
   });
-  
+
   const onSubmitDocumentType = (data: InsertRequiredDocumentType) => {
     if (editingDocumentType) {
       updateDocumentTypeMutation.mutate({ ...editingDocumentType, ...data });
@@ -672,7 +673,7 @@ export default function Settings() {
       createDocumentTypeMutation.mutate(data);
     }
   };
-  
+
   const handleEditDocumentType = (doc: RequiredDocumentType) => {
     setEditingDocumentType(doc);
     documentTypeForm.reset({
@@ -684,7 +685,7 @@ export default function Settings() {
     });
     setDocumentTypeDialogOpen(true);
   };
-  
+
   const handleAddDocumentType = () => {
     setEditingDocumentType(null);
     documentTypeForm.reset({
@@ -696,7 +697,7 @@ export default function Settings() {
     });
     setDocumentTypeDialogOpen(true);
   };
-  
+
   const getCategoryBadgeColor = (category: string) => {
     switch (category) {
       case "tax": return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
@@ -706,7 +707,7 @@ export default function Settings() {
       default: return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200";
     }
   };
-  
+
 
   return (
     <MainLayout>
@@ -768,7 +769,7 @@ export default function Settings() {
                       />
                       <Label htmlFor="emailAlerts" className="text-sm">Email alerts for expiring licenses</Label>
                     </div>
-                    
+
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         id="dailyReports"
@@ -778,7 +779,7 @@ export default function Settings() {
                       />
                       <Label htmlFor="dailyReports" className="text-sm">Daily compliance reports</Label>
                     </div>
-                    
+
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         id="weeklyAudits"
@@ -807,7 +808,7 @@ export default function Settings() {
                         data-testid="input-license-warning-days"
                       />
                     </div>
-                    
+
                     <div>
                       <Label htmlFor="caqhWarning" className="text-sm">CAQH re-attestation warning (days)</Label>
                       <Input
@@ -823,7 +824,7 @@ export default function Settings() {
                   </div>
                 </div>
 
-                <Button 
+                <Button
                   onClick={handleSaveSettings}
                   disabled={saveSettingsMutation.isPending}
                   className="w-full"
@@ -1163,7 +1164,7 @@ export default function Settings() {
                           Configuration: {s3Config && s3Config.source !== 'none' ? 'Saved' : 'Not Set'}
                         </span>
                       </div>
-                      
+
                       {/* Bucket exists status */}
                       <div className="flex items-center">
                         {s3Status?.configured ? (
@@ -1176,7 +1177,7 @@ export default function Settings() {
                         </span>
                       </div>
                     </div>
-                    
+
                     {/* Show config details if saved */}
                     {s3Config && s3Config.source !== 'none' && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm mt-3 pt-3 border-t">
@@ -1190,12 +1191,12 @@ export default function Settings() {
                         </div>
                       </div>
                     )}
-                    
+
                     {/* Show warning if config saved but bucket not accessible */}
                     {s3Config && s3Config.source !== 'none' && !s3Status?.configured && (
                       <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md">
                         <p className="text-sm text-amber-900 dark:text-amber-200 mb-3">
-                          ⚠️ Configuration is saved but the bucket "{s3Config.bucketName}" is not accessible. 
+                          ⚠️ Configuration is saved but the bucket "{s3Config.bucketName}" is not accessible.
                           The bucket may not exist or you may not have permissions to access it.
                         </p>
                         <div className="flex gap-2">
@@ -1214,7 +1215,7 @@ export default function Settings() {
                                     endpoint: s3Config.endpoint
                                   });
                                   const data = await response.json();
-                                  
+
                                   if (response.ok) {
                                     toast({
                                       title: "Bucket Created",
@@ -1278,7 +1279,7 @@ export default function Settings() {
                         <p className="text-sm text-muted-foreground">S3 Storage</p>
                       </div>
                     </div>
-                    
+
                     {(s3Status?.statistics?.totalDocuments || 0) > 0 && (
                       <div className="mt-3">
                         <div className="flex justify-between text-sm mb-1">
@@ -1286,8 +1287,8 @@ export default function Settings() {
                           <span className="font-medium">{s3Status?.statistics?.s3Percentage || '0'}%</span>
                         </div>
                         <div className="w-full bg-muted rounded-full h-2">
-                          <div 
-                            className="bg-primary rounded-full h-2" 
+                          <div
+                            className="bg-primary rounded-full h-2"
                             style={{ width: `${s3Status?.statistics?.s3Percentage || '0'}%` }}
                           />
                         </div>
@@ -1302,7 +1303,7 @@ export default function Settings() {
                       {Object.entries(s3Status?.environment || {}).map(([key, value]) => (
                         <div key={key} className="flex items-center justify-between p-2 bg-muted/30 rounded">
                           <span className="font-mono text-xs">{key}</span>
-                          <Badge 
+                          <Badge
                             variant={value === 'configured' ? 'default' : 'secondary'}
                             className={value === 'configured' ? 'bg-green-500/10 text-green-600' : ''}
                           >
@@ -1320,7 +1321,7 @@ export default function Settings() {
                       <p className="text-sm text-muted-foreground mb-3">
                         Migrate {s3Status?.statistics?.localDocuments || 0} local documents to S3 storage.
                       </p>
-                      
+
                       <Dialog open={migrateDialogOpen} onOpenChange={setMigrateDialogOpen}>
                         <DialogTrigger asChild>
                           <Button variant="outline" className="w-full">
@@ -1332,7 +1333,7 @@ export default function Settings() {
                           <DialogHeader>
                             <DialogTitle>Migrate Documents to S3</DialogTitle>
                           </DialogHeader>
-                          
+
                           <div className="space-y-4 py-4">
                             <div>
                               <Label htmlFor="batchSize">Batch Size</Label>
@@ -1348,7 +1349,7 @@ export default function Settings() {
                                 Number of documents to migrate at once (max 100)
                               </p>
                             </div>
-                            
+
                             <div className="flex items-center space-x-2">
                               <Checkbox
                                 id="dryRun"
@@ -1359,19 +1360,19 @@ export default function Settings() {
                                 Dry Run (simulate migration without changes)
                               </Label>
                             </div>
-                            
+
                             <Button
-                              onClick={() => migrateMutation.mutate({ 
-                                batchSize: migrationBatchSize, 
-                                dryRun: migrationDryRun 
+                              onClick={() => migrateMutation.mutate({
+                                batchSize: migrationBatchSize,
+                                dryRun: migrationDryRun
                               })}
                               disabled={migrateMutation.isPending}
                               className="w-full"
                             >
-                              {migrateMutation.isPending 
-                                ? "Migrating..." 
-                                : migrationDryRun 
-                                  ? "Run Migration Test" 
+                              {migrateMutation.isPending
+                                ? "Migrating..."
+                                : migrationDryRun
+                                  ? "Run Migration Test"
                                   : "Start Migration"}
                             </Button>
                           </div>
@@ -1388,27 +1389,27 @@ export default function Settings() {
                         {s3ConfigLoading ? (
                           <Badge variant="secondary">Loading...</Badge>
                         ) : s3Config ? (
-                          <Badge 
+                          <Badge
                             variant={s3Config.source === 'database' ? 'default' : 'secondary'}
                             className={s3Config.source === 'database' ? 'bg-green-500/10 text-green-600' : ''}
                           >
-                            {s3Config.source === 'database' ? 'Database Config' : 
-                             s3Config.source === 'environment' ? 'Env Variables' : 'Not Configured'}
+                            {s3Config.source === 'database' ? 'Database Config' :
+                              s3Config.source === 'environment' ? 'Env Variables' : 'Not Configured'}
                           </Badge>
                         ) : null}
                       </div>
-                      
+
                       {s3Config?.source === 'database' && s3Config.updatedAt && (
                         <p className="text-sm text-muted-foreground mb-3">
                           Last updated: {new Date(s3Config.updatedAt).toLocaleString()}
                         </p>
                       )}
-                      
+
                       <div className="space-y-2">
                         <Dialog open={s3ConfigDialogOpen} onOpenChange={setS3ConfigDialogOpen}>
                           <DialogTrigger asChild>
-                            <Button 
-                              variant="outline" 
+                            <Button
+                              variant="outline"
                               className="w-full"
                               onClick={handleOpenS3ConfigDialog}
                               data-testid="button-configure-s3"
@@ -1421,14 +1422,14 @@ export default function Settings() {
                             <DialogHeader>
                               <DialogTitle>Configure AWS S3 Storage</DialogTitle>
                             </DialogHeader>
-                            
+
                             <div className="space-y-4 py-4">
                               {s3Config?.message && (
                                 <div className="p-3 bg-amber-500/10 text-amber-700 rounded-lg text-sm">
                                   {s3Config.message}
                                 </div>
                               )}
-                              
+
                               <div>
                                 <Label htmlFor="s3-access-key">AWS Access Key ID</Label>
                                 <Input
@@ -1445,7 +1446,7 @@ export default function Settings() {
                                   </p>
                                 )}
                               </div>
-                              
+
                               <div>
                                 <Label htmlFor="s3-secret-key">AWS Secret Access Key</Label>
                                 <Input
@@ -1462,7 +1463,7 @@ export default function Settings() {
                                   </p>
                                 )}
                               </div>
-                              
+
                               <div>
                                 <Label htmlFor="s3-region">AWS Region</Label>
                                 <select
@@ -1482,7 +1483,7 @@ export default function Settings() {
                                   <option value="ap-northeast-1">Asia Pacific (Tokyo)</option>
                                 </select>
                               </div>
-                              
+
                               <div>
                                 <Label htmlFor="s3-bucket">Bucket Name</Label>
                                 <Input
@@ -1510,7 +1511,7 @@ export default function Settings() {
                                   </button>
                                 </div>
                               </div>
-                              
+
                               <div>
                                 <Label htmlFor="s3-endpoint">Custom Endpoint (Optional)</Label>
                                 <Input
@@ -1525,7 +1526,7 @@ export default function Settings() {
                                   For S3-compatible services like MinIO or DigitalOcean Spaces
                                 </p>
                               </div>
-                              
+
                               <div className="flex items-center space-x-2">
                                 <Checkbox
                                   id="s3-enabled"
@@ -1535,7 +1536,7 @@ export default function Settings() {
                                 />
                                 <Label htmlFor="s3-enabled">Enable S3 storage</Label>
                               </div>
-                              
+
                               <div className="flex gap-2">
                                 <Button
                                   onClick={handleTestS3Connection}
@@ -1546,7 +1547,7 @@ export default function Settings() {
                                 >
                                   {testingS3 ? "Testing..." : "Test Connection"}
                                 </Button>
-                                
+
                                 <Button
                                   onClick={handleSaveS3Config}
                                   disabled={updateS3ConfigMutation.isPending || !s3FormData.accessKeyId || !s3FormData.secretAccessKey || !s3FormData.bucketName}
@@ -1559,7 +1560,7 @@ export default function Settings() {
                             </div>
                           </DialogContent>
                         </Dialog>
-                        
+
                         {s3Config?.source === 'environment' && (
                           <Button
                             onClick={() => migrateS3ConfigMutation.mutate()}
@@ -1575,7 +1576,7 @@ export default function Settings() {
                       </div>
                     </div>
                   )}
-                  
+
                   {/* Configuration Help */}
                   {!isAdmin && !s3Status?.configured && (
                     <div className="mt-4 p-4 bg-muted/30 rounded-lg">
@@ -1616,12 +1617,12 @@ export default function Settings() {
                         <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
                       ) : (
                         <XCircle className="w-5 h-5 text-destructive mr-2" />
-                      )}  
+                      )}
                       <span className="font-medium">
                         Mailtrap Email {sesConfig?.configured ? 'Configured' : 'Not Configured'}
                       </span>
                     </div>
-                    
+
                     {sesConfig?.configured && (
                       <div className="space-y-2 text-sm">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -1681,15 +1682,15 @@ export default function Settings() {
 
                   {/* Action Buttons */}
                   <div className="flex flex-wrap gap-2 mt-4">
-                    <Button 
-                      onClick={handleOpenSesConfigDialog} 
+                    <Button
+                      onClick={handleOpenSesConfigDialog}
                       variant="outline"
                       data-testid="button-configure-ses"
                     >
                       <SettingsIcon className="w-4 h-4 mr-2" />
                       {sesConfig?.configured ? 'Update Configuration' : 'Configure Mailtrap'}
                     </Button>
-                    
+
                     {sesConfig?.configured && (
                       <>
                         <Button
@@ -1700,7 +1701,7 @@ export default function Settings() {
                           <Send className="w-4 h-4 mr-2" />
                           Test Email
                         </Button>
-                        
+
                         {!sesConfig?.verified && (
                           <Button
                             onClick={handleVerifySesEmail}
@@ -1715,7 +1716,7 @@ export default function Settings() {
                       </>
                     )}
                   </div>
-                  
+
                   {/* Configuration Help */}
                   {!sesConfig?.configured && (
                     <div className="mt-4 p-4 bg-muted/30 rounded-lg">
@@ -1746,7 +1747,7 @@ export default function Settings() {
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground">
-              Create and manage API keys for external application integration. 
+              Create and manage API keys for external application integration.
               API keys provide secure, token-based authentication for programmatic access to the HR system.
             </p>
             <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1786,7 +1787,7 @@ export default function Settings() {
                   <Badge variant="secondary">{user?.role || "viewer"}</Badge>
                 </div>
               </div>
-              
+
               <div className="text-center p-4 bg-muted/50 rounded-lg">
                 <p className="text-sm text-muted-foreground">Password Hashing</p>
                 <p className="font-medium">bcrypt</p>
@@ -1794,7 +1795,7 @@ export default function Settings() {
                   <Badge className="bg-secondary/10 text-secondary">Enabled</Badge>
                 </div>
               </div>
-              
+
               <div className="text-center p-4 bg-muted/50 rounded-lg">
                 <p className="text-sm text-muted-foreground">Data Encryption</p>
                 <p className="font-medium">AES-256</p>
@@ -1802,7 +1803,7 @@ export default function Settings() {
                   <Badge className="bg-secondary/10 text-secondary">Active</Badge>
                 </div>
               </div>
-              
+
               <div className="text-center p-4 bg-muted/50 rounded-lg">
                 <p className="text-sm text-muted-foreground">Audit Logging</p>
                 <p className="font-medium">All Actions</p>
@@ -2004,6 +2005,22 @@ export default function Settings() {
           </Card>
         )}
 
+        {/* Audit Trail */}
+        {(isAdmin || user?.role === 'hr') && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Shield className="w-5 h-5 mr-2" />
+                Audit Trail
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Audits />
+          </CardContent>
+        </Card>
+        )}
         {/* SES Configuration Dialog */}
         <Dialog open={sesConfigDialogOpen} onOpenChange={setSesConfigDialogOpen}>
           <DialogContent className="max-w-md">
@@ -2326,7 +2343,6 @@ export default function Settings() {
             </div>
           </DialogContent>
         </Dialog>
-
       </div>
     </MainLayout>
   );
