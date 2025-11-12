@@ -5223,6 +5223,145 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ? `${employee.firstName} ${employee.lastName}`
             : signerEmail;
 
+        // Determine the correct role from template's signer roles
+        // Template defines roles like ["Employee", "Company"], we need to match exactly
+        let submitterRole = 'Employee'; // Default to capitalized "Employee"
+        if (template.signerRoles) {
+          try {
+            const signerData = typeof template.signerRoles === 'string' 
+              ? JSON.parse(template.signerRoles) 
+              : template.signerRoles;
+            
+            if (Array.isArray(signerData) && signerData.length > 0) {
+              // Find the first role that looks like an employee role (case-insensitive)
+              const employeeRole = signerData.find((s: any) => {
+                const roleName = typeof s === 'string' ? s : (s.name || s.role || '');
+                return roleName.toLowerCase().includes('employee') || roleName.toLowerCase() === 'employee';
+              });
+              
+              if (employeeRole) {
+                // Use the exact role name from template (preserve case)
+                submitterRole = typeof employeeRole === 'string' ? employeeRole : (employeeRole.name || employeeRole.role || 'Employee');
+              } else {
+                // If no employee role found, use the first role
+                submitterRole = typeof signerData[0] === 'string' ? signerData[0] : (signerData[0].name || signerData[0].role || 'Employee');
+              }
+            } else if (typeof signerData === 'object' && signerData.name) {
+              submitterRole = signerData.name;
+            }
+          } catch (e) {
+            console.warn('Failed to parse template signer roles, using default:', e);
+          }
+        }
+
+        // Map employee data to DocuSeal form field values based on template
+        const formValues: Record<string, any> = {};
+        
+        // Get template fields to determine which values to set
+        let templateFields: any[] = [];
+        if (template.fields) {
+          if (Array.isArray(template.fields)) {
+            templateFields = template.fields;
+          } else if (typeof template.fields === 'object') {
+            templateFields = (template.fields as any).fields || (template.fields as any).template_fields || [];
+          } else if (typeof template.fields === 'string') {
+            try {
+              const parsed = JSON.parse(template.fields);
+              templateFields = Array.isArray(parsed) ? parsed : (parsed.fields || parsed.template_fields || []);
+            } catch (e) {
+              // Not JSON string
+            }
+          }
+        }
+        
+        // Extract field names from template
+        const fieldNames = templateFields.map((f: any) => f.name || '').filter((n: string) => n);
+        
+        // EmpName - Employee Name (for PNM Admin Change Form and W9 Form)
+        if (fieldNames.includes('EmpName') && (employee.firstName || employee.lastName)) {
+          formValues.EmpName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim();
+        }
+        
+        // EmpMedicaid ID - Note: field name has a space (for PNM Admin Change Form)
+        if (fieldNames.includes('EmpMedicaid ID') && (employee.medicaidNumber || (employee as any).medicaidId)) {
+          formValues['EmpMedicaid ID'] = employee.medicaidNumber || (employee as any).medicaidId;
+        }
+        
+        // EmpNPI - Employee NPI (for PNM Admin Change Form)
+        if (fieldNames.includes('EmpNPI') && (employee.npiNumber || (employee as any).npi)) {
+          formValues.EmpNPI = employee.npiNumber || (employee as any).npi;
+        }
+        
+        // EmpAddress - Employee Address (for W9 Form)
+        if (fieldNames.includes('EmpAddress')) {
+          const addressParts = [employee.homeAddress1, employee.homeAddress2].filter(Boolean);
+          if (addressParts.length > 0) {
+            formValues.EmpAddress = addressParts.join(', ');
+          }
+        }
+        
+        // EmpCityStateZip - City, State, ZIP (for W9 Form)
+        if (fieldNames.includes('EmpCityStateZip')) {
+          const cityStateZipParts = [
+            employee.homeCity,
+            employee.homeState,
+            employee.homeZip
+          ].filter(Boolean);
+          if (cityStateZipParts.length > 0) {
+            formValues.EmpCityStateZip = cityStateZipParts.join(', ');
+          }
+        }
+        
+        // SSN1, SSN2, SSN3 - Split SSN into 3 parts (for W9 Form)
+        if (fieldNames.includes('SSN1') || fieldNames.includes('SSN2') || fieldNames.includes('SSN3')) {
+          if (employee.ssn) {
+            const { decrypt } = await import('./utils/encryption');
+            try {
+              const decryptedSSN = decrypt(employee.ssn);
+              // Remove any dashes or spaces
+              const cleanSSN = decryptedSSN.replace(/[-\s]/g, '');
+              if (cleanSSN.length >= 9) {
+                // Split into 3 parts: XXX-XX-XXXX
+                formValues.SSN1 = cleanSSN.substring(0, 3);
+                formValues.SSN2 = cleanSSN.substring(3, 5);
+                formValues.SSN3 = cleanSSN.substring(5, 9);
+              }
+            } catch (e) {
+              console.warn('Failed to decrypt SSN for form pre-fill:', e);
+            }
+          }
+        }
+        
+        // CompanyNameAddr - Company Name and Address (for W9 Form)
+        if (fieldNames.includes('CompanyNameAddr')) {
+          const companyParts = [
+            (employee as any).companyName || (employee as any).company,
+            (employee as any).companyAddress
+          ].filter(Boolean);
+          if (companyParts.length > 0) {
+            formValues.CompanyNameAddr = companyParts.join(', ');
+          }
+        }
+        
+        // EmpSignDate - Set to current date in MM/DD/YYYY format (for both forms)
+        if (fieldNames.includes('EmpSignDate')) {
+          const today = new Date();
+          const month = String(today.getMonth() + 1).padStart(2, '0');
+          const day = String(today.getDate()).padStart(2, '0');
+          const year = today.getFullYear();
+          formValues.EmpSignDate = `${month}/${day}/${year}`;
+        }
+        
+        // CompName - Company Name (for PNM Admin Change Form)
+        if (fieldNames.includes('CompName') && ((employee as any).companyName || (employee as any).company)) {
+          formValues.CompName = (employee as any).companyName || (employee as any).company;
+        }
+        
+        // CompOHID - Company OHID (for PNM Admin Change Form)
+        if (fieldNames.includes('CompOHID') && ((employee as any).companyOHID || (employee as any).compOHID)) {
+          formValues.CompOHID = (employee as any).companyOHID || (employee as any).compOHID;
+        }
+
         // Create DocuSeal submission (sends email invites when send_email = true)
         const dsSubmission = await docuSealService.createSubmission({
           template_id: template.templateId,
@@ -5230,7 +5369,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             {
               email: signerEmail,
               name: signerName,
-              role: 'employee'
+              role: submitterRole, // Use the role from template (e.g., "Employee" with capital E)
+              values: Object.keys(formValues).length > 0 ? formValues : undefined
             }
           ],
           send_email: true,

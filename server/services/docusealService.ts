@@ -66,6 +66,7 @@ interface CreateSubmissionOptions {
     name?: string;
     phone?: string;
     role?: string;
+    values?: Record<string, any>; // Pre-filled field values (field name -> value mapping)
   }[];
   send_email?: boolean;
   message?: {
@@ -649,6 +650,52 @@ export class DocuSealService {
                                  tmpl.name?.toLowerCase().includes('agreement') ||
                                  tmpl.name?.toLowerCase().includes('contract');
 
+      // Determine correct roles from template's signer roles
+      let employeeRole = 'Employee'; // Default to capitalized "Employee"
+      let hrRole = 'Company'; // Default for HR/Company role
+      
+      if (tmpl.signerRoles) {
+        try {
+          const signerData = typeof tmpl.signerRoles === 'string' 
+            ? JSON.parse(tmpl.signerRoles) 
+            : tmpl.signerRoles;
+          
+          if (Array.isArray(signerData) && signerData.length > 0) {
+            // Find employee role (case-insensitive match)
+            const employeeRoleMatch = signerData.find((s: any) => {
+              const roleName = typeof s === 'string' ? s : (s.name || s.role || '');
+              return roleName.toLowerCase().includes('employee') || roleName.toLowerCase() === 'employee';
+            });
+            
+            if (employeeRoleMatch) {
+              employeeRole = typeof employeeRoleMatch === 'string' ? employeeRoleMatch : (employeeRoleMatch.name || employeeRoleMatch.role || 'Employee');
+            } else {
+              // Use first role as employee role
+              employeeRole = typeof signerData[0] === 'string' ? signerData[0] : (signerData[0].name || signerData[0].role || 'Employee');
+            }
+            
+            // Find HR/Company role (second role or one that contains company/hr)
+            if (signerData.length > 1) {
+              const hrRoleMatch = signerData.find((s: any, idx: number) => {
+                if (idx === 0) return false; // Skip first (employee)
+                const roleName = typeof s === 'string' ? s : (s.name || s.role || '');
+                return roleName.toLowerCase().includes('company') || 
+                       roleName.toLowerCase().includes('hr') || 
+                       roleName.toLowerCase().includes('employer');
+              });
+              
+              if (hrRoleMatch) {
+                hrRole = typeof hrRoleMatch === 'string' ? hrRoleMatch : (hrRoleMatch.name || hrRoleMatch.role || 'Company');
+              } else {
+                hrRole = typeof signerData[1] === 'string' ? signerData[1] : (signerData[1].name || signerData[1].role || 'Company');
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to parse template signer roles in sendOnboardingForms, using defaults:', e);
+        }
+      }
+
       // Create submitters array based on signing requirements
       const submitters = [];
       let metadata: any = {
@@ -659,12 +706,120 @@ export class DocuSealService {
         signingUrls: {}
       };
 
-      // Always add employee as first submitter
+      // Map employee data to DocuSeal form field values based on template
+      const formValues: Record<string, any> = {};
+      
+      // Get template fields to determine which values to set
+      let templateFields: any[] = [];
+      if (tmpl.fields) {
+        if (Array.isArray(tmpl.fields)) {
+          templateFields = tmpl.fields;
+        } else if (typeof tmpl.fields === 'object') {
+          templateFields = (tmpl.fields as any).fields || (tmpl.fields as any).template_fields || [];
+        } else if (typeof tmpl.fields === 'string') {
+          try {
+            const parsed = JSON.parse(tmpl.fields);
+            templateFields = Array.isArray(parsed) ? parsed : (parsed.fields || parsed.template_fields || []);
+          } catch (e) {
+            // Not JSON string
+          }
+        }
+      }
+      
+      // Extract field names from template
+      const fieldNames = templateFields.map((f: any) => f.name || '').filter((n: string) => n);
+      
+      // EmpName - Employee Name (for PNM Admin Change Form and W9 Form)
+      if (fieldNames.includes('EmpName') && (emp.firstName || emp.lastName)) {
+        formValues.EmpName = `${emp.firstName || ''} ${emp.lastName || ''}`.trim();
+      }
+      
+      // EmpMedicaid ID - Note: field name has a space (for PNM Admin Change Form)
+      if (fieldNames.includes('EmpMedicaid ID') && (emp.medicaidNumber || (emp as any).medicaidId)) {
+        formValues['EmpMedicaid ID'] = emp.medicaidNumber || (emp as any).medicaidId;
+      }
+      
+      // EmpNPI - Employee NPI (for PNM Admin Change Form)
+      if (fieldNames.includes('EmpNPI') && (emp.npiNumber || (emp as any).npi)) {
+        formValues.EmpNPI = emp.npiNumber || (emp as any).npi;
+      }
+      
+      // EmpAddress - Employee Address (for W9 Form)
+      if (fieldNames.includes('EmpAddress')) {
+        const addressParts = [emp.homeAddress1, emp.homeAddress2].filter(Boolean);
+        if (addressParts.length > 0) {
+          formValues.EmpAddress = addressParts.join(', ');
+        }
+      }
+      
+      // EmpCityStateZip - City, State, ZIP (for W9 Form)
+      if (fieldNames.includes('EmpCityStateZip')) {
+        const cityStateZipParts = [
+          emp.homeCity,
+          emp.homeState,
+          emp.homeZip
+        ].filter(Boolean);
+        if (cityStateZipParts.length > 0) {
+          formValues.EmpCityStateZip = cityStateZipParts.join(', ');
+        }
+      }
+      
+      // SSN1, SSN2, SSN3 - Split SSN into 3 parts (for W9 Form)
+      if (fieldNames.includes('SSN1') || fieldNames.includes('SSN2') || fieldNames.includes('SSN3')) {
+        if (emp.ssn) {
+          try {
+            const decryptedSSN = decrypt(emp.ssn);
+            // Remove any dashes or spaces
+            const cleanSSN = decryptedSSN.replace(/[-\s]/g, '');
+            if (cleanSSN.length >= 9) {
+              // Split into 3 parts: XXX-XX-XXXX
+              formValues.SSN1 = cleanSSN.substring(0, 3);
+              formValues.SSN2 = cleanSSN.substring(3, 5);
+              formValues.SSN3 = cleanSSN.substring(5, 9);
+            }
+          } catch (e) {
+            console.warn('Failed to decrypt SSN for form pre-fill:', e);
+          }
+        }
+      }
+      
+      // CompanyNameAddr - Company Name and Address (for W9 Form)
+      if (fieldNames.includes('CompanyNameAddr')) {
+        const companyParts = [
+          (emp as any).companyName || (emp as any).company,
+          (emp as any).companyAddress
+        ].filter(Boolean);
+        if (companyParts.length > 0) {
+          formValues.CompanyNameAddr = companyParts.join(', ');
+        }
+      }
+      
+      // EmpSignDate - Set to current date in MM/DD/YYYY format (for both forms)
+      if (fieldNames.includes('EmpSignDate')) {
+        const today = new Date();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        const year = today.getFullYear();
+        formValues.EmpSignDate = `${month}/${day}/${year}`;
+      }
+      
+      // CompName - Company Name (for PNM Admin Change Form)
+      if (fieldNames.includes('CompName') && ((emp as any).companyName || (emp as any).company)) {
+        formValues.CompName = (emp as any).companyName || (emp as any).company;
+      }
+      
+      // CompOHID - Company OHID (for PNM Admin Change Form)
+      if (fieldNames.includes('CompOHID') && ((emp as any).companyOHID || (emp as any).compOHID)) {
+        formValues.CompOHID = (emp as any).companyOHID || (emp as any).compOHID;
+      }
+
+      // Always add employee as first submitter with pre-filled values
       submitters.push({
         email: emp.workEmail,
         name: `${emp.firstName} ${emp.lastName}`,
         phone: emp.cellPhone || undefined,
-        role: 'employee'
+        role: employeeRole, // Use role from template (e.g., "Employee" with capital E)
+        values: Object.keys(formValues).length > 0 ? formValues : undefined
       });
 
       // Add HR as second submitter if required
@@ -676,7 +831,7 @@ export class DocuSealService {
         submitters.push({
           email: hrEmail,
           name: hrName,
-          role: 'hr'
+          role: hrRole // Use role from template (e.g., "Company")
         });
       }
 
