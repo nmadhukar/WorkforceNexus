@@ -132,6 +132,8 @@ export function EmployeeForms({
   const [isDocusealLoaded, setIsDocusealLoaded] = useState(false);
   const [formValues, setFormValues] = useState<Record<string, any>>({});
   const valuesSetRef = useRef<string | null>(null);
+  const formValuesAppliedRef = useRef<boolean>(false);
+  const valuesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // Only show forms when we have either an employee ID or an onboarding ID
   const canShowForms = !!(employeeId || onboardingId);
 
@@ -194,6 +196,11 @@ export function EmployeeForms({
     return () => {
       Object.values(watchersRef.current).forEach((i: any) => clearInterval(i));
       watchersRef.current = {};
+      // Clear timeout on unmount
+      if (valuesTimeoutRef.current) {
+        clearTimeout(valuesTimeoutRef.current);
+        valuesTimeoutRef.current = null;
+      }
     };
   }, []);
 
@@ -245,21 +252,25 @@ export function EmployeeForms({
     return values;
   };
 
+
   // Memoize form values based on employee data
   const memoizedFormValues = useMemo(() => {
     return getFormValues();
   }, [data?.firstName, data?.lastName, data?.fullName, data?.name, data?.medicaidId, data?.medicaidID, data?.npi, data?.NPI, data?.companyName, data?.company, data?.organizationName, data?.companyOHID, data?.compOHID, data?.ohid]);
 
   // Update form values when signing URL is ready (only once per URL)
+  // Set values immediately when URL is ready, before component renders
   useEffect(() => {
     if (signingUrl && submissionModalOpen && valuesSetRef.current !== signingUrl) {
       const values = memoizedFormValues;
       console.log("Updating form values when signing URL is ready:", values);
+      // Set values immediately so they're available when component renders
       setFormValues(values);
       valuesSetRef.current = signingUrl;
+      formValuesAppliedRef.current = true;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signingUrl, submissionModalOpen]);
+  }, [signingUrl, submissionModalOpen, memoizedFormValues]);
 
   // Fetch form submissions for onboarding or employee
   const { 
@@ -632,12 +643,17 @@ export function EmployeeForms({
 
   // Open View dialog and fetch signing URL for embedded view
   const openViewDialog = (submission: FormSubmission, signerEmail: string, templateName?: string) => {
+    // Clear any existing timeout
+    if (valuesTimeoutRef.current) {
+      clearTimeout(valuesTimeoutRef.current);
+      valuesTimeoutRef.current = null;
+    }
     setViewContext({ submission, signerEmail, templateName });
     setSigningUrl(null);
-    // Set form values immediately from memoized values
-    const values = getFormValues();
-    console.log("Setting form values when opening dialog:", values);
-    setFormValues(values);
+    setIsDocusealLoaded(false);
+    formValuesAppliedRef.current = false;
+    // Reset form values - they will be set after template loads
+    setFormValues({});
     valuesSetRef.current = null;
     setSubmissionModalOpen(true);
     if (submission?.id && signerEmail) {
@@ -1103,38 +1119,61 @@ export function EmployeeForms({
       {/* View Submission Dialog */}
       <Dialog
         open={submissionModalOpen}
-        onOpenChange={(open) => {
+          onOpenChange={(open) => {
           setSubmissionModalOpen(open);
           if (!open) {
+            // Clear timeout when closing dialog
+            if (valuesTimeoutRef.current) {
+              clearTimeout(valuesTimeoutRef.current);
+              valuesTimeoutRef.current = null;
+            }
             setViewContext(null);
             setSigningUrl(null);
             setFormValues({});
+            setIsDocusealLoaded(false);
             valuesSetRef.current = null;
+            formValuesAppliedRef.current = false;
           }
         }}
       >
       <DialogContent
         data-testid="view-dialog"
-        className="max-w-[90vw] w-[90vw] h-[90vh] overflow-y-auto"
+        className="max-w-[70vw] w-[70vw] h-[90vh] overflow-y-auto"
       >
           <DialogHeader>
-            <DialogTitle>{viewContext?.templateName || "View Document"}</DialogTitle>
-            <DialogDescription>
+            <DialogTitle>{viewContext?.templateName|| "View Document"}</DialogTitle>
+            {/* <DialogDescription>
               {viewContext?.signerEmail
                 ? `Open the document for ${viewContext.signerEmail} in a new tab to view or sign.`
                 : "Open the document in a new tab to view or sign."}
-            </DialogDescription>
+            </DialogDescription> */}
           </DialogHeader>
-            {signingUrl && (
+            {signingUrl && Object.keys(memoizedFormValues).length > 0 && (
               <DocusealForm
-                key={`${signingUrl}-${JSON.stringify(memoizedFormValues)}`}
+                key={`${signingUrl}-${JSON.stringify(formValues)}`}
                 src={signingUrl}
                 email={viewContext?.signerEmail ?? ""}
-                values={{"822d1f02-61a5-4436-be66-225bda0bfb55":"John Doe"}}
+                values={formValues}
                 onLoad={(loadData) => {
                   console.log("Loaded DocuSeal form:", loadData);
-                  console.log("Form values being sent to DocuSeal:", memoizedFormValues);
+                  console.log("Form values being sent to DocuSeal (using field names):", formValues);
                   console.log("Form values in loadData:", loadData.values);
+                  setIsDocusealLoaded(true);
+                  
+                  // If values weren't set yet, try setting them after a delay
+                  if (Object.keys(formValues).length === 0 && Object.keys(memoizedFormValues).length > 0) {
+                    // Clear any existing timeout
+                    if (valuesTimeoutRef.current) {
+                      clearTimeout(valuesTimeoutRef.current);
+                    }
+                    
+                    // Set form values after 3 seconds to allow template to fully load
+                    valuesTimeoutRef.current = setTimeout(() => {
+                      console.log("Setting form values after 3 second delay (fallback):", memoizedFormValues);
+                      setFormValues(memoizedFormValues);
+                      formValuesAppliedRef.current = true;
+                    }, 3000);
+                  }
                 }}
                 rememberSignature={true}
                 onComplete={(data) => {
@@ -1152,12 +1191,19 @@ export function EmployeeForms({
                   description: "The document has been successfully signed.",
                 });
                 // Refresh submissions and close modal
+                // Clear timeout when completing form
+                if (valuesTimeoutRef.current) {
+                  clearTimeout(valuesTimeoutRef.current);
+                  valuesTimeoutRef.current = null;
+                }
                 refetchSubmissions();
                 setSubmissionModalOpen(false);
                 setViewContext(null);
                 setSigningUrl(null);
                 setFormValues({});
+                setIsDocusealLoaded(false);
                 valuesSetRef.current = null;
+                formValuesAppliedRef.current = false;
               }}
               />
             )}
@@ -1171,13 +1217,21 @@ export function EmployeeForms({
             )}
           <DialogFooter>
             <Button
+            className="w-full position-absolute bottom-0 left-0 right-0 margin-auto"
               variant="outline"
               onClick={() => {
+                // Clear timeout when closing dialog
+                if (valuesTimeoutRef.current) {
+                  clearTimeout(valuesTimeoutRef.current);
+                  valuesTimeoutRef.current = null;
+                }
                 setSubmissionModalOpen(false);
                 setViewContext(null);
                 setSigningUrl(null);
                 setFormValues({});
+                setIsDocusealLoaded(false);
                 valuesSetRef.current = null;
+                formValuesAppliedRef.current = false;
               }}
               data-testid="button-cancel-view"
             >
