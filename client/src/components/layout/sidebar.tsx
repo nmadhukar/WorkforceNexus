@@ -61,12 +61,12 @@ const allNavigationItems = [
     icon: BarChart2, 
     roles: ["admin", "hr"] 
   },
-  { 
-    path: "/audits", 
-    label: "Audits", 
-    icon: Shield, 
-    roles: ["admin", "hr"] 
-  },
+  // { 
+  //   path: "/audits", 
+  //   label: "Audits", 
+  //   icon: Shield, 
+  //   roles: ["admin", "hr"] 
+  // },
   { 
     path: "/settings", 
     label: "Settings", 
