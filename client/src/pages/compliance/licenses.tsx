@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/main-layout";
 import { Button } from "@/components/ui/button";
@@ -62,12 +62,20 @@ export default function LicensesPage() {
       const params = new URLSearchParams({
         page: String(currentPage),
         limit: "10",
-        ...(search && { search: String(search) }),
-        ...(location && { locationId: String(location) }),
-        ...(type && { typeId: String(type) }),
-        ...(status && { status: String(status) })
       });
-      
+
+      if (search && typeof search === 'string' && search.trim()) {
+        params.set("search", search);
+      }
+      if (location && typeof location === 'string' && location !== 'all') {
+        params.set("locationId", location);
+      }
+      if (type && typeof type === 'string' && type !== 'all') {
+        params.set("licenseTypeId", type);
+      }
+      if (status && typeof status === 'string' && status !== 'all' && status.trim()) {
+        params.set("status", status);
+      }
       const res = await fetch(`${url}?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error('Failed to fetch licenses');
       return res.json();
@@ -76,22 +84,47 @@ export default function LicensesPage() {
 
   // Fetch compliance stats
   const { data: stats } = useQuery<ComplianceStats>({
-    queryKey: ["/api/clinic-licenses/stats"]
+    queryKey: ["/api/clinic-licenses/stats"],
+    queryFn: async () => {
+      const res = await fetch("/api/clinic-licenses/stats", { credentials: "include" });
+      if (!res.ok) throw new Error('Failed to fetch license stats');
+      return res.json();
+    }
   });
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, locationFilter, typeFilter, statusFilter]);
 
   // Fetch locations for dropdown
   const { data: locationsData } = useQuery<{ locations: Location[] }>({
-    queryKey: ["/api/locations", { limit: 100 }]
+    queryKey: ["/api/locations"],
+    queryFn: async () => {
+      const res = await fetch("/api/locations?limit=100", { credentials: "include" });
+      if (!res.ok) throw new Error('Failed to fetch locations');
+      return res.json();
+    }
   });
 
   // Fetch license types for dropdown
   const { data: typesData } = useQuery<{ licenseTypes: LicenseType[] }>({
-    queryKey: ["/api/license-types", { limit: 100 }]
+    queryKey: ["/api/license-types"],
+    queryFn: async () => {
+      const res = await fetch("/api/license-types?limit=100", { credentials: "include" });
+      if (!res.ok) throw new Error('Failed to fetch license types');
+      return res.json();
+    }
   });
 
   // Fetch responsible persons for dropdown
-  const { data: personsData } = useQuery<{ responsiblePersons: ResponsiblePerson[] }>({
-    queryKey: ["/api/responsible-persons", { limit: 100 }]
+  const { data: personsData } = useQuery<{ persons: ResponsiblePerson[] }>({
+    queryKey: ["/api/responsible-persons"],
+    queryFn: async () => {
+      const res = await fetch("/api/responsible-persons?limit=100", { credentials: "include" });
+      if (!res.ok) throw new Error('Failed to fetch responsible persons');
+      return res.json();
+    }
   });
 
   // Form setup
@@ -111,6 +144,46 @@ export default function LicensesPage() {
     }
   });
 
+  // Handle dialog open/close with form reset
+  const handleDialogOpenChange = (open: boolean) => {
+    setDialogOpen(open);
+    if (!open) {
+      // Reset form to defaults and clear selected license when dialog closes
+      setSelectedLicense(null);
+      form.reset({
+        locationId: parseInt(locationIdParam || "0") || 0,
+        licenseTypeId: 0,
+        licenseNumber: "",
+        issueDate: new Date().toISOString().split('T')[0],
+        expirationDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        status: "active",
+        complianceStatus: "compliant",
+        issuingAuthority: "",
+        issuingState: "",
+        notes: ""
+      });
+    }
+  };
+
+  // Handle opening dialog for "Add License"
+  const handleAddLicense = () => {
+    // Explicitly clear selected license and reset form to defaults
+    setSelectedLicense(null);
+    form.reset({
+      locationId: parseInt(locationIdParam || "0") || 0,
+      licenseTypeId: 0,
+      licenseNumber: "",
+      issueDate: new Date().toISOString().split('T')[0],
+      expirationDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      status: "active",
+      complianceStatus: "compliant",
+      issuingAuthority: "",
+      issuingState: "",
+      notes: ""
+    });
+    setDialogOpen(true);
+  };
+
   // Create/Update mutation
   const saveMutation = useMutation({
     mutationFn: async (data: InsertClinicLicense) => {
@@ -127,9 +200,8 @@ export default function LicensesPage() {
       });
       queryClient.invalidateQueries({ queryKey: ["/api/clinic-licenses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/clinic-licenses/stats"] });
-      setDialogOpen(false);
-      setSelectedLicense(null);
-      form.reset();
+      // handleDialogOpenChange will reset form and clear selectedLicense
+      handleDialogOpenChange(false);
     },
     onError: (error) => {
       toast({
@@ -180,6 +252,11 @@ export default function LicensesPage() {
   });
 
   const handleEdit = (license: ClinicLicense) => {
+    // Clear selected license first, then set it
+    setSelectedLicense(null);
+    // Reset form to defaults first to clear any previous data
+    form.reset();
+    // Then set the license values
     setSelectedLicense(license);
     form.reset({
       locationId: license.locationId,
@@ -195,8 +272,8 @@ export default function LicensesPage() {
       complianceStatus: license.complianceStatus as any,
       issuingAuthority: license.issuingAuthority || "",
       issuingState: license.issuingState || "",
-      initialCost: license.initialCost ? parseFloat(license.initialCost) : undefined,
-      renewalCost: license.renewalCost ? parseFloat(license.renewalCost) : undefined,
+      initialCost: license.initialCost ? String(license.initialCost) : undefined,
+      renewalCost: license.renewalCost ? String(license.renewalCost) : undefined,
       notes: license.notes || "",
       complianceNotes: license.complianceNotes || "",
       renewalNotes: license.renewalNotes || ""
@@ -286,14 +363,11 @@ export default function LicensesPage() {
               <Mail className="w-4 h-4 mr-2" />
               Send Renewal Reminders
             </Button>
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
               <DialogTrigger asChild>
                 <Button 
                   className="bg-primary text-primary-foreground hover:bg-primary/90"
-                  onClick={() => {
-                    setSelectedLicense(null);
-                    form.reset();
-                  }}
+                  onClick={handleAddLicense}
                   data-testid="button-add-license"
                 >
                   <Plus className="w-4 h-4 mr-2" />
@@ -325,11 +399,11 @@ export default function LicensesPage() {
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {locationsData?.locations.map((location) => (
+                                {locationsData?.locations?.map((location) => (
                                   <SelectItem key={location.id} value={location.id.toString()}>
                                     {location.name}
                                   </SelectItem>
-                                ))}
+                                )) || []}
                               </SelectContent>
                             </Select>
                             <FormMessage />
@@ -352,11 +426,11 @@ export default function LicensesPage() {
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {typesData?.licenseTypes.map((type) => (
+                                {typesData?.licenseTypes?.map((type) => (
                                   <SelectItem key={type.id} value={type.id.toString()}>
                                     {type.name}
                                   </SelectItem>
-                                ))}
+                                )) || []}
                               </SelectContent>
                             </Select>
                             <FormMessage />
@@ -434,11 +508,11 @@ export default function LicensesPage() {
                               </FormControl>
                               <SelectContent>
                                 <SelectItem value="none">None</SelectItem>
-                                {personsData?.responsiblePersons.map((person) => (
+                                {personsData?.persons?.map((person) => (
                                   <SelectItem key={person.id} value={person.id.toString()}>
                                     {person.firstName} {person.lastName}
                                   </SelectItem>
-                                ))}
+                                )) || []}
                               </SelectContent>
                             </Select>
                             <FormMessage />
@@ -462,11 +536,11 @@ export default function LicensesPage() {
                               </FormControl>
                               <SelectContent>
                                 <SelectItem value="none">None</SelectItem>
-                                {personsData?.responsiblePersons.map((person) => (
+                                {personsData?.persons?.map((person) => (
                                   <SelectItem key={person.id} value={person.id.toString()}>
                                     {person.firstName} {person.lastName}
                                   </SelectItem>
-                                ))}
+                                )) || []}
                               </SelectContent>
                             </Select>
                             <FormMessage />
@@ -596,7 +670,7 @@ export default function LicensesPage() {
                                 step="0.01"
                                 placeholder="500.00" 
                                 data-testid="input-initial-cost"
-                                onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                                onChange={(e) => field.onChange(e.target.value ? String(e.target.value) : undefined)}
                                 value={field.value || ""}
                               />
                             </FormControl>
@@ -617,7 +691,7 @@ export default function LicensesPage() {
                                 step="0.01"
                                 placeholder="250.00" 
                                 data-testid="input-renewal-cost"
-                                onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                                onChange={(e) => field.onChange(e.target.value ? String(e.target.value) : undefined)}
                                 value={field.value || ""}
                               />
                             </FormControl>
@@ -648,7 +722,7 @@ export default function LicensesPage() {
                     />
 
                     <DialogFooter>
-                      <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                      <Button type="button" variant="outline" onClick={() => handleDialogOpenChange(false)}>
                         Cancel
                       </Button>
                       <Button type="submit" disabled={saveMutation.isPending} data-testid="button-save-license">
@@ -733,39 +807,60 @@ export default function LicensesPage() {
                   <Input
                     placeholder="Search licenses..."
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setPage(1);
+                    }}
                     className="pl-10"
                     data-testid="input-search-licenses"
                   />
                 </div>
               </div>
-              <Select value={locationFilter} onValueChange={setLocationFilter}>
+              <Select 
+                value={locationFilter || "all"} 
+                onValueChange={(value) => {
+                  setLocationFilter(value === "all" ? "" : value);
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger className="w-[200px]" data-testid="select-filter-location">
                   <SelectValue placeholder="All Locations" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Locations</SelectItem>
-                  {locationsData?.locations.map((location) => (
+                  {locationsData?.locations?.map((location) => (
                     <SelectItem key={location.id} value={location.id.toString()}>
                       {location.name}
                     </SelectItem>
-                  ))}
+                  )) || []}
                 </SelectContent>
               </Select>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <Select 
+                value={typeFilter || "all"} 
+                onValueChange={(value) => {
+                  setTypeFilter(value === "all" ? "" : value);
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger className="w-[200px]" data-testid="select-filter-type">
                   <SelectValue placeholder="All Types" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
-                  {typesData?.licenseTypes.map((type) => (
+                  {typesData?.licenseTypes?.map((type) => (
                     <SelectItem key={type.id} value={type.id.toString()}>
                       {type.name}
                     </SelectItem>
-                  ))}
+                  )) || []}
                 </SelectContent>
               </Select>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select 
+                value={statusFilter || "all"} 
+                onValueChange={(value) => {
+                  setStatusFilter(value === "all" ? "" : value);
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger className="w-[180px]" data-testid="select-filter-status">
                   <SelectValue placeholder="All Statuses" />
                 </SelectTrigger>
@@ -819,11 +914,7 @@ export default function LicensesPage() {
                         <Award className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                         <p className="text-muted-foreground mb-4">No licenses found</p>
                         <Button
-                          onClick={() => {
-                            setSelectedLicense(null);
-                            form.reset();
-                            setDialogOpen(true);
-                          }}
+                          onClick={handleAddLicense}
                           data-testid="button-add-first-license"
                         >
                           <Plus className="h-4 w-4 mr-2" />
@@ -834,9 +925,9 @@ export default function LicensesPage() {
                   ) : (
                     data?.licenses.map((license) => {
                       const daysUntilExpiration = getDaysUntilExpiration(license.expirationDate);
-                      const location = locationsData?.locations.find(l => l.id === license.locationId);
-                      const type = typesData?.licenseTypes.find(t => t.id === license.licenseTypeId);
-                      const primaryPerson = personsData?.responsiblePersons.find(p => p.id === license.primaryResponsibleId);
+                      const location = locationsData?.locations?.find(l => l.id === license.locationId);
+                      const type = typesData?.licenseTypes?.find(t => t.id === license.licenseTypeId);
+                      const primaryPerson = personsData?.persons?.find(p => p.id === license.primaryResponsibleId);
                       
                       return (
                         <TableRow key={license.id} data-testid={`license-row-${license.id}`}>

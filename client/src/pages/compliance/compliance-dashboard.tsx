@@ -34,6 +34,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { DocumentUploader } from "@/components/documents/DocumentUploader";
 import { DocumentList } from "@/components/documents/DocumentList";
+import { type Location } from "@shared/schema";
 
 interface ComplianceDashboardData {
   totalLocations: number;
@@ -88,42 +89,62 @@ export default function ComplianceDashboard() {
   // Fetch dashboard data
   const { data: dashboardData, isLoading: dashboardLoading, refetch: refetchDashboard } = useQuery<ComplianceDashboardData>({
     queryKey: ["/api/compliance/dashboard"],
+    queryFn: async () => {
+      const res = await fetch("/api/compliance/dashboard", { credentials: "include" });
+      if (!res.ok) throw new Error('Failed to fetch dashboard data');
+      return res.json();
+    },
     refetchInterval: 5 * 60 * 1000, // Auto-refresh every 5 minutes
   });
 
   // Fetch compliance alerts
   const { data: alerts = [], refetch: refetchAlerts } = useQuery<ComplianceAlert[]>({
     queryKey: ["/api/compliance/alerts"],
+    queryFn: async () => {
+      const res = await fetch("/api/compliance/alerts", { credentials: "include" });
+      if (!res.ok) throw new Error('Failed to fetch compliance alerts');
+      return res.json();
+    },
     refetchInterval: 5 * 60 * 1000,
   });
 
   // Fetch location summaries
   const { data: locationSummaries = [], refetch: refetchSummaries } = useQuery<LocationSummary[]>({
     queryKey: ["/api/compliance/summary"],
+    queryFn: async () => {
+      const res = await fetch("/api/compliance/summary", { credentials: "include" });
+      if (!res.ok) throw new Error('Failed to fetch location summaries');
+      return res.json();
+    },
   });
 
   // Fetch expiring licenses
-  const { data: expiringLicenses = [] } = useQuery<ExpiringLicense[]>({
-    queryKey: ["/api/clinic-licenses/expiring", { days: dateRange }],
+  const { data: expiringLicensesData } = useQuery<{ licenses: ExpiringLicense[]; count: number; withinDays: number }>({
+    queryKey: ["/api/clinic-licenses/expiring", dateRange],
     queryFn: async ({ queryKey }) => {
-      const res = await fetch(`/api/clinic-licenses/expiring?days=${dateRange}`, { 
+      const [, days] = queryKey;
+      const res = await fetch(`/api/clinic-licenses/expiring?days=${days}`, { 
         credentials: "include" 
       });
       if (!res.ok) throw new Error('Failed to fetch expiring licenses');
       return res.json();
     }
   });
+  
+  const expiringLicenses = expiringLicensesData?.licenses || [];
 
   // Fetch all locations for filter
-  const { data: locations = [] } = useQuery({
-    queryKey: ["/api/locations"],
+  const { data: locationsData } = useQuery<{ locations: Location[] }>({
+    queryKey: ["/api/locations", "all"],
     queryFn: async () => {
-      const res = await fetch("/api/locations", { credentials: "include" });
+      const res = await fetch("/api/locations?limit=1000", { credentials: "include" });
       if (!res.ok) throw new Error('Failed to fetch locations');
       const data = await res.json();
-      return data.locations || [];
+      return { locations: Array.isArray(data.locations) ? data.locations : [] };
     }
   });
+  
+  const locations = locationsData?.locations || [];
 
   // Manual refresh function
   const handleManualRefresh = async () => {
@@ -652,7 +673,7 @@ export default function ComplianceDashboard() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Locations</SelectItem>
-                        {locations.map((loc: any) => (
+                        {locations.map((loc) => (
                           <SelectItem key={loc.id} value={loc.id.toString()}>
                             {loc.name}
                           </SelectItem>

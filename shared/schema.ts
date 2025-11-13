@@ -1719,7 +1719,16 @@ export const insertComplianceDocumentSchema = createInsertSchema(complianceDocum
   uploadedAt: true,
   lastAccessedAt: true,
   lastModifiedAt: true,
-  verifiedAt: true
+  verifiedAt: true,
+  // Server-generated fields (should be generated during upload)
+  storageKey: true,
+  fileName: true,
+  fileSize: true,
+  mimeType: true,
+  s3Bucket: true,
+  s3Region: true,
+  s3Etag: true,
+  s3VersionId: true
 }).extend({
   documentType: z.enum(["license_certificate", "renewal_application", "inspection_report", "sop", "policy", "other"]),
   storageType: z.enum(["s3", "local"]).default("s3"),

@@ -17,6 +17,7 @@ import type { Express, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
+import { query } from "express-validator";
 import { 
   validateEmployee, 
   validateEducation, 
@@ -83,6 +84,8 @@ import {
   incidentLogs,
   tasks,
   taskUpdates,
+  clinicLicenses,
+  locations,
   insertEmployeeSchema,
   insertEducationSchema,
   insertEmploymentSchema,
@@ -101,7 +104,7 @@ import {
   type TaskUpdate
 } from "@shared/schema";
 import { z } from "zod";
-import { eq, or, sql, count, and } from "drizzle-orm";
+import { eq, or, sql, count, and, lte, gte, lt } from "drizzle-orm";
 import { encrypt, decrypt, mask } from "./utils/encryption";
 import { getBaseUrl } from "./utils/url";
 import crypto from "crypto";
@@ -10240,7 +10243,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/locations - List all locations with hierarchy
   app.get('/api/locations',
     requireAuth,
-    validatePagination(),
+    // Custom validation for locations - allow higher limit for dropdowns
+    query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
+    query('limit').optional().isInt({ min: 1, max: 10000 }).withMessage('Limit must be between 1 and 10000'),
+    query('search').optional().isLength({ max: 255 }).withMessage('Search term too long'),
     handleValidationErrors,
     auditMiddleware('READ'),
     async (req: AuditRequest, res: Response) => {
@@ -10578,14 +10584,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     auditMiddleware('READ'),
     async (req: AuditRequest, res: Response) => {
       try {
-        const { page = '1', limit = '10', search, isPrimary } = req.query;
+        const { page = '1', limit = '10', search, isPrimary, status } = req.query;
         const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
         
         const result = await storage.getResponsiblePersons({
           limit: parseInt(limit as string),
           offset,
           search: search as string,
-          isPrimary: isPrimary === 'true' ? true : isPrimary === 'false' ? false : undefined
+          isPrimary: isPrimary === 'true' ? true : isPrimary === 'false' ? false : undefined,
+          status: status as string
         });
         
         res.json({
@@ -10764,6 +10771,134 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
   
   // GET /api/clinic-licenses/:id - Get license details
+  // GET /api/clinic-licenses/stats - Get license statistics (MUST be before /:id route)
+  app.get('/api/clinic-licenses/stats',
+    requireAuth,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        // Get total and active licenses count
+        const [totalResult] = await db.select({ count: count() })
+          .from(clinicLicenses)
+          .innerJoin(locations, eq(clinicLicenses.locationId, locations.id))
+          .where(sql`${locations.status} != 'deleted'`);
+        
+        const [activeResult] = await db.select({ count: count() })
+          .from(clinicLicenses)
+          .innerJoin(locations, eq(clinicLicenses.locationId, locations.id))
+          .where(
+            and(
+              sql`${locations.status} != 'deleted'`,
+              eq(clinicLicenses.status, 'active')
+            )
+          );
+        
+        // Get expiring licenses (within 90 days)
+        const today = new Date();
+        const in90Days = new Date(today.getTime() + 90 * 24 * 60 * 60 * 1000);
+        const [expiringResult] = await db.select({ count: count() })
+          .from(clinicLicenses)
+          .innerJoin(locations, eq(clinicLicenses.locationId, locations.id))
+          .where(
+            and(
+              sql`${locations.status} != 'deleted'`,
+              sql`${clinicLicenses.expirationDate} IS NOT NULL`,
+              lte(clinicLicenses.expirationDate, in90Days.toISOString().split('T')[0]),
+              gte(clinicLicenses.expirationDate, today.toISOString().split('T')[0])
+            )
+          );
+        
+        // Get expired licenses
+        const [expiredResult] = await db.select({ count: count() })
+          .from(clinicLicenses)
+          .innerJoin(locations, eq(clinicLicenses.locationId, locations.id))
+          .where(
+            and(
+              sql`${locations.status} != 'deleted'`,
+              sql`${clinicLicenses.expirationDate} IS NOT NULL`,
+              lt(clinicLicenses.expirationDate, today.toISOString().split('T')[0])
+            )
+          );
+        
+        // Get pending renewal licenses
+        const [pendingRenewalResult] = await db.select({ count: count() })
+          .from(clinicLicenses)
+          .innerJoin(locations, eq(clinicLicenses.locationId, locations.id))
+          .where(
+            and(
+              sql`${locations.status} != 'deleted'`,
+              eq(clinicLicenses.status, 'pending_renewal')
+            )
+          );
+        
+        res.json({
+          total: totalResult?.count || 0,
+          active: activeResult?.count || 0,
+          expiring: expiringResult?.count || 0,
+          expired: expiredResult?.count || 0,
+          pendingRenewal: pendingRenewalResult?.count || 0
+        });
+      } catch (error) {
+        console.error('Error fetching clinic license stats:', error);
+        res.status(500).json({ error: 'Failed to fetch clinic license stats' });
+      }
+    }
+  );
+  
+  // GET /api/clinic-licenses/expiring - Get expiring licenses (MUST be before /:id route)
+  app.get('/api/clinic-licenses/expiring',
+    requireAuth,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        // Accept numeric strings and provide default value
+        const daysParam = req.query.days as string;
+        let daysNumber = 30; // Default value
+        
+        if (daysParam) {
+          const parsed = parseInt(daysParam);
+          // Validate the parsed number
+          if (!isNaN(parsed) && parsed > 0) {
+            daysNumber = parsed;
+          }
+        }
+        
+        const licenses = await storage.getExpiringClinicLicenses(daysNumber);
+        const licensesList = licenses || [];
+        
+        // Check if CSV export is requested
+        const acceptHeader = req.headers.accept || '';
+        if (acceptHeader.includes('text/csv') || acceptHeader.includes('application/octet-stream')) {
+          // Export as CSV
+          const csvHeaders = 'License Number,Type,Location,Responsible Person,Expiration Date,Days Remaining\n';
+          const csvData = licensesList.map(license => 
+            `"${license.licenseNumber || ''}","${license.licenseType || ''}","${license.locationName || ''}","${license.responsiblePerson || ''}","${new Date(license.expirationDate).toISOString().split('T')[0]}","${license.daysUntilExpiration || 0}"`
+          ).join('\n');
+
+          res.setHeader('Content-Type', 'text/csv');
+          res.setHeader('Content-Disposition', `attachment; filename="compliance-expiring-licenses-${new Date().toISOString().split('T')[0]}.csv"`);
+          return res.send(csvHeaders + csvData);
+        }
+        
+        // Always return 200 with the results (even if empty)
+        res.json({
+          licenses: licensesList,
+          count: licensesList.length,
+          withinDays: daysNumber
+        });
+      } catch (error) {
+        console.error('Error fetching expiring licenses:', error);
+        // Return 200 with empty array instead of 500 error
+        res.json({
+          licenses: [],
+          count: 0,
+          withinDays: 30,
+          error: 'Failed to fetch expiring licenses'
+        });
+      }
+    }
+  );
+  
   app.get('/api/clinic-licenses/:id',
     requireAuth,
     validateId(),
@@ -10867,44 +11002,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
   
-  // GET /api/clinic-licenses/expiring - Get expiring licenses
-  app.get('/api/clinic-licenses/expiring',
-    requireAuth,
-    auditMiddleware('READ'),
-    async (req: AuditRequest, res: Response) => {
-      try {
-        // Accept numeric strings and provide default value
-        const daysParam = req.query.days as string;
-        let daysNumber = 30; // Default value
-        
-        if (daysParam) {
-          const parsed = parseInt(daysParam);
-          // Validate the parsed number
-          if (!isNaN(parsed) && parsed > 0) {
-            daysNumber = parsed;
-          }
-        }
-        
-        const licenses = await storage.getExpiringClinicLicenses(daysNumber);
-        
-        // Always return 200 with the results (even if empty)
-        res.json({
-          licenses: licenses || [],
-          count: (licenses || []).length,
-          withinDays: daysNumber
-        });
-      } catch (error) {
-        console.error('Error fetching expiring licenses:', error);
-        // Return 200 with empty array instead of 500 error
-        res.status(200).json({ 
-          licenses: [],
-          count: 0,
-          withinDays: 30
-        });
-      }
-    }
-  );
-  
   // GET /api/clinic-licenses/by-location/:locationId - Get licenses by location
   app.get('/api/clinic-licenses/by-location/:locationId',
     requireAuth,
@@ -11003,6 +11100,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
   
+  // GET /api/compliance-documents/stats - Get document statistics
+  app.get('/api/compliance-documents/stats',
+    requireAuth,
+    auditMiddleware('READ'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const stats = await storage.getComplianceDocumentStats();
+        res.json(stats);
+      } catch (error) {
+        console.error('Error fetching compliance document stats:', error);
+        res.status(500).json({ error: 'Failed to fetch compliance document stats' });
+      }
+    }
+  );
+  
   // GET /api/compliance-documents/:id - Get document details
   app.get('/api/compliance-documents/:id',
     requireAuth,
@@ -11027,7 +11139,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/compliance-documents/upload',
     requireAuth,
     requireRole(['admin', 'hr']),
-    upload.single('document'),
+    upload.single('file'),
     validateComplianceDocument(),
     handleValidationErrors,
     auditMiddleware('CREATE'),
@@ -11162,6 +11274,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error('Error deleting compliance document:', error);
         res.status(500).json({ error: 'Failed to delete compliance document' });
+      }
+    }
+  );
+  
+  // POST /api/compliance-documents/:id/verify - Verify a compliance document
+  app.post('/api/compliance-documents/:id/verify',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    validateId(),
+    handleValidationErrors,
+    auditMiddleware('UPDATE'),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const documentId = parseInt(req.params.id);
+        
+        if (!documentId || isNaN(documentId)) {
+          return res.status(400).json({ error: 'Invalid document ID' });
+        }
+        
+        const document = await storage.getComplianceDocument(documentId);
+        
+        if (!document) {
+          return res.status(404).json({ error: 'Document not found' });
+        }
+        
+        if (!req.user || !req.user.id) {
+          return res.status(401).json({ error: 'User not authenticated' });
+        }
+        
+        // Update document with verification information
+        // Note: verifiedAt is not in InsertComplianceDocument schema, so we need to cast
+        const updateData: any = {
+          isVerified: true,
+          verifiedBy: req.user.id,
+          verifiedAt: new Date(),
+          verificationNotes: req.body.verificationNotes || null
+        };
+        const verifiedDocument = await storage.updateComplianceDocument(documentId, updateData);
+        
+        await logAudit(
+          req,
+          documentId,
+          document,
+          verifiedDocument
+        );
+        
+        res.json(verifiedDocument);
+      } catch (error: any) {
+        console.error('Error verifying compliance document:', error);
+        const errorMessage = error?.message || 'Failed to verify compliance document';
+        res.status(500).json({ error: errorMessage });
       }
     }
   );

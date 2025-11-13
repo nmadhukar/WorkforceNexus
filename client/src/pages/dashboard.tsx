@@ -136,6 +136,20 @@ export default function Dashboard() {
     }
   });
 
+// Fetch compliance expiring licenses
+const { data: locationsExpiringData, isLoading: loadingCompliance } = useQuery<{ licenses: any[]; count: number; withinDays: number }>({
+  queryKey: ["/api/clinic-licenses/expiring", "30"],
+  queryFn: async ({ queryKey }) => {
+    const [, days] = queryKey;
+    const res = await fetch(`/api/clinic-licenses/expiring?days=${days}`, { credentials: "include" });
+    if (!res.ok) throw new Error('Failed to fetch compliance expiring licenses');
+    return res.json();
+  },
+  enabled: true
+});
+
+const locationsExpiringLicenses = locationsExpiringData?.licenses?.length || [];
+
   // Calculate compliance score
   const complianceScore = complianceData 
     ? Math.round((complianceData.activeLicenses / Math.max(complianceData.totalLicenses, 1)) * 100)
@@ -399,7 +413,7 @@ export default function Dashboard() {
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
           <Link href="/employees">
             <Card className="cursor-pointer hover:shadow-md transition-shadow" data-testid="card-total-employees">
               <CardContent className="p-6">
@@ -441,13 +455,31 @@ export default function Dashboard() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Expiring Soon</p>
+                    <p className="text-sm font-medium text-muted-foreground">Employees Expiring Report</p>
                     <p className="text-2xl font-bold text-destructive" data-testid="text-expiring-soon">
                       {stats?.expiringSoon || 0}
                     </p>
                   </div>
                   <div className="w-12 h-12 bg-destructive/10 rounded-lg flex items-center justify-center">
                     <AlertTriangle className="w-6 h-6 text-destructive" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/reports?filter=compliance">
+            <Card className="cursor-pointer hover:shadow-md transition-shadow" data-testid="card-expiring-soon">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Locations Expiring Report</p>
+                    <p className="text-2xl font-bold text-destructive" data-testid="text-expiring-soon">
+                      {locationsExpiringLicenses || 0}
+                    </p>
+                  </div>
+                  <div className="w-12 h-12 bg-destructive/10 rounded-lg flex items-center justify-center">
+                    <Building2 className="w-6 h-6 text-destructive" />
                   </div>
                 </div>
               </CardContent>
@@ -474,9 +506,8 @@ export default function Dashboard() {
         </div>
 
         {/* Compliance Overview Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* Compliance Overview Card */}
-          <Card className="lg:col-span-2">
+        {/* <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6"> */}
+          {/* <Card className="lg:col-span-2">
             <CardHeader>
               <div className="flex justify-between items-center">
                 <div>
@@ -518,7 +549,6 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Compliance Alerts */}
               {complianceAlerts.length > 0 && (
                 <div className="mt-4 space-y-2">
                   <p className="text-sm font-medium mb-2">Recent Compliance Alerts</p>
@@ -548,7 +578,6 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Expiration Breakdown */}
               <div className="mt-4 grid grid-cols-3 gap-4 pt-4 border-t">
                 <div>
                   <div className="flex items-center gap-2">
@@ -579,7 +608,6 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Quick Actions */}
               <div className="mt-4 pt-4 border-t flex gap-2">
                 <Link href="/licenses/new">
                   <Button variant="outline" size="sm" data-testid="button-add-license">
@@ -601,7 +629,7 @@ export default function Dashboard() {
                 </Link>
               </div>
             </CardContent>
-          </Card>
+          </Card> */}
 
           {/* Tasks Widget */}
           <Card>
@@ -675,42 +703,30 @@ export default function Dashboard() {
               )}
             </CardContent>
           </Card>
-        </div>
+        {/* </div> */}
 
         {/* Recent Activity and Quick Actions */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* <div className="grid grid-cols-1 lg:grid-cols-2 gap-6"> */}
           {/* Recent Activity */}
-          <Card>
+          {/* <Card>
             <CardHeader>
               <CardTitle>Recent Activity</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 {activities.slice(0, 5).map((activity: RecentActivity, index: number) => {
-                  /**
-                   * Returns appropriate icon for activity type
-                   * @param {string} activityType - The type of activity (CREATE, UPDATE, DELETE, etc.)
-                   * @returns {JSX.Element} Icon component with appropriate styling
-                   */
                   const getActivityIcon = () => {
                     if (activity.type?.includes('CREATE')) return <UserPlus className="w-4 h-4 text-primary" />;
                     if (activity.type?.includes('UPDATE')) return <Download className="w-4 h-4 text-secondary" />;
                     if (activity.type?.includes('DELETE')) return <AlertTriangle className="w-4 h-4 text-destructive" />;
                     return <Upload className="w-4 h-4 text-accent" />;
                   };
-                  
-                  /**
-                   * Returns appropriate background class for activity icon
-                   * @param {string} activityType - The type of activity
-                   * @returns {string} CSS class for background styling
-                   */
                   const getIconBg = () => {
                     if (activity.type?.includes('CREATE')) return 'bg-primary/10';
                     if (activity.type?.includes('UPDATE')) return 'bg-secondary/10';
                     if (activity.type?.includes('DELETE')) return 'bg-destructive/10';
                     return 'bg-accent/10';
                   };
-                  
                   return (
                     <div key={activity.id} className="flex items-center space-x-3" data-testid={`activity-item-${index}`}>
                       <div className={`w-8 h-8 ${getIconBg()} rounded-full flex items-center justify-center`}>
@@ -735,10 +751,10 @@ export default function Dashboard() {
                 )}
               </div>
             </CardContent>
-          </Card>
+          </Card> */}
 
           {/* Quick Actions */}
-          <Card>
+          {/* <Card>
             <CardHeader>
               <CardTitle>Quick Actions</CardTitle>
             </CardHeader>
@@ -766,8 +782,8 @@ export default function Dashboard() {
                 </Link>
               </div>
             </CardContent>
-          </Card>
-        </div>
+          </Card> */}
+        {/* </div> */}
 
         {/* Upcoming Expirations */}
         {expiringItems.length > 0 && (
