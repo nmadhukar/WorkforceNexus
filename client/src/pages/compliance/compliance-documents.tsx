@@ -52,6 +52,9 @@ export default function ComplianceDocumentsPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [verifyDialogOpen, setVerifyDialogOpen] = useState(false);
+  const [documentToVerify, setDocumentToVerify] = useState<ComplianceDocument | null>(null);
+  const [verificationNotes, setVerificationNotes] = useState("");
 
   // Get location/license ID from URL params if present
   const urlParams = new URLSearchParams(window.location.search);
@@ -66,11 +69,20 @@ export default function ComplianceDocumentsPage() {
       const params = new URLSearchParams({
         page: String(currentPage),
         limit: "10",
-        ...(search && { search: String(search) }),
-        ...(type && { type: String(type) }),
-        ...(license && { licenseId: String(license) }),
-        ...(location && { locationId: String(location) })
       });
+      
+      if (search && typeof search === 'string' && search.trim()) {
+        params.set('search', search);
+      }
+      if (type && typeof type === 'string' && type.trim() && type !== 'all') {
+        params.set('documentType', type);
+      }
+      if (license && typeof license === 'string' && license !== 'all') {
+        params.set('clinicLicenseId', license);
+      }
+      if (location && typeof location === 'string' && location !== 'all') {
+        params.set('locationId', location);
+      }
       
       const res = await fetch(`${url}?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error('Failed to fetch documents');
@@ -80,25 +92,45 @@ export default function ComplianceDocumentsPage() {
 
   // Fetch document stats
   const { data: stats } = useQuery<DocumentStats>({
-    queryKey: ["/api/compliance-documents/stats"]
+    queryKey: ["/api/compliance-documents/stats"],
+    queryFn: async () => {
+      const res = await fetch("/api/compliance-documents/stats", { credentials: "include" });
+      if (!res.ok) throw new Error('Failed to fetch document stats');
+      return res.json();
+    }
   });
 
   // Fetch licenses for dropdown
   const { data: licensesData } = useQuery<{ licenses: ClinicLicense[] }>({
-    queryKey: ["/api/clinic-licenses", { limit: 100 }]
+    queryKey: ["/api/clinic-licenses", "dropdown"],
+    queryFn: async () => {
+      const res = await fetch("/api/clinic-licenses?limit=100", { credentials: "include" });
+      if (!res.ok) throw new Error('Failed to fetch licenses');
+      const data = await res.json();
+      // Handle paginated response
+      return { licenses: data.licenses || data || [] };
+    }
   });
 
   // Fetch locations for dropdown
   const { data: locationsData } = useQuery<{ locations: Location[] }>({
-    queryKey: ["/api/locations", { limit: 100 }]
+    queryKey: ["/api/locations", "dropdown"],
+    queryFn: async () => {
+      const res = await fetch("/api/locations?limit=100", { credentials: "include" });
+      if (!res.ok) throw new Error('Failed to fetch locations');
+      const data = await res.json();
+      // Handle paginated response
+      return { locations: data.locations || data || [] };
+    }
   });
 
   // Form setup for document metadata
   const form = useForm<InsertComplianceDocument>({
     resolver: zodResolver(insertComplianceDocumentSchema),
+    mode: "onChange",
     defaultValues: {
-      clinicLicenseId: parseInt(licenseIdParam || "0") || 0,
-      locationId: parseInt(locationIdParam || "0") || undefined,
+      clinicLicenseId: licenseIdParam ? parseInt(licenseIdParam) : undefined as any,
+      locationId: locationIdParam ? parseInt(locationIdParam) : undefined,
       documentType: "other",
       documentName: "",
       documentNumber: "",
@@ -172,13 +204,18 @@ export default function ComplianceDocumentsPage() {
 
   // Verify document mutation
   const verifyMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("POST", `/api/compliance-documents/${id}/verify`, {}),
+    mutationFn: ({ id, notes }: { id: number; notes?: string }) => 
+      apiRequest("POST", `/api/compliance-documents/${id}/verify`, { verificationNotes: notes || null }),
     onSuccess: () => {
       toast({
         title: "Success",
         description: "Document verified successfully"
       });
       queryClient.invalidateQueries({ queryKey: ["/api/compliance-documents"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/compliance-documents/stats"] });
+      setVerifyDialogOpen(false);
+      setVerificationNotes("");
+      setDocumentToVerify(null);
     },
     onError: (error) => {
       toast({
@@ -188,6 +225,23 @@ export default function ComplianceDocumentsPage() {
       });
     }
   });
+
+  // Handle verify button click
+  const handleVerifyClick = (document: ComplianceDocument) => {
+    setDocumentToVerify(document);
+    setVerificationNotes("");
+    setVerifyDialogOpen(true);
+  };
+
+  // Handle verify submission
+  const handleVerifySubmit = () => {
+    if (documentToVerify) {
+      verifyMutation.mutate({
+        id: documentToVerify.id,
+        notes: verificationNotes.trim() || undefined
+      });
+    }
+  };
 
   // Handle file drop
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -222,12 +276,35 @@ export default function ComplianceDocumentsPage() {
 
   // Handle form submission
   const handleUpload = async (data: InsertComplianceDocument) => {
+    console.log("Form submitted with data:", data);
+    console.log("Upload file:", uploadFile);
+    
     if (!uploadFile) {
       toast({
         title: "Error",
         description: "Please select a file to upload",
         variant: "destructive"
       });
+      return;
+    }
+
+    if (!data.clinicLicenseId || data.clinicLicenseId <= 0) {
+      toast({
+        title: "Error",
+        description: "Please select a license",
+        variant: "destructive"
+      });
+      form.setError("clinicLicenseId", { message: "License is required" });
+      return;
+    }
+
+    if (!data.documentName || data.documentName.trim() === "") {
+      toast({
+        title: "Error",
+        description: "Document name is required",
+        variant: "destructive"
+      });
+      form.setError("documentName", { message: "Document name is required" });
       return;
     }
 
@@ -240,7 +317,7 @@ export default function ComplianceDocumentsPage() {
     if (data.documentNumber) formData.append('documentNumber', data.documentNumber);
     if (data.effectiveDate) formData.append('effectiveDate', data.effectiveDate);
     if (data.expirationDate) formData.append('expirationDate', data.expirationDate);
-    formData.append('isRequired', data.isRequired.toString());
+    formData.append('isRequired', (data.isRequired ?? false).toString());
     if (data.complianceCategory) formData.append('complianceCategory', data.complianceCategory);
     if (data.notes) formData.append('notes', data.notes);
 
@@ -256,8 +333,13 @@ export default function ComplianceDocumentsPage() {
       
       if (!res.ok) throw new Error('Failed to get download URL');
       
-      const { downloadUrl } = await res.json();
-      window.open(downloadUrl, '_blank');
+      const response = await res.json();
+      const downloadUrl = response.downloadUrl || response.url;
+      if (downloadUrl) {
+        window.open(downloadUrl, '_blank');
+      } else {
+        throw new Error('No download URL returned');
+      }
     } catch (error) {
       toast({
         title: "Error",
@@ -329,7 +411,20 @@ export default function ComplianceDocumentsPage() {
                 <DialogTitle>Upload Compliance Document</DialogTitle>
               </DialogHeader>
               <Form {...form}>
-                <form onSubmit={form.handleSubmit(handleUpload)} className="space-y-6">
+                <form 
+                  onSubmit={form.handleSubmit(
+                    handleUpload,
+                    (errors) => {
+                      console.log("Form validation errors:", errors);
+                      toast({
+                        title: "Validation Error",
+                        description: "Please fix the errors in the form",
+                        variant: "destructive"
+                      });
+                    }
+                  )} 
+                  className="space-y-6"
+                >
                   {/* File Upload Area */}
                   <div
                     className={cn(
@@ -389,8 +484,11 @@ export default function ComplianceDocumentsPage() {
                         <FormItem>
                           <FormLabel>Related License *</FormLabel>
                           <Select 
-                            onValueChange={(value) => field.onChange(parseInt(value))} 
-                            value={field.value?.toString()}
+                            onValueChange={(value) => {
+                              field.onChange(parseInt(value));
+                              form.trigger("clinicLicenseId");
+                            }} 
+                            value={field.value && field.value > 0 ? field.value.toString() : ""}
                           >
                             <FormControl>
                               <SelectTrigger data-testid="select-license">
@@ -398,7 +496,7 @@ export default function ComplianceDocumentsPage() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {licensesData?.licenses.map((license) => (
+                              {licensesData?.licenses?.map((license) => (
                                 <SelectItem key={license.id} value={license.id.toString()}>
                                   {license.licenseNumber}
                                 </SelectItem>
@@ -416,8 +514,14 @@ export default function ComplianceDocumentsPage() {
                         <FormItem>
                           <FormLabel>Location (Optional)</FormLabel>
                           <Select 
-                            onValueChange={(value) => field.onChange(value ? parseInt(value) : undefined)} 
-                            value={field.value?.toString() || ""}
+                            onValueChange={(value) => {
+                              if (value === "none" || !value) {
+                                field.onChange(undefined);
+                              } else {
+                                field.onChange(parseInt(value));
+                              }
+                            }} 
+                            value={field.value && field.value > 0 ? field.value.toString() : "none"}
                           >
                             <FormControl>
                               <SelectTrigger data-testid="select-location">
@@ -426,7 +530,7 @@ export default function ComplianceDocumentsPage() {
                             </FormControl>
                             <SelectContent>
                               <SelectItem value="none">None</SelectItem>
-                              {locationsData?.locations.map((location) => (
+                              {locationsData?.locations?.map((location) => (
                                 <SelectItem key={location.id} value={location.id.toString()}>
                                   {location.name}
                                 </SelectItem>
@@ -446,7 +550,15 @@ export default function ComplianceDocumentsPage() {
                       <FormItem>
                         <FormLabel>Document Name *</FormLabel>
                         <FormControl>
-                          <Input {...field} placeholder="2024 Medical License Certificate" data-testid="input-document-name" />
+                          <Input 
+                            {...field} 
+                            placeholder="2024 Medical License Certificate" 
+                            data-testid="input-document-name"
+                            onChange={(e) => {
+                              field.onChange(e);
+                              form.trigger("documentName");
+                            }}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -560,7 +672,7 @@ export default function ComplianceDocumentsPage() {
                         <FormControl>
                           <input
                             type="checkbox"
-                            checked={field.value}
+                            checked={field.value ?? false}
                             onChange={field.onChange}
                             className="h-4 w-4"
                             data-testid="checkbox-is-required"
@@ -598,10 +710,17 @@ export default function ComplianceDocumentsPage() {
                     </Button>
                     <Button 
                       type="submit" 
-                      disabled={!uploadFile || isUploading}
+                      disabled={!uploadFile || isUploading || uploadMutation.isPending}
                       data-testid="button-submit-upload"
+                      onClick={async (e) => {
+                        // Trigger validation on all fields before submission
+                        const isValid = await form.trigger();
+                        if (!isValid) {
+                          console.log("Form is not valid, errors:", form.formState.errors);
+                        }
+                      }}
                     >
-                      {isUploading ? 'Uploading...' : 'Upload Document'}
+                      {isUploading || uploadMutation.isPending ? 'Uploading...' : 'Upload Document'}
                     </Button>
                   </DialogFooter>
                 </form>
@@ -709,7 +828,13 @@ export default function ComplianceDocumentsPage() {
                   />
                 </div>
               </div>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <Select 
+                value={typeFilter || "all"} 
+                onValueChange={(value) => {
+                  setTypeFilter(value === "all" ? "" : value);
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger className="w-[200px]" data-testid="select-filter-type">
                   <SelectValue placeholder="All Types" />
                 </SelectTrigger>
@@ -723,7 +848,13 @@ export default function ComplianceDocumentsPage() {
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={licenseFilter} onValueChange={setLicenseFilter}>
+              <Select 
+                value={licenseFilter || "all"} 
+                onValueChange={(value) => {
+                  setLicenseFilter(value === "all" ? "" : value);
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger className="w-[200px]" data-testid="select-filter-license">
                   <SelectValue placeholder="All Licenses" />
                 </SelectTrigger>
@@ -736,7 +867,13 @@ export default function ComplianceDocumentsPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={locationFilter} onValueChange={setLocationFilter}>
+              <Select 
+                value={locationFilter || "all"} 
+                onValueChange={(value) => {
+                  setLocationFilter(value === "all" ? "" : value);
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger className="w-[200px]" data-testid="select-filter-location">
                   <SelectValue placeholder="All Locations" />
                 </SelectTrigger>
@@ -903,7 +1040,7 @@ export default function ComplianceDocumentsPage() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => verifyMutation.mutate(document.id)}
+                                  onClick={() => handleVerifyClick(document)}
                                   data-testid={`verify-document-${document.id}`}
                                 >
                                   <CheckCircle className="h-4 w-4" />
@@ -980,6 +1117,59 @@ export default function ComplianceDocumentsPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Verify Document Dialog */}
+        <Dialog open={verifyDialogOpen} onOpenChange={setVerifyDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Verify Document</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {documentToVerify && (
+                <div>
+                  <p className="text-sm text-muted-foreground mb-2">Document:</p>
+                  <p className="font-medium">{documentToVerify.documentName}</p>
+                  {documentToVerify.documentNumber && (
+                    <p className="text-sm text-muted-foreground">#{documentToVerify.documentNumber}</p>
+                  )}
+                </div>
+              )}
+              <div>
+                <Label htmlFor="verification-notes">Verification Notes (Optional)</Label>
+                <Textarea
+                  id="verification-notes"
+                  value={verificationNotes}
+                  onChange={(e) => setVerificationNotes(e.target.value)}
+                  placeholder="Add any notes about the verification..."
+                  rows={4}
+                  className="mt-2"
+                  data-testid="textarea-verification-notes"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setVerifyDialogOpen(false);
+                  setVerificationNotes("");
+                  setDocumentToVerify(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleVerifySubmit}
+                disabled={verifyMutation.isPending}
+                data-testid="button-confirm-verify"
+              >
+                {verifyMutation.isPending ? 'Verifying...' : 'Verify Document'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </MainLayout>
   );

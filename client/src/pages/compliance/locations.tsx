@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/main-layout";
 import { Button } from "@/components/ui/button";
@@ -52,15 +52,25 @@ export default function LocationsPage() {
       const params = new URLSearchParams({
         page: String(currentPage),
         limit: "50",
-        ...(search && { search: String(search) }),
-        ...(status && { status: String(status) })
       });
+      
+      if (search && typeof search === 'string' && search.trim()) {
+        params.set('search', search);
+      }
+      if (status && typeof status === 'string' && status !== 'all' && status.trim()) {
+        params.set('status', status);
+      }
       
       const res = await fetch(`${url}?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error('Failed to fetch locations');
       return res.json();
     }
   });
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, statusFilter]);
 
   // Form setup
   const form = useForm<InsertLocation>({
@@ -88,6 +98,65 @@ export default function LocationsPage() {
     }
   });
 
+  // Handle dialog open/close with form reset
+  const handleDialogOpenChange = (open: boolean) => {
+    setDialogOpen(open);
+    if (!open) {
+      // Reset form to defaults and clear selected location when dialog closes
+      setSelectedLocation(null);
+      form.reset({
+        name: "",
+        code: "",
+        type: "sub_location",
+        parentId: undefined,
+        address1: "",
+        address2: "",
+        city: "",
+        state: "",
+        zipCode: "",
+        country: "USA",
+        phone: "",
+        fax: "",
+        email: "",
+        website: "",
+        taxId: "",
+        npiNumber: "",
+        status: "active",
+        isComplianceRequired: true,
+        complianceNotes: ""
+      });
+    }
+  };
+
+  // Handle opening dialog for "Add Location"
+  const handleAddLocation = () => {
+    // Explicitly clear selected location and reset form to defaults
+    setSelectedLocation(null);
+    form.reset({
+      name: "",
+      code: "",
+      type: "sub_location",
+      parentId: undefined,
+      address1: "",
+      address2: "",
+      city: "",
+      state: "",
+      zipCode: "",
+      country: "USA",
+      phone: "",
+      fax: "",
+      email: "",
+      website: "",
+      taxId: "",
+      npiNumber: "",
+      status: "active",
+      isComplianceRequired: true,
+      complianceNotes: ""
+    });
+    setDialogOpen(true);
+  };
+
+
   // Create/Update mutation
   const saveMutation = useMutation({
     mutationFn: async (data: InsertLocation) => {
@@ -103,9 +172,8 @@ export default function LocationsPage() {
         description: selectedLocation ? "Location updated successfully" : "Location created successfully"
       });
       queryClient.invalidateQueries({ queryKey: ["/api/locations"] });
-      setDialogOpen(false);
-      setSelectedLocation(null);
-      form.reset();
+      // handleDialogOpenChange will reset form and clear selectedLocation
+      handleDialogOpenChange(false);
     },
     onError: (error) => {
       toast({
@@ -122,17 +190,45 @@ export default function LocationsPage() {
     onSuccess: () => {
       toast({
         title: "Success",
-        description: "Location deleted successfully"
+        description: "Location and all associated licenses have been deleted successfully"
       });
       queryClient.invalidateQueries({ queryKey: ["/api/locations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/clinic-licenses"] });
       setDeleteId(null);
     },
-    onError: (error) => {
+    onError: (error: any) => {
+      // apiRequest throws errors with format "status: message"
+      // Try to extract a meaningful error message
+      let errorMessage = "Failed to delete location";
+      if (error?.message) {
+        const message = error.message;
+        // If it's in format "409: {...}", try to parse JSON
+        if (message.includes(':')) {
+          const parts = message.split(':');
+          if (parts.length > 1) {
+            try {
+              const jsonPart = parts.slice(1).join(':').trim();
+              const parsed = JSON.parse(jsonPart);
+              errorMessage = parsed.error || errorMessage;
+            } catch {
+              // If not JSON, use the message as-is
+              errorMessage = message;
+            }
+          } else {
+            errorMessage = message;
+          }
+        } else {
+          errorMessage = message;
+        }
+      }
+      
       toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive"
+        title: "Cannot Delete Location",
+        description: errorMessage,
+        variant: "destructive",
+        duration: 5000
       });
+      setDeleteId(null);
     }
   });
 
@@ -175,6 +271,11 @@ export default function LocationsPage() {
   };
 
   const handleEdit = (location: Location) => {
+    // Clear selected location first, then set it
+    setSelectedLocation(null);
+    // Reset form to defaults first to clear any previous data
+    form.reset();
+    // Then set the location values
     setSelectedLocation(location);
     form.reset({
       name: location.name,
@@ -201,10 +302,30 @@ export default function LocationsPage() {
   };
 
   const handleAddSubLocation = (parentId: number) => {
+    // Clear selected location and reset form to defaults
     setSelectedLocation(null);
+    form.reset();
+    // Then set only the parentId, keeping all other fields at defaults
     form.reset({
-      ...form.getValues(),
-      parentId
+      name: "",
+      code: "",
+      type: "sub_location",
+      parentId: parentId,
+      address1: "",
+      address2: "",
+      city: "",
+      state: "",
+      zipCode: "",
+      country: "USA",
+      phone: "",
+      fax: "",
+      email: "",
+      website: "",
+      taxId: "",
+      npiNumber: "",
+      status: "active",
+      isComplianceRequired: true,
+      complianceNotes: ""
     });
     setDialogOpen(true);
   };
@@ -338,7 +459,13 @@ export default function LocationsPage() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>Delete Location</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Are you sure you want to delete this location? This will also delete all sub-locations and associated data.
+                    Are you sure you want to delete this location? This action will permanently delete:
+                    <ul className="list-disc list-inside mt-2 space-y-1">
+                      <li>All associated licenses (cascading delete)</li>
+                      <li>All compliance documents linked to this location</li>
+                      <li>All sub-locations (if any exist, deletion will be blocked)</li>
+                    </ul>
+                    <p className="mt-2 font-semibold text-destructive">This action cannot be undone.</p>
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -385,14 +512,11 @@ export default function LocationsPage() {
             <h1 className="text-3xl font-bold text-foreground" data-testid="text-locations-title">Locations</h1>
             <p className="text-muted-foreground">Manage clinic locations and their hierarchy</p>
           </div>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
             <DialogTrigger asChild>
               <Button 
                 className="bg-primary text-primary-foreground hover:bg-primary/90"
-                onClick={() => {
-                  setSelectedLocation(null);
-                  form.reset();
-                }}
+                onClick={handleAddLocation}
                 data-testid="button-add-location"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -689,7 +813,7 @@ export default function LocationsPage() {
                   </div>
 
                   <DialogFooter>
-                    <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                    <Button type="button" variant="outline" onClick={() => handleDialogOpenChange(false)}>
                       Cancel
                     </Button>
                     <Button type="submit" disabled={saveMutation.isPending} data-testid="button-save-location">
@@ -712,13 +836,22 @@ export default function LocationsPage() {
                   <Input
                     placeholder="Search locations..."
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setPage(1);
+                    }}
                     className="pl-10"
                     data-testid="input-search-locations"
                   />
                 </div>
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select 
+                value={statusFilter || "all"} 
+                onValueChange={(value) => {
+                  setStatusFilter(value === "all" ? "" : value);
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger className="w-[180px]" data-testid="select-filter-status">
                   <SelectValue placeholder="All Statuses" />
                 </SelectTrigger>
@@ -757,11 +890,7 @@ export default function LocationsPage() {
                 <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground mb-4">No locations found</p>
                 <Button
-                  onClick={() => {
-                    setSelectedLocation(null);
-                    form.reset();
-                    setDialogOpen(true);
-                  }}
+                  onClick={handleAddLocation}
                   data-testid="button-add-first-location"
                 >
                   <Plus className="h-4 w-4 mr-2" />

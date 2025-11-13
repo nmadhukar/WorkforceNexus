@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/main-layout";
 import { Button } from "@/components/ui/button";
@@ -38,22 +38,42 @@ export default function ResponsiblePersonsPage() {
   const { toast } = useToast();
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedPerson, setSelectedPerson] = useState<ResponsiblePerson | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
+  // Debounce search query with 300ms delay
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearchQuery, statusFilter]);
+
   // Fetch responsible persons
   const { data, isLoading, error } = useQuery<ResponsiblePersonsResponse>({
-    queryKey: ["/api/responsible-persons", page, searchQuery, statusFilter],
+    queryKey: ["/api/responsible-persons", page, debouncedSearchQuery, statusFilter],
     queryFn: async ({ queryKey }) => {
       const [url, currentPage, search, status] = queryKey;
       const params = new URLSearchParams({
         page: String(currentPage),
         limit: "10",
-        ...(search && { search: String(search) }),
-        ...(status && { status: String(status) })
       });
+      
+      if (search && typeof search === 'string' && search.trim()) {
+        params.set('search', search);
+      }
+      if (status && typeof status === 'string' && status !== 'all' && status.trim()) {
+        params.set('status', status);
+      }
       
       const res = await fetch(`${url}?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error('Failed to fetch responsible persons');
@@ -63,12 +83,26 @@ export default function ResponsiblePersonsPage() {
 
   // Fetch employees for dropdown
   const { data: employeesData } = useQuery<{ employees: Employee[] }>({
-    queryKey: ["/api/employees", { limit: 100 }]
+    queryKey: ["/api/employees", "dropdown"],
+    queryFn: async () => {
+      const res = await fetch("/api/employees?limit=100&status=active", { credentials: "include" });
+      if (!res.ok) throw new Error('Failed to fetch employees');
+      const data = await res.json();
+      // Handle paginated response
+      return { employees: data.employees || data || [] };
+    }
   });
 
   // Fetch licenses to show assignments
   const { data: licensesData } = useQuery<{ licenses: ClinicLicense[] }>({
-    queryKey: ["/api/clinic-licenses", { limit: 100 }]
+    queryKey: ["/api/clinic-licenses", "dropdown"],
+    queryFn: async () => {
+      const res = await fetch("/api/clinic-licenses?limit=100", { credentials: "include" });
+      if (!res.ok) throw new Error('Failed to fetch licenses');
+      const data = await res.json();
+      // Handle paginated response
+      return { licenses: data.licenses || data || [] };
+    }
   });
 
   // Form setup
@@ -93,6 +127,58 @@ export default function ResponsiblePersonsPage() {
       notes: ""
     }
   });
+
+  // Handle dialog open/close with form reset
+  const handleDialogOpenChange = (open: boolean) => {
+    setDialogOpen(open);
+    if (!open) {
+      // Reset form to defaults and clear selected person when dialog closes
+      setSelectedPerson(null);
+      form.reset({
+        employeeId: undefined,
+        firstName: "",
+        lastName: "",
+        title: "",
+        email: "",
+        phone: "",
+        isPrimary: true,
+        isBackup: false,
+        department: "",
+        preferredContactMethod: "email",
+        notificationEnabled: true,
+        reminderFrequency: "weekly",
+        canApprove: false,
+        canSubmit: true,
+        status: "active",
+        notes: ""
+      });
+    }
+  };
+
+  // Handle opening dialog for "Add Responsible Person"
+  const handleAddResponsiblePerson = () => {
+    // Explicitly clear selected person and reset form to defaults
+    setSelectedPerson(null);
+    form.reset({
+      employeeId: undefined,
+      firstName: "",
+      lastName: "",
+      title: "",
+      email: "",
+      phone: "",
+      isPrimary: true,
+      isBackup: false,
+      department: "",
+      preferredContactMethod: "email",
+      notificationEnabled: true,
+      reminderFrequency: "weekly",
+      canApprove: false,
+      canSubmit: true,
+      status: "active",
+      notes: ""
+    });
+    setDialogOpen(true);
+  };
 
   // Watch employeeId to auto-fill fields
   const watchEmployeeId = form.watch("employeeId");
@@ -124,9 +210,8 @@ export default function ResponsiblePersonsPage() {
         description: selectedPerson ? "Responsible person updated successfully" : "Responsible person created successfully"
       });
       queryClient.invalidateQueries({ queryKey: ["/api/responsible-persons"] });
-      setDialogOpen(false);
-      setSelectedPerson(null);
-      form.reset();
+      // handleDialogOpenChange will reset form and clear selectedPerson
+      handleDialogOpenChange(false);
     },
     onError: (error) => {
       toast({
@@ -158,6 +243,11 @@ export default function ResponsiblePersonsPage() {
   });
 
   const handleEdit = (person: ResponsiblePerson) => {
+    // Clear selected person first, then set it
+    setSelectedPerson(null);
+    // Reset form to defaults first to clear any previous data
+    form.reset();
+    // Then set the person values
     setSelectedPerson(person);
     form.reset({
       employeeId: person.employeeId || undefined,
@@ -225,14 +315,11 @@ export default function ResponsiblePersonsPage() {
             <h1 className="text-3xl font-bold text-foreground" data-testid="text-responsible-persons-title">Responsible Persons</h1>
             <p className="text-muted-foreground">Manage license compliance responsibilities</p>
           </div>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
             <DialogTrigger asChild>
               <Button 
                 className="bg-primary text-primary-foreground hover:bg-primary/90"
-                onClick={() => {
-                  setSelectedPerson(null);
-                  form.reset();
-                }}
+                onClick={handleAddResponsiblePerson}
                 data-testid="button-add-responsible-person"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -408,7 +495,7 @@ export default function ResponsiblePersonsPage() {
                           <FormItem className="flex items-center space-x-2">
                             <FormControl>
                               <Switch
-                                checked={field.value}
+                                checked={Boolean(field.value)}
                                 onCheckedChange={field.onChange}
                                 data-testid="switch-is-primary"
                               />
@@ -424,7 +511,7 @@ export default function ResponsiblePersonsPage() {
                           <FormItem className="flex items-center space-x-2">
                             <FormControl>
                               <Switch
-                                checked={field.value}
+                                checked={Boolean(field.value)}
                                 onCheckedChange={field.onChange}
                                 data-testid="switch-is-backup"
                               />
@@ -491,7 +578,7 @@ export default function ResponsiblePersonsPage() {
                         <FormItem className="flex items-center space-x-2">
                           <FormControl>
                             <Switch
-                              checked={field.value}
+                              checked={Boolean(field.value)}
                               onCheckedChange={field.onChange}
                               data-testid="switch-notifications-enabled"
                             />
@@ -512,7 +599,7 @@ export default function ResponsiblePersonsPage() {
                           <FormItem className="flex items-center space-x-2">
                             <FormControl>
                               <Switch
-                                checked={field.value}
+                                checked={field.value === true}
                                 onCheckedChange={field.onChange}
                                 data-testid="switch-can-approve"
                               />
@@ -528,7 +615,7 @@ export default function ResponsiblePersonsPage() {
                           <FormItem className="flex items-center space-x-2">
                             <FormControl>
                               <Switch
-                                checked={field.value}
+                                checked={field.value === true}
                                 onCheckedChange={field.onChange}
                                 data-testid="switch-can-submit"
                               />
@@ -622,7 +709,7 @@ export default function ResponsiblePersonsPage() {
                   />
 
                   <DialogFooter>
-                    <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                    <Button type="button" variant="outline" onClick={() => handleDialogOpenChange(false)}>
                       Cancel
                     </Button>
                     <Button type="submit" disabled={saveMutation.isPending} data-testid="button-save-responsible-person">
@@ -699,13 +786,22 @@ export default function ResponsiblePersonsPage() {
                   <Input
                     placeholder="Search responsible persons..."
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setPage(1);
+                    }}
                     className="pl-10"
                     data-testid="input-search-responsible-persons"
                   />
                 </div>
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select 
+                value={statusFilter} 
+                onValueChange={(value) => {
+                  setStatusFilter(value);
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger className="w-[180px]" data-testid="select-filter-status">
                   <SelectValue placeholder="All Statuses" />
                 </SelectTrigger>
@@ -758,11 +854,7 @@ export default function ResponsiblePersonsPage() {
                         <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                         <p className="text-muted-foreground mb-4">No responsible persons found</p>
                         <Button
-                          onClick={() => {
-                            setSelectedPerson(null);
-                            form.reset();
-                            setDialogOpen(true);
-                          }}
+                          onClick={handleAddResponsiblePerson}
                           data-testid="button-add-first-responsible-person"
                         >
                           <Plus className="h-4 w-4 mr-2" />

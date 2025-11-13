@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { MainLayout } from "@/components/layout/main-layout";
 import { Button } from "@/components/ui/button";
@@ -46,15 +46,25 @@ export default function LicenseTypesPage() {
       const params = new URLSearchParams({
         page: String(currentPage),
         limit: "20",
-        ...(search && { search: String(search) }),
-        ...(category && { category: String(category) })
       });
+      
+      if (search && typeof search === 'string' && search.trim()) {
+        params.set('search', search);
+      }
+      if (category && typeof category === 'string' && category !== 'all' && category.trim()) {
+        params.set('category', category);
+      }
       
       const res = await fetch(`${url}?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error('Failed to fetch license types');
       return res.json();
     }
   });
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, categoryFilter]);
 
   // Form setup
   const form = useForm<InsertLicenseType>({
@@ -81,6 +91,62 @@ export default function LicenseTypesPage() {
     }
   });
 
+  // Handle dialog open/close with form reset
+  const handleDialogOpenChange = (open: boolean) => {
+    setDialogOpen(open);
+    if (!open) {
+      // Reset form to defaults and clear selected type when dialog closes
+      setSelectedType(null);
+      form.reset({
+        name: "",
+        code: "",
+        category: "medical",
+        description: "",
+        issuingAuthority: "",
+        renewalPeriodMonths: 24,
+        leadTimeDays: 90,
+        appliesToLocation: false,
+        appliesToProvider: true,
+        appliesToEquipment: false,
+        requiredDocuments: [],
+        requiresInspection: false,
+        requiresTraining: false,
+        isCritical: false,
+        alertDaysBefore: 60,
+        escalationDaysBefore: 30,
+        isActive: true,
+        sortOrder: 0
+      });
+    }
+  };
+
+  // Handle opening dialog for "Add License Type"
+  const handleAddLicenseType = () => {
+    // Explicitly clear selected type and reset form to defaults
+    setSelectedType(null);
+    form.reset({
+      name: "",
+      code: "",
+      category: "medical",
+      description: "",
+      issuingAuthority: "",
+      renewalPeriodMonths: 24,
+      leadTimeDays: 90,
+      appliesToLocation: false,
+      appliesToProvider: true,
+      appliesToEquipment: false,
+      requiredDocuments: [],
+      requiresInspection: false,
+      requiresTraining: false,
+      isCritical: false,
+      alertDaysBefore: 60,
+      escalationDaysBefore: 30,
+      isActive: true,
+      sortOrder: 0
+    });
+    setDialogOpen(true);
+  };
+
   // Create/Update mutation
   const saveMutation = useMutation({
     mutationFn: async (data: InsertLicenseType) => {
@@ -96,9 +162,8 @@ export default function LicenseTypesPage() {
         description: selectedType ? "License type updated successfully" : "License type created successfully"
       });
       queryClient.invalidateQueries({ queryKey: ["/api/license-types"] });
-      setDialogOpen(false);
-      setSelectedType(null);
-      form.reset();
+      // handleDialogOpenChange will reset form and clear selectedType
+      handleDialogOpenChange(false);
     },
     onError: (error) => {
       toast({
@@ -130,6 +195,11 @@ export default function LicenseTypesPage() {
   });
 
   const handleEdit = (type: LicenseType) => {
+    // Clear selected type first, then set it
+    setSelectedType(null);
+    // Reset form to defaults first to clear any previous data
+    form.reset();
+    // Then set the type values
     setSelectedType(type);
     form.reset({
       name: type.name,
@@ -201,14 +271,11 @@ export default function LicenseTypesPage() {
             <h1 className="text-3xl font-bold text-foreground" data-testid="text-license-types-title">License Types</h1>
             <p className="text-muted-foreground">Manage master list of license types and requirements</p>
           </div>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
             <DialogTrigger asChild>
               <Button 
                 className="bg-primary text-primary-foreground hover:bg-primary/90"
-                onClick={() => {
-                  setSelectedType(null);
-                  form.reset();
-                }}
+                onClick={handleAddLicenseType}
                 data-testid="button-add-license-type"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -389,7 +456,7 @@ export default function LicenseTypesPage() {
                           <FormItem className="flex items-center space-x-2">
                             <FormControl>
                               <Switch
-                                checked={field.value}
+                                checked={field.value || false}
                                 onCheckedChange={field.onChange}
                                 data-testid="switch-applies-location"
                               />
@@ -405,7 +472,7 @@ export default function LicenseTypesPage() {
                           <FormItem className="flex items-center space-x-2">
                             <FormControl>
                               <Switch
-                                checked={field.value}
+                                checked={field.value || false}
                                 onCheckedChange={field.onChange}
                                 data-testid="switch-applies-provider"
                               />
@@ -421,7 +488,7 @@ export default function LicenseTypesPage() {
                           <FormItem className="flex items-center space-x-2">
                             <FormControl>
                               <Switch
-                                checked={field.value}
+                                checked={field.value || false}
                                 onCheckedChange={field.onChange}
                                 data-testid="switch-applies-equipment"
                               />
@@ -443,7 +510,7 @@ export default function LicenseTypesPage() {
                           <FormItem className="flex items-center space-x-2">
                             <FormControl>
                               <Switch
-                                checked={field.value}
+                                checked={Boolean(field.value)}
                                 onCheckedChange={field.onChange}
                                 data-testid="switch-requires-inspection"
                               />
@@ -459,7 +526,7 @@ export default function LicenseTypesPage() {
                           <FormItem className="flex items-center space-x-2">
                             <FormControl>
                               <Switch
-                                checked={field.value}
+                                checked={Boolean(field.value)}
                                 onCheckedChange={field.onChange}
                                 data-testid="switch-requires-training"
                               />
@@ -475,7 +542,7 @@ export default function LicenseTypesPage() {
                           <FormItem className="flex items-center space-x-2">
                             <FormControl>
                               <Switch
-                                checked={field.value}
+                                checked={field.value || false}
                                 onCheckedChange={field.onChange}
                                 data-testid="switch-is-critical"
                               />
@@ -491,7 +558,7 @@ export default function LicenseTypesPage() {
                           <FormItem className="flex items-center space-x-2">
                             <FormControl>
                               <Switch
-                                checked={field.value}
+                                checked={field.value || false}
                                 onCheckedChange={field.onChange}
                                 data-testid="switch-is-active"
                               />
@@ -548,7 +615,7 @@ export default function LicenseTypesPage() {
                   </div>
 
                   <DialogFooter>
-                    <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                    <Button type="button" variant="outline" onClick={() => handleDialogOpenChange(false)}>
                       Cancel
                     </Button>
                     <Button type="submit" disabled={saveMutation.isPending} data-testid="button-save-license-type">
@@ -572,7 +639,10 @@ export default function LicenseTypesPage() {
             
             return (
               <Card key={category} className="cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => setCategoryFilter(category === categoryFilter ? "" : category)}
+                    onClick={() => {
+                      setCategoryFilter(category === categoryFilter ? "" : category);
+                      setPage(1);
+                    }}
                     data-testid={`card-category-${category}`}>
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
@@ -598,13 +668,22 @@ export default function LicenseTypesPage() {
                   <Input
                     placeholder="Search license types..."
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setPage(1);
+                    }}
                     className="pl-10"
                     data-testid="input-search-license-types"
                   />
                 </div>
               </div>
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <Select 
+                value={categoryFilter || "all"} 
+                onValueChange={(value) => {
+                  setCategoryFilter(value === "all" ? "" : value);
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger className="w-[180px]" data-testid="select-filter-category">
                   <SelectValue placeholder="All Categories" />
                 </SelectTrigger>
@@ -658,11 +737,7 @@ export default function LicenseTypesPage() {
                         <Award className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                         <p className="text-muted-foreground mb-4">No license types found</p>
                         <Button
-                          onClick={() => {
-                            setSelectedType(null);
-                            form.reset();
-                            setDialogOpen(true);
-                          }}
+                          onClick={handleAddLicenseType}
                           data-testid="button-add-first-license-type"
                         >
                           <Plus className="h-4 w-4 mr-2" />

@@ -123,7 +123,7 @@ import {
   type InsertEmployeeDocumentUpload
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, asc, like, and, or, lte, ne, sql, count, inArray } from "drizzle-orm";
+import { eq, desc, asc, like, and, or, lte, gte, ne, sql, count, inArray } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 
@@ -884,6 +884,20 @@ export interface IStorage {
   getExpiringComplianceDocuments(days: number): Promise<ComplianceDocument[]>;
   
   /**
+   * Get compliance document statistics
+   * @returns {Promise<{total: number; sops: number; renewalGuides: number; certificates: number; reports: number; expiring: number; verified: number}>} Document statistics
+   */
+  getComplianceDocumentStats(): Promise<{
+    total: number;
+    sops: number;
+    renewalGuides: number;
+    certificates: number;
+    reports: number;
+    expiring: number;
+    verified: number;
+  }>;
+  
+  /**
    * API Key Security Management
    */
   
@@ -1076,6 +1090,7 @@ export interface IStorage {
     offset?: number;
     search?: string;
     isPrimary?: boolean;
+    status?: string;
   }): Promise<{ persons: ResponsiblePerson[]; total: number }>;
   getResponsiblePerson(id: number): Promise<ResponsiblePerson | undefined>;
   createResponsiblePerson(person: InsertResponsiblePerson): Promise<ResponsiblePerson>;
@@ -1098,7 +1113,7 @@ export interface IStorage {
   updateClinicLicense(id: number, license: Partial<InsertClinicLicense>): Promise<ClinicLicense>;
   deleteClinicLicense(id: number): Promise<void>;
   getClinicLicensesByLocation(locationId: number): Promise<ClinicLicense[]>;
-  getExpiringClinicLicenses(days: number): Promise<ClinicLicense[]>;
+  getExpiringClinicLicenses(days: number): Promise<any[]>;
   renewClinicLicense(id: number, renewalData: {
     newIssueDate: Date;
     newExpirationDate: Date;
@@ -3201,22 +3216,17 @@ export class DatabaseStorage implements IStorage {
   }
   
   async deleteLocation(id: number): Promise<void> {
-    // Check for dependencies first
+    // Check for sub-locations first (these should be deleted manually first)
     const [hasSubLocations] = await db.select({ count: count() })
       .from(locations)
       .where(eq(locations.parentId, id));
     
     if (hasSubLocations?.count > 0) {
-      throw new Error('Cannot delete location with sub-locations');
+      throw new Error('Cannot delete location with sub-locations. Please delete or reassign sub-locations first.');
     }
     
-    const [hasLicenses] = await db.select({ count: count() })
-      .from(clinicLicenses)
-      .where(eq(clinicLicenses.locationId, id));
-    
-    if (hasLicenses?.count > 0) {
-      throw new Error('Cannot delete location with associated licenses');
-    }
+    // Note: Licenses will be automatically deleted via CASCADE constraint
+    // No need to check for licenses as the database will handle it
     
     await db.delete(locations).where(eq(locations.id, id));
   }
@@ -3341,6 +3351,7 @@ export class DatabaseStorage implements IStorage {
     offset?: number;
     search?: string;
     isPrimary?: boolean;
+    status?: string;
   }): Promise<{ persons: ResponsiblePerson[]; total: number }> {
     const limit = options?.limit || 10;
     const offset = options?.offset || 0;
@@ -3360,6 +3371,10 @@ export class DatabaseStorage implements IStorage {
     
     if (options?.isPrimary !== undefined) {
       conditions.push(eq(responsiblePersons.isPrimary, options.isPrimary));
+    }
+    
+    if (options?.status) {
+      conditions.push(eq(responsiblePersons.status, options.status));
     }
     
     const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
@@ -3577,22 +3592,41 @@ export class DatabaseStorage implements IStorage {
       .orderBy(clinicLicenses.expirationDate);
   }
   
-  async getExpiringClinicLicenses(days: number): Promise<ClinicLicense[]> {
+  async getExpiringClinicLicenses(days: number): Promise<any[]> {
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + days);
     
-    // Join with locations to exclude licenses from deleted locations
-    const results = await db.select()
+    // Join with locations, license types, and responsible persons to get full data
+    const results = await db.select({
+      id: clinicLicenses.id,
+      licenseNumber: clinicLicenses.licenseNumber,
+      licenseType: sql<string>`COALESCE(${licenseTypes.name}, 'N/A')`,
+      locationName: locations.name,
+      responsiblePerson: sql<string>`CASE 
+        WHEN ${responsiblePersons.firstName} IS NOT NULL AND ${responsiblePersons.lastName} IS NOT NULL 
+        THEN ${responsiblePersons.firstName} || ' ' || ${responsiblePersons.lastName}
+        WHEN ${responsiblePersons.firstName} IS NOT NULL 
+        THEN ${responsiblePersons.firstName}
+        WHEN ${responsiblePersons.lastName} IS NOT NULL 
+        THEN ${responsiblePersons.lastName}
+        ELSE 'N/A'
+      END`,
+      expirationDate: clinicLicenses.expirationDate,
+      status: clinicLicenses.status,
+      daysUntilExpiration: sql<number>`(${clinicLicenses.expirationDate}::date - CURRENT_DATE)::int`
+    })
       .from(clinicLicenses)
       .innerJoin(locations, eq(clinicLicenses.locationId, locations.id))
+      .leftJoin(licenseTypes, eq(clinicLicenses.licenseTypeId, licenseTypes.id))
+      .leftJoin(responsiblePersons, eq(clinicLicenses.primaryResponsibleId, responsiblePersons.id))
       .where(and(
-        lte(clinicLicenses.expirationDate, futureDate.toISOString()),
+        lte(clinicLicenses.expirationDate, futureDate.toISOString().split('T')[0]),
         sql`${clinicLicenses.status} != 'expired'`,
         sql`${locations.status} != 'deleted'`
       ))
       .orderBy(clinicLicenses.expirationDate);
     
-    return results.map(r => r.clinic_licenses);
+    return results;
   }
   
   async renewClinicLicense(id: number, renewalData: {
@@ -3743,6 +3777,65 @@ export class DatabaseStorage implements IStorage {
       .from(complianceDocuments)
       .where(eq(complianceDocuments.documentNumber, documentNumber))
       .orderBy(desc(complianceDocuments.versionNumber));
+  }
+  
+  async getComplianceDocumentStats(): Promise<{
+    total: number;
+    sops: number;
+    renewalGuides: number;
+    certificates: number;
+    reports: number;
+    expiring: number;
+    verified: number;
+  }> {
+    // Get total count
+    const [totalResult] = await db.select({ count: count() })
+      .from(complianceDocuments);
+    
+    // Get counts by document type
+    const [sopsResult] = await db.select({ count: count() })
+      .from(complianceDocuments)
+      .where(eq(complianceDocuments.documentType, 'sop'));
+    
+    const [renewalGuidesResult] = await db.select({ count: count() })
+      .from(complianceDocuments)
+      .where(eq(complianceDocuments.documentType, 'renewal_application'));
+    
+    const [certificatesResult] = await db.select({ count: count() })
+      .from(complianceDocuments)
+      .where(eq(complianceDocuments.documentType, 'license_certificate'));
+    
+    const [reportsResult] = await db.select({ count: count() })
+      .from(complianceDocuments)
+      .where(eq(complianceDocuments.documentType, 'inspection_report'));
+    
+    // Get expiring documents (within 90 days)
+    const today = new Date();
+    const in90Days = new Date(today.getTime() + 90 * 24 * 60 * 60 * 1000);
+    const [expiringResult] = await db.select({ count: count() })
+      .from(complianceDocuments)
+      .where(
+        and(
+          sql`${complianceDocuments.expirationDate} IS NOT NULL`,
+          lte(complianceDocuments.expirationDate, in90Days.toISOString().split('T')[0]),
+          gte(complianceDocuments.expirationDate, today.toISOString().split('T')[0])
+        )
+      );
+    
+    // Get verified documents
+    const [verifiedResult] = await db.select({ count: count() })
+      .from(complianceDocuments)
+      .where(eq(complianceDocuments.isVerified, true));
+    
+    return {
+      total: totalResult?.count || 0,
+      sops: sopsResult?.count || 0,
+      renewalGuides: renewalGuidesResult?.count || 0,
+      certificates: certificatesResult?.count || 0,
+      reports: reportsResult?.count || 0,
+      expiring: expiringResult?.count || 0,
+      verified: verifiedResult?.count || 0
+    };
   }
   
   // =====================
