@@ -45,8 +45,10 @@ interface EmployeeFormsProps {
   onChange?: (data: any) => void;
   employeeId?: number;
   onboardingId?: number;
+  isOnboarding?: boolean;
   onValidationChange?: (isValid: boolean) => void;
   registerValidation?: (fn: () => boolean) => void;
+  onAutoSave?: () => Promise<number | undefined>; // Returns employeeId after save
 }
 
 interface TemplateSigner {
@@ -115,15 +117,17 @@ export function EmployeeForms({
   onChange, 
   employeeId = 22,
   onboardingId,
+  isOnboarding = false,
   onValidationChange,
-  registerValidation
+  registerValidation,
+  onAutoSave
 }: EmployeeFormsProps) {
   const { toast } = useToast();
   const watchersRef = useRef<Record<string, any>>({});
   const [selectedSubmission, setSelectedSubmission] = useState<SubmissionDetail | null>(null);
   const [submissionModalOpen, setSubmissionModalOpen] = useState(false);
   const [sendingForm, setSendingForm] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState("sign");
+  const [activeTab, setActiveTab] = useState(isOnboarding ? "send" : "sign");
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [emailDialogData, setEmailDialogData] = useState<{templateId: string; signer: TemplateSigner} | null>(null);
   const [emailInput, setEmailInput] = useState("");
@@ -134,8 +138,8 @@ export function EmployeeForms({
   const valuesSetRef = useRef<string | null>(null);
   const formValuesAppliedRef = useRef<boolean>(false);
   const valuesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  // Only show forms when we have either an employee ID or an onboarding ID
-  const canShowForms = !!(employeeId || onboardingId);
+  // Only show forms when we have either an employee ID, an onboarding ID, or we're in onboarding mode
+  const canShowForms = !!(employeeId || onboardingId || isOnboarding);
 
   // Fetch required templates
   const { data: requiredTemplates = [], isLoading: templatesLoading } = useQuery<RequiredTemplate[]>({
@@ -341,25 +345,53 @@ export function EmployeeForms({
         throw new Error(`Invalid email format: "${email}" appears to be an ID, not an email address`);
       }
       
+      // In onboarding mode, if employeeId is not set, auto-save first to create the employee
+      let currentEmployeeId = employeeId;
+      if (isOnboarding && !currentEmployeeId && !onboardingId && onAutoSave) {
+        try {
+          toast({
+            title: "Saving Progress",
+            description: "Saving your information before sending the form...",
+          });
+          const savedEmployeeId = await onAutoSave();
+          if (savedEmployeeId) {
+            currentEmployeeId = savedEmployeeId;
+            // Update the employeeId in the parent component's state will happen via query invalidation
+          } else {
+            throw new Error("Failed to create employee record. Please try saving manually first.");
+          }
+        } catch (error: any) {
+          throw new Error(error.message || "Please save your progress first before sending forms. Click 'Save Draft' or move to the next step to create your employee record.");
+        }
+      }
+      
+      // If still no employeeId after auto-save attempt, throw error
+      if (isOnboarding && !currentEmployeeId && !onboardingId) {
+        throw new Error("Please save your progress first before sending forms. Click 'Save Draft' or move to the next step to create your employee record.");
+      }
+      
       // Use the appropriate endpoint based on context
       const endpoint = onboardingId 
         ? `/api/onboarding/${onboardingId}/send-form`
-        : `/api/employees/${employeeId}/send-form`;
+        : `/api/employees/${currentEmployeeId}/send-form`;
       
       const res = await apiRequest("POST", endpoint, {
         templateId,
         signerEmail: email,
-        employeeId: employeeId || null
+        employeeId: currentEmployeeId || null
       });
       const submission = await res.json();
-      return { submission, templateId, email };
+      return { submission, templateId, email, employeeId: currentEmployeeId };
     },
     onSuccess: (payload) => {
+      // If employeeId was created during auto-save, update the query key
+      const effectiveEmployeeId = payload.employeeId || employeeId;
+      
       // Optimistically mark the corresponding submission as "sent" in the cache
       try {
         const key = onboardingId 
           ? [`/api/onboarding/${onboardingId}/form-submissions`]
-          : [`/api/employees/${employeeId}/form-submissions`];
+          : [`/api/employees/${effectiveEmployeeId}/form-submissions`];
         
         queryClient.setQueryData(key, (prev: any) => {
           const previous: any[] = Array.isArray(prev) ? prev : [];
@@ -410,6 +442,13 @@ export function EmployeeForms({
         title: "Form Sent",
         description: "The form has been sent successfully to the employee.",
       });
+      
+      // If employeeId was created, invalidate queries to refresh data
+      if (payload.employeeId && !employeeId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/onboarding/my-onboarding"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
+      }
+      
       refetchSubmissions();
       setSendingForm(null);
     },
@@ -1065,7 +1104,11 @@ export function EmployeeForms({
                                       )
                                     ) : (() => {
                                       const isSendingCurrent = sendingForm === `${template.templateId}-${templateSigner.id}`;
-                                      return (onboardingId || employeeId) && (
+                                      // Show Send Form button if we have employeeId, onboardingId, or we're in onboarding mode with email
+                                      const hasEmail = signerEmail || (templateSigner.role === 'employee' && (data?.workEmail || data?.email));
+                                      const canSend = (onboardingId || employeeId || (isOnboarding && hasEmail));
+                                      
+                                      return canSend && (
                                         <Button
                                           size="sm"
                                           onClick={() => {

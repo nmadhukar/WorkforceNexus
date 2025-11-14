@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -77,6 +77,17 @@ export function EmploymentsManager({ employeeId }: EmploymentsManagerProps) {
       description: ""
     }
   });
+  useEffect(()=>{
+    if(isDialogOpen &&!selectedEmployment){
+      form.reset({
+        employer: "",
+        position: "",
+        startDate: "",
+        endDate: "",
+        description: ""
+      });
+    }
+  }, [selectedEmployment, isDialogOpen, form]);
 
   const createMutation = useMutation({
     mutationFn: (data: EmploymentFormData) =>

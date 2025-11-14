@@ -349,7 +349,7 @@ const __dirname = path.dirname(__filename);
  */
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max:process.env.NODE_ENV === 'development'?1000:100 // limit each IP to 100 requests per windowMs
+  max: 5000,//  process.env.NODE_ENV === 'development'?1000:100 // limit each IP to 100 requests per windowMs
 });
 
 /**
@@ -358,7 +358,7 @@ const limiter = rateLimit({
  */
 const apiKeyLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: process.env.NODE_ENV === 'development' ? 100 : 5, // limit each IP to 5 requests per hour
+  max: 5000,//  process.env.NODE_ENV === 'development' ? 100 : 5, // limit each IP to 5 requests per hour
   message: 'Too many API key requests, please try again later'
 });
 
@@ -368,7 +368,7 @@ const apiKeyLimiter = rateLimit({
  */
 const passwordResetLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'development' ? 100 : 5, // limit each IP to 5 requests per windowMs
+  max: 5000,//  process.env.NODE_ENV === 'development' ? 100 : 5, // limit each IP to 5 requests per windowMs
   message: 'Too many password reset attempts, please try again later'
 });
 

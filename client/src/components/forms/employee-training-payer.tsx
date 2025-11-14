@@ -323,7 +323,7 @@ export function EmployeeTrainingPayer({ data, onChange, employeeId, onValidation
               <TableBody>
                 {localTrainings.map((training: any) => (
                   <TableRow key={training.id} data-testid={`row-training-${training.id}`}>
-                    <TableCell>{training.trainingName}</TableCell>
+                    <TableCell>{training.trainingName || training.trainingType}</TableCell>
                     <TableCell>{training.provider || "-"}</TableCell>
                     <TableCell>{training.completionDate || "-"}</TableCell>
                     <TableCell>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -29,6 +29,7 @@ interface TaxFormsManagerProps {
 }
 
 export function TaxFormsManager({ employeeId }: TaxFormsManagerProps) {
+  // Tax Forms Manager Component
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedForm, setSelectedForm] = useState<any>(null);
   const [deleteForm, setDeleteForm] = useState<any>(null);
@@ -37,7 +38,7 @@ export function TaxFormsManager({ employeeId }: TaxFormsManagerProps) {
   const { data: taxForms = [], isLoading } = useQuery({
     queryKey: ["/api/employees", employeeId, "tax-forms"],
     enabled: !!employeeId
-  });
+  }) as { data: any[], isLoading: boolean };
 
   const form = useForm<TaxFormData>({
     resolver: zodResolver(taxFormSchema),
@@ -47,6 +48,15 @@ export function TaxFormsManager({ employeeId }: TaxFormsManagerProps) {
       status: "pending"
     }
   });
+  useEffect(() => {
+    if (!selectedForm && isDialogOpen) {
+      form.reset({
+        formType: "",
+        year: new Date().getFullYear(),
+        status: "pending"
+      });
+    }
+  }, [selectedForm, form, isDialogOpen]);
 
   const createMutation = useMutation({
     mutationFn: (data: TaxFormData) =>

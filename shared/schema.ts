@@ -643,6 +643,7 @@ export const taxForms = pgTable("tax_forms", {
   id: serial("id").primaryKey(), // Auto-incrementing primary key
   employeeId: integer("employee_id").references(() => employees.id, { onDelete: "cascade" }), // Foreign key to employees
   formType: varchar("form_type", { length: 50 }).notNull(), // Tax form type (W-2, W-4, 1099-MISC, etc.)
+  year: integer("year"), // Tax year (e.g., 2024)
   filePath: varchar("file_path", { length: 255 }), // File storage path or URL
   submittedDate: date("submitted_date"), // Date form was submitted or completed
   status: varchar("status", { length: 50 }) // pending | completed | submitted | requires_update

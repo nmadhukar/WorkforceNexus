@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -32,6 +32,7 @@ interface LicensesManagerProps {
 }
 
 export function LicensesManager({ employeeId, type }: LicensesManagerProps) {
+  console.log("LicensesManager", employeeId, type);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedLicense, setSelectedLicense] = useState<any>(null);
   const [deleteLicense, setDeleteLicense] = useState<any>(null);
@@ -44,7 +45,7 @@ export function LicensesManager({ employeeId, type }: LicensesManagerProps) {
   const { data: licenses = [], isLoading } = useQuery({
     queryKey: ["/api/employees", employeeId, endpoint],
     enabled: !!employeeId
-  });
+  })as { data: any[], isLoading: boolean };
 
   const form = useForm<LicenseFormData>({
     resolver: zodResolver(licenseSchema),
@@ -57,12 +58,21 @@ export function LicensesManager({ employeeId, type }: LicensesManagerProps) {
     }
   });
 
+  useEffect(()=>{
+    if(isDialogOpen &&!selectedLicense){
+      form.reset({
+        licenseNumber: "",
+        state: "",
+        issueDate: "",
+        expirationDate: "",
+        status: "active"
+      });
+    }
+  },[selectedLicense,isDialogOpen,form])
+
   const createMutation = useMutation({
     mutationFn: (data: LicenseFormData) =>
-      apiRequest(`/api/employees/${employeeId}/${endpoint}`, {
-        method: "POST",
-        body: JSON.stringify(data)
-      }),
+      apiRequest("POST", `/api/employees/${employeeId}/${endpoint}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, endpoint] });
       toast({ title: `${type.toUpperCase()} license added successfully` });
@@ -76,10 +86,11 @@ export function LicensesManager({ employeeId, type }: LicensesManagerProps) {
 
   const updateMutation = useMutation({
     mutationFn: (data: LicenseFormData) =>
-      apiRequest(`/api/${endpoint}/${selectedLicense?.id}`, {
-        method: "PUT",
-        body: JSON.stringify(data)
-      }),
+      // apiRequest(`/api/${endpoint}/${selectedLicense?.id}`, {
+      //   method: "PUT",
+      //   body: JSON.stringify(data)
+      // }),
+      apiRequest("PUT",`/api/${endpoint}/${selectedLicense?.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, endpoint] });
       toast({ title: `${type.toUpperCase()} license updated successfully` });
@@ -94,9 +105,7 @@ export function LicensesManager({ employeeId, type }: LicensesManagerProps) {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) =>
-      apiRequest(`/api/${endpoint}/${id}`, {
-        method: "DELETE"
-      }),
+      apiRequest("DELETE", `/api/${endpoint}/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, endpoint] });
       toast({ title: `${type.toUpperCase()} license deleted successfully` });
@@ -264,7 +273,10 @@ export function LicensesManager({ employeeId, type }: LicensesManagerProps) {
                     <FormItem>
                       <FormLabel>State</FormLabel>
                       <FormControl>
-                        <Input {...field} placeholder="e.g., CA, NY, TX" maxLength={2} data-testid="input-state" />
+                        <Input {...field} placeholder="e.g., CA, NY, TX" maxLength={2} onChange={(e) => {
+                          const value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+                          field.onChange(value);
+                        }} data-testid="input-state" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

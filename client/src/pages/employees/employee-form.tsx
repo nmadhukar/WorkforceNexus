@@ -151,7 +151,7 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
     firstName: "",
     lastName: "",
     workEmail: "",
-    status: "active",
+    status: "active", // Default status
     hasEmploymentGap: false,
     employmentGap: "",
     hadLicenseIncidents: false,
@@ -228,6 +228,7 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
       // Use onboarding data if available
       setFormData({
         ...onboardingData,
+        status: onboardingData.status || "active", // Ensure status is always set
         dateOfBirth: onboardingData.dateOfBirth ? onboardingData.dateOfBirth.split('T')[0] : undefined,
         enumerationDate: onboardingData.enumerationDate ? onboardingData.enumerationDate.split('T')[0] : undefined,
         caqhIssueDate: onboardingData.caqhIssueDate ? onboardingData.caqhIssueDate.split('T')[0] : undefined,
@@ -255,6 +256,7 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
       // Use employee data if onboarding data is not available but employee exists
       setFormData({
         ...employee,
+        status: employee.status || "active", // Ensure status is always set
         dateOfBirth: employee.dateOfBirth ? employee.dateOfBirth.split('T')[0] : undefined,
         enumerationDate: employee.enumerationDate ? employee.enumerationDate.split('T')[0] : undefined,
         caqhIssueDate: employee.caqhIssueDate ? employee.caqhIssueDate.split('T')[0] : undefined,
@@ -279,6 +281,7 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
       // Use employee data for edit mode
       setFormData({
         ...employee,
+        status: employee.status || "active", // Ensure status is always set
         dateOfBirth: employee.dateOfBirth ? employee.dateOfBirth.split('T')[0] : undefined,
         enumerationDate: employee.enumerationDate ? employee.enumerationDate.split('T')[0] : undefined,
         caqhIssueDate: employee.caqhIssueDate ? employee.caqhIssueDate.split('T')[0] : undefined,
@@ -731,6 +734,31 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
   };
 
   /**
+   * Auto-save function for EmployeeForms component
+   * @description Saves draft silently and returns employeeId for use in form sending
+   */
+  const handleAutoSave = async (): Promise<number | undefined> => {
+    if (!isOnboarding) {
+      return employeeId;
+    }
+
+    try {
+      const result = await saveDraftMutation.mutateAsync(formData);
+      // The mutation's onSuccess already handles setting employeeId
+      // But we also return it here for immediate use
+      const savedEmployeeId = result?.employeeId || employeeId || onboardingData?.id;
+      if (savedEmployeeId && !employeeId) {
+        setEmployeeId(savedEmployeeId);
+        hasInitializedEmployee.current = true;
+      }
+      return savedEmployeeId;
+    } catch (error) {
+      // Re-throw so EmployeeForms can handle the error
+      throw error;
+    }
+  };
+
+  /**
    * Advances to the next step in the form
    * @description Validates current step before advancing and auto-saves draft in onboarding mode
    */
@@ -937,6 +965,8 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
           data={formData}
           onChange={updateFormData}
           employeeId={isEdit ? parseInt(params.id!) : (isOnboarding ? employeeId : undefined)}
+          isOnboarding={isOnboarding}
+          onAutoSave={isOnboarding ? handleAutoSave : undefined}
           registerValidation={registerStepValidation}
           data-testid="step-forms"
         />
@@ -960,6 +990,8 @@ export default function EmployeeForm({ isOnboarding = false }: { isOnboarding?: 
       component: (
         <EmployeeReview
           data={formData}
+          employeeId={isEdit ? parseInt(params.id!) : (isOnboarding ? employeeId : undefined)}
+          isOnboarding={isOnboarding}
           data-testid="step-review"
         />
       )

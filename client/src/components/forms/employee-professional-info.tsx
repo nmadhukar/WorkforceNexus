@@ -56,7 +56,7 @@ export function EmployeeProfessionalInfo({ data, onChange, onValidationChange, r
 
   // Update form values when data changes
   useEffect(() => {
-    if (data && (data.jobTitle || data.workLocation)) {
+    if (data) {
       form.reset({
         jobTitle: data.jobTitle || "",
         workLocation: data.workLocation || "",
@@ -147,21 +147,23 @@ export function EmployeeProfessionalInfo({ data, onChange, onValidationChange, r
             name="status"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Employment Status</FormLabel>
-                <Select value={field.value} onValueChange={field.onChange}>
-                  <FormControl>
-                    <SelectTrigger data-testid="select-status">
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                    <SelectItem value="on_leave">On Leave</SelectItem>
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
+              <FormLabel>Employment Status</FormLabel>
+              <Select value={field.value || "active"} onValueChange={field.onChange}>
+                <FormControl>
+                  <SelectTrigger data-testid="select-status">
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="on_leave">On Leave</SelectItem>
+                  <SelectItem value="onboarding">Onboarding</SelectItem>
+                  <SelectItem value="terminated">Terminated</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
             )}
           />
           
