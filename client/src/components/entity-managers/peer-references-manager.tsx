@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -37,7 +37,7 @@ export function PeerReferencesManager({ employeeId }: PeerReferencesManagerProps
   const { data: references = [], isLoading } = useQuery({
     queryKey: ["/api/employees", employeeId, "peer-references"],
     enabled: !!employeeId
-  });
+  }) as { data: any[], isLoading: boolean };
 
   const form = useForm<ReferenceFormData>({
     resolver: zodResolver(referenceSchema),
@@ -49,12 +49,20 @@ export function PeerReferencesManager({ employeeId }: PeerReferencesManagerProps
     }
   });
 
+  useEffect(() => {
+    if (isDialogOpen && !selectedReference) {
+      form.reset({
+        referenceName: "",
+        contactInfo: "",
+        relationship: "",
+        comments: ""
+      });
+    }
+  }, [selectedReference, form, isDialogOpen]);
+
   const createMutation = useMutation({
     mutationFn: (data: ReferenceFormData) =>
-      apiRequest(`/api/employees/${employeeId}/peer-references`, {
-        method: "POST",
-        body: JSON.stringify(data)
-      }),
+      apiRequest("POST", `/api/employees/${employeeId}/peer-references`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "peer-references"] });
       toast({ title: "Reference added successfully" });
@@ -68,10 +76,7 @@ export function PeerReferencesManager({ employeeId }: PeerReferencesManagerProps
 
   const updateMutation = useMutation({
     mutationFn: (data: ReferenceFormData) =>
-      apiRequest(`/api/peer-references/${selectedReference?.id}`, {
-        method: "PUT",
-        body: JSON.stringify(data)
-      }),
+      apiRequest("PUT", `/api/peer-references/${selectedReference?.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "peer-references"] });
       toast({ title: "Reference updated successfully" });
@@ -86,9 +91,7 @@ export function PeerReferencesManager({ employeeId }: PeerReferencesManagerProps
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) =>
-      apiRequest(`/api/peer-references/${id}`, {
-        method: "DELETE"
-      }),
+        apiRequest("DELETE", `/api/peer-references/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "peer-references"] });
       toast({ title: "Reference deleted successfully" });
@@ -250,9 +253,9 @@ export function PeerReferencesManager({ employeeId }: PeerReferencesManagerProps
                   <FormItem>
                     <FormLabel>Comments</FormLabel>
                     <FormControl>
-                      <Textarea 
-                        {...field} 
-                        placeholder="Additional comments" 
+                      <Textarea
+                        {...field}
+                        placeholder="Additional comments"
                         data-testid="input-comments"
                         rows={3}
                       />
@@ -279,8 +282,8 @@ export function PeerReferencesManager({ employeeId }: PeerReferencesManagerProps
                   {createMutation.isPending || updateMutation.isPending
                     ? "Saving..."
                     : selectedReference
-                    ? "Update"
-                    : "Add"}
+                      ? "Update"
+                      : "Add"}
                 </Button>
               </div>
             </form>

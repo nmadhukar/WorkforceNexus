@@ -71,7 +71,7 @@ export const validateEducation = (): ValidationChain[] => [
  */
 export const validateLicense = (): ValidationChain[] => [
   body('licenseNumber').notEmpty().withMessage('License number is required'),
-  body('state').optional().matches(/^[A-Z]{2}$/).withMessage('State must be a 2-letter uppercase code'),
+  // body('state').optional().matches(/^[A-Z]{2}$/).withMessage('State must be a 2-letter uppercase code'),
   body('expirationDate').optional().isDate().withMessage('Valid expiration date required')
 ];
 
@@ -164,7 +164,7 @@ export const validateTaxForm = (): ValidationChain[] => [
 
 // Training validation
 export const validateTraining = (): ValidationChain[] => [
-  body('trainingName').notEmpty().withMessage('Training name is required'),
+  body('trainingType').notEmpty().withMessage('Training name is required'),
   body('provider').optional().isLength({ min: 1 }).withMessage('Provider cannot be empty'),
   body('completionDate').optional().isDate().withMessage('Valid completion date required'),
   body('expirationDate').optional().isDate().withMessage('Valid expiration date required')

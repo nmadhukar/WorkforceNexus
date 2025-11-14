@@ -1,14 +1,154 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 interface EmployeeReviewProps {
   data: any;
+  employeeId?: number;
+  onboardingId?: number;
+  isOnboarding?: boolean;
   onValidationChange?: (isValid: boolean) => void;
   registerValidation?: (validationFn: () => Promise<boolean>) => void;
 }
 
-export function EmployeeReview({ data, onValidationChange, registerValidation }: EmployeeReviewProps) {
+export function EmployeeReview({ 
+  data, 
+  employeeId,
+  onboardingId,
+  isOnboarding = false,
+  onValidationChange, 
+  registerValidation 
+}: EmployeeReviewProps) {
+  // Fetch document uploads if employeeId is available (works for both onboarding and regular mode)
+  const { data: fetchedDocuments = [] } = useQuery({
+    queryKey: ["/api/employees", employeeId, "document-uploads"],
+    enabled: !!employeeId,
+    queryFn: async () => {
+      const response = await fetch(`/api/employees/${employeeId}/document-uploads`, {
+        credentials: "include"
+      });
+      if (!response.ok) {
+        throw new Error("Failed to fetch document uploads");
+      }
+      return response.json();
+    },
+    retry: false,
+  });
+
+  // Fetch form submissions if employeeId or onboardingId is available
+  const { data: fetchedSubmissions = [] } = useQuery({
+    queryKey: onboardingId 
+      ? [`/api/onboarding/${onboardingId}/form-submissions`]
+      : [`/api/employees/${employeeId}/form-submissions`],
+    enabled: !!(onboardingId || employeeId),
+    queryFn: async () => {
+      const endpoint = onboardingId 
+        ? `/api/onboarding/${onboardingId}/form-submissions`
+        : `/api/employees/${employeeId}/form-submissions`;
+      const response = await fetch(endpoint, { credentials: "include" });
+      if (!response.ok) {
+        throw new Error("Failed to fetch form submissions");
+      }
+      return response.json();
+    },
+    retry: false,
+  });
+
+  // Fetch required document types for calculating counts
+  const { data: requiredDocumentTypes = [] } = useQuery({
+    queryKey: ["/api/onboarding/required-documents"],
+    enabled: isOnboarding || !!employeeId,
+    queryFn: async () => {
+      const response = await fetch("/api/onboarding/required-documents", {
+        credentials: "include"
+      });
+      if (!response.ok) {
+        throw new Error("Failed to fetch required documents");
+      }
+      return response.json();
+    },
+    retry: false,
+  });
+
+  // Fetch required form templates for calculating counts
+  const { data: requiredTemplates = [] } = useQuery({
+    queryKey: ["/api/onboarding/required-forms"],
+    enabled: isOnboarding || !!employeeId,
+    queryFn: async () => {
+      const response = await fetch("/api/onboarding/required-forms", {
+        credentials: "include"
+      });
+      if (!response.ok) {
+        throw new Error("Failed to fetch required forms");
+      }
+      return response.json();
+    },
+    retry: false,
+  });
+
+  // Merge fetched data with formData prop
+  const mergedData = useMemo(() => {
+    // Use fetched data if available (prefer API data over formData for accuracy)
+    // In onboarding mode, fetchedDocuments will have the latest data from the server
+    const documentUploads = (fetchedDocuments.length > 0) 
+      ? fetchedDocuments 
+      : (data.documentUploads || []);
+    
+    const submissions = (fetchedSubmissions.length > 0) 
+      ? fetchedSubmissions.map((s: any) => ({
+          templateId: s.templateId,
+          submissionId: s.submissionId,
+          status: s.status,
+          templateName: s.templateName
+        }))
+      : (data.submissions || []);
+
+    // Calculate document counts
+    const requiredDocumentsCount = requiredDocumentTypes.filter((dt: any) => dt.isRequired).length;
+    // Match documents by documentTypeId (handle both string and number types)
+    const uploadedRequiredCount = requiredDocumentTypes
+      .filter((dt: any) => dt.isRequired)
+      .filter((dt: any) => documentUploads.some((u: any) => 
+        u.documentTypeId !== null && 
+        u.documentTypeId !== undefined && 
+        String(u.documentTypeId) === String(dt.id)
+      ))
+      .length;
+    const allRequiredDocumentsUploaded = requiredDocumentsCount > 0 && uploadedRequiredCount === requiredDocumentsCount;
+
+    // Calculate form counts
+    const completedForms = submissions.filter((s: any) => s.status === 'completed').length;
+    const totalRequiredForms = requiredTemplates.length;
+    const allFormsCompleted = completedForms === totalRequiredForms && totalRequiredForms > 0;
+
+    return {
+      ...data,
+      documentUploads,
+      submissions,
+      // Always use calculated values when we have fetched data (more accurate)
+      // Only fall back to formData values if we don't have fetched data
+      allRequiredDocumentsUploaded: (fetchedDocuments.length > 0 || fetchedSubmissions.length > 0) 
+        ? allRequiredDocumentsUploaded 
+        : (data.allRequiredDocumentsUploaded ?? allRequiredDocumentsUploaded),
+      uploadedRequiredCount: (fetchedDocuments.length > 0)
+        ? uploadedRequiredCount
+        : (data.uploadedRequiredCount ?? uploadedRequiredCount),
+      requiredDocumentsCount: requiredDocumentTypes.length > 0
+        ? requiredDocumentsCount
+        : (data.requiredDocumentsCount ?? requiredDocumentsCount),
+      completedForms: (fetchedSubmissions.length > 0)
+        ? completedForms
+        : (data.completedForms ?? completedForms),
+      totalRequiredForms: requiredTemplates.length > 0
+        ? totalRequiredForms
+        : (data.totalRequiredForms ?? totalRequiredForms),
+      allFormsCompleted: (fetchedSubmissions.length > 0)
+        ? allFormsCompleted
+        : (data.allFormsCompleted ?? allFormsCompleted),
+    };
+  }, [data, fetchedDocuments, fetchedSubmissions, requiredDocumentTypes, requiredTemplates, employeeId, isOnboarding]);
+
   // Report validation state - review step is always valid
   useEffect(() => {
     if (registerValidation) {
@@ -77,36 +217,36 @@ export function EmployeeReview({ data, onValidationChange, registerValidation }:
             <div>
               <span className="font-medium text-muted-foreground">Full Name:</span>
               <p data-testid="review-full-name">
-                {[data.firstName, data.middleName, data.lastName].filter(Boolean).join(" ") || "Not provided"}
+                {[mergedData.firstName, mergedData.middleName, mergedData.lastName].filter(Boolean).join(" ") || "Not provided"}
               </p>
             </div>
             <div>
               <span className="font-medium text-muted-foreground">Date of Birth:</span>
-              <p data-testid="review-date-of-birth">{formatDate(data.dateOfBirth)}</p>
+              <p data-testid="review-date-of-birth">{formatDate(mergedData.dateOfBirth)}</p>
             </div>
             <div>
               <span className="font-medium text-muted-foreground">Gender:</span>
-              <p data-testid="review-gender">{data.gender || "Not provided"}</p>
+              <p data-testid="review-gender">{mergedData.gender || "Not provided"}</p>
             </div>
             <div>
               <span className="font-medium text-muted-foreground">SSN:</span>
-              <p data-testid="review-ssn">{displaySSN(data.ssn)}</p>
+              <p data-testid="review-ssn">{displaySSN(mergedData.ssn)}</p>
             </div>
             <div>
               <span className="font-medium text-muted-foreground">Personal Email:</span>
-              <p data-testid="review-personal-email">{data.personalEmail || "Not provided"}</p>
+              <p data-testid="review-personal-email">{mergedData.personalEmail || "Not provided"}</p>
             </div>
             <div>
               <span className="font-medium text-muted-foreground">Work Email:</span>
-              <p data-testid="review-work-email">{data.workEmail || "Not provided"}</p>
+              <p data-testid="review-work-email">{mergedData.workEmail || "Not provided"}</p>
             </div>
             <div>
               <span className="font-medium text-muted-foreground">Cell Phone:</span>
-              <p data-testid="review-cell-phone">{data.cellPhone || "Not provided"}</p>
+              <p data-testid="review-cell-phone">{mergedData.cellPhone || "Not provided"}</p>
             </div>
             <div>
               <span className="font-medium text-muted-foreground">Work Phone:</span>
-              <p data-testid="review-work-phone">{data.workPhone || "Not provided"}</p>
+              <p data-testid="review-work-phone">{mergedData.workPhone || "Not provided"}</p>
             </div>
           </div>
         </CardContent>
@@ -122,10 +262,10 @@ export function EmployeeReview({ data, onValidationChange, registerValidation }:
             <span className="font-medium text-muted-foreground">Home Address:</span>
             <p data-testid="review-address">
               {[
-                data.homeAddress1,
-                data.homeAddress2,
-                data.homeCity && data.homeState && `${data.homeCity}, ${data.homeState}`,
-                data.homeZip
+                mergedData.homeAddress1,
+                mergedData.homeAddress2,
+                mergedData.homeCity && mergedData.homeState && `${mergedData.homeCity}, ${mergedData.homeState}`,
+                mergedData.homeZip
               ].filter(Boolean).join(", ") || "Not provided"}
             </p>
           </div>
@@ -399,25 +539,25 @@ export function EmployeeReview({ data, onValidationChange, registerValidation }:
           <CardTitle className="text-lg">Document Submission</CardTitle>
         </CardHeader>
         <CardContent>
-          {data.allRequiredDocumentsUploaded !== undefined && (
+          {mergedData.allRequiredDocumentsUploaded !== undefined && (
             <div className="mb-4 p-3 bg-muted/30 rounded">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Document Upload Status</span>
                 <Badge 
-                  variant={data.allRequiredDocumentsUploaded ? "default" : "secondary"}
+                  variant={mergedData.allRequiredDocumentsUploaded ? "default" : "secondary"}
                   data-testid="review-documents-status"
                 >
-                  {data.uploadedRequiredCount || 0} of {data.requiredDocumentsCount || 0} Required Documents
+                  {mergedData.uploadedRequiredCount || 0} of {mergedData.requiredDocumentsCount || 0} Required Documents
                 </Badge>
               </div>
             </div>
           )}
           
-          {!data.documentUploads || data.documentUploads.length === 0 ? (
+          {!mergedData.documentUploads || mergedData.documentUploads.length === 0 ? (
             <p className="text-muted-foreground text-sm" data-testid="review-no-documents">No documents uploaded</p>
           ) : (
             <div className="space-y-2">
-              {data.documentUploads.map((doc: any, index: number) => (
+              {mergedData.documentUploads.map((doc: any, index: number) => (
                 <div key={index} className="flex items-center justify-between text-sm p-2 bg-muted/30 rounded" data-testid={`review-document-${index}`}>
                   <div>
                     <p className="font-medium">{doc.documentTypeName || doc.documentName || "Document"}</p>
@@ -489,27 +629,27 @@ export function EmployeeReview({ data, onValidationChange, registerValidation }:
           <CardTitle className="text-lg">DocuSeal Forms</CardTitle>
         </CardHeader>
         <CardContent>
-          {data.totalRequiredForms !== undefined && (
+          {mergedData.totalRequiredForms !== undefined && (
             <div className="mb-4 p-3 bg-muted/30 rounded">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Forms Completion Status</span>
                 <Badge 
-                  variant={data.allFormsCompleted ? "default" : "secondary"}
+                  variant={mergedData.allFormsCompleted ? "default" : "secondary"}
                   data-testid="review-forms-status"
                 >
-                  {data.completedForms || 0} of {data.totalRequiredForms || 0} Forms Completed
+                  {mergedData.completedForms || 0} of {mergedData.totalRequiredForms || 0} Forms Completed
                 </Badge>
               </div>
             </div>
           )}
           
-          {!data.submissions || data.submissions.length === 0 ? (
+          {!mergedData.submissions || mergedData.submissions.length === 0 ? (
             <p className="text-muted-foreground text-sm" data-testid="review-no-forms">No forms submitted</p>
           ) : (
             <div className="space-y-2">
-              {data.submissions.map((submission: any, index: number) => (
+              {mergedData.submissions.map((submission: any, index: number) => (
                 <div key={index} className="flex items-center justify-between text-sm p-2 bg-muted/30 rounded" data-testid={`review-form-${index}`}>
-                  <span>Form {submission.templateId}</span>
+                  <span>{submission.templateName || `Form ${submission.templateId}`}</span>
                   {submission.status && getStatusBadge(submission.status)}
                 </div>
               ))}

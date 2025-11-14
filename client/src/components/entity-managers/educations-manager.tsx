@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -79,6 +79,20 @@ export function EducationsManager({ employeeId }: EducationsManagerProps) {
       endDate: ""
     }
   });
+
+    // Reset form when dialog opens in "add" mode (no selectedEducation)
+    useEffect(() => {
+      if (isDialogOpen && !selectedEducation) {
+        form.reset({
+          educationType: "",
+          schoolInstitution: "",
+          degree: "",
+          specialtyMajor: "",
+          startDate: "",
+          endDate: ""
+        });
+      }
+    }, [isDialogOpen, selectedEducation, form]);
 
   const createMutation = useMutation({
     mutationFn: (data: EducationFormData) =>
@@ -223,7 +237,7 @@ export function EducationsManager({ employeeId }: EducationsManagerProps) {
         )}
       </CardContent>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen} >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>

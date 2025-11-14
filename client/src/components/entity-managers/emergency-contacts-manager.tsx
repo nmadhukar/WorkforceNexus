@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -75,6 +75,17 @@ export function EmergencyContactsManager({ employeeId }: EmergencyContactsManage
       email: ""
     }
   });
+
+  useEffect(() => {
+    if(!selectedContact && isDialogOpen) {
+      form.reset({
+        name: "",
+        relationship: "",
+        phone: "",
+        email: ""
+      });
+    }
+  }, [selectedContact, form, isDialogOpen]);
 
   const createMutation = useMutation({
     mutationFn: (data: ContactFormData) =>

@@ -477,14 +477,15 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
               <CardContent>
                 <div className="space-y-3">
                   <div className="text-sm font-medium text-muted-foreground">Signers Status:</div>
-                  {item.signers.map((signer) => {
-                    // For employee view, only show their own signer info
-                    if (showEmployeeView && !signer.isCurrentUser) {
-                      return null;
-                    }
-                    
-                    return (
-                      <div key={signer.email} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                  {item.signers && Array.isArray(item.signers) && item.signers.length > 0 ? (
+                    item.signers.map((signer) => {
+                      // For employee view, only show their own signer info
+                      if (showEmployeeView && !signer.isCurrentUser) {
+                        return null;
+                      }
+                      
+                      return (
+                        <div key={signer.email} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <User className="h-4 w-4 text-muted-foreground" />
@@ -550,7 +551,12 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
                         </div>
                       </div>
                     );
-                  }).filter(Boolean)}
+                  }).filter(Boolean)
+                  ) : (
+                    <div className="text-sm text-muted-foreground py-2">
+                      No signers information available
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

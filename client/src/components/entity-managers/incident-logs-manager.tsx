@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -40,7 +40,7 @@ export function IncidentLogsManager({ employeeId }: IncidentLogsManagerProps) {
   const { data: incidents = [], isLoading } = useQuery({
     queryKey: ["/api/employees", employeeId, "incident-logs"],
     enabled: !!employeeId
-  });
+  }) as { data: any[], isLoading: boolean };
 
   const form = useForm<IncidentFormData>({
     resolver: zodResolver(incidentSchema),
@@ -53,12 +53,21 @@ export function IncidentLogsManager({ employeeId }: IncidentLogsManagerProps) {
     }
   });
 
+  useEffect(() => {
+    if (!selectedIncident && isDialogOpen) {
+      form.reset({
+        incidentDate: "",
+        incidentType: "",
+        description: "",
+        severity: "low",
+        resolution: ""
+      });
+    }
+  }, [selectedIncident, form, isDialogOpen]);
+
   const createMutation = useMutation({
     mutationFn: (data: IncidentFormData) =>
-      apiRequest(`/api/employees/${employeeId}/incident-logs`, {
-        method: "POST",
-        body: JSON.stringify(data)
-      }),
+      apiRequest("POST", `/api/employees/${employeeId}/incident-logs`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "incident-logs"] });
       toast({ title: "Incident log added successfully" });
@@ -72,10 +81,7 @@ export function IncidentLogsManager({ employeeId }: IncidentLogsManagerProps) {
 
   const updateMutation = useMutation({
     mutationFn: (data: IncidentFormData) =>
-      apiRequest(`/api/incident-logs/${selectedIncident?.id}`, {
-        method: "PUT",
-        body: JSON.stringify(data)
-      }),
+      apiRequest("PUT", `/api/incident-logs/${selectedIncident?.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "incident-logs"] });
       toast({ title: "Incident log updated successfully" });
@@ -90,9 +96,7 @@ export function IncidentLogsManager({ employeeId }: IncidentLogsManagerProps) {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) =>
-      apiRequest(`/api/incident-logs/${id}`, {
-        method: "DELETE"
-      }),
+      apiRequest("DELETE", `/api/incident-logs/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "incident-logs"] });
       toast({ title: "Incident log deleted successfully" });
@@ -296,9 +300,9 @@ export function IncidentLogsManager({ employeeId }: IncidentLogsManagerProps) {
                   <FormItem>
                     <FormLabel>Description *</FormLabel>
                     <FormControl>
-                      <Textarea 
-                        {...field} 
-                        placeholder="Describe the incident" 
+                      <Textarea
+                        {...field}
+                        placeholder="Describe the incident"
                         data-testid="input-description"
                         rows={4}
                       />
@@ -315,9 +319,9 @@ export function IncidentLogsManager({ employeeId }: IncidentLogsManagerProps) {
                   <FormItem>
                     <FormLabel>Resolution</FormLabel>
                     <FormControl>
-                      <Textarea 
-                        {...field} 
-                        placeholder="Describe how the incident was resolved" 
+                      <Textarea
+                        {...field}
+                        placeholder="Describe how the incident was resolved"
                         data-testid="input-resolution"
                         rows={3}
                       />
@@ -344,8 +348,8 @@ export function IncidentLogsManager({ employeeId }: IncidentLogsManagerProps) {
                   {createMutation.isPending || updateMutation.isPending
                     ? "Saving..."
                     : selectedIncident
-                    ? "Update"
-                    : "Add"}
+                      ? "Update"
+                      : "Add"}
                 </Button>
               </div>
             </form>
