@@ -147,7 +147,7 @@ const allNavigationItems = [
 
 export function Sidebar() {
   const [location, navigate] = useLocation();
-  const [expandedItem, setExpandedItem] = useState<string | null>("compliance");
+  const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const { user } = useAuth();
   
   // Filter navigation items based on user role
@@ -188,8 +188,10 @@ export function Sidebar() {
               (item.path === "/employee-portal" && location.startsWith("/employee-portal")) ||
               (item.path === "/onboarding" && location.startsWith("/onboarding")) ||
               (hasSubmenu && item.submenu?.some(sub => location === sub.path));
-            const isExpanded = expandedItem === item.path;
-            
+            const activeSubmenu = item.submenu?.some(sub => location === sub.path);
+            const isExpanded =
+              expandedItem === item.path ||
+              (expandedItem === null && activeSubmenu);
             return (
               <li key={item.path}>
                 <Button
@@ -200,7 +202,14 @@ export function Sidebar() {
                   )}
                   onClick={() => {
                     if (hasSubmenu) {
-                      setExpandedItem(isExpanded ? null : item.path);
+                      // Toggle explicitly, even if a submenu route is active.
+                      // When collapsed while a sub-route is active, store a sentinel
+                      // so `activeSubmenu` alone doesn't auto-expand it again.
+                      if (expandedItem === item.path) {
+                        setExpandedItem("__collapsed__");
+                      } else {
+                        setExpandedItem(item.path);
+                      }
                     } else {
                       navigate(item.path);
                     }
@@ -213,7 +222,7 @@ export function Sidebar() {
                     isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />
                   )}
                 </Button>
-                {hasSubmenu && isExpanded && (
+                {hasSubmenu && isExpanded  && (
                   <ul className="mt-2 ml-6 space-y-1">
                     {item.submenu?.map((subItem) => {
                       const SubIcon = subItem.icon;
