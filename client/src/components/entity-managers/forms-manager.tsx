@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Tabs,
@@ -65,12 +65,14 @@ import {
   Hash,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { DocusealForm } from '@docuseal/react';
 
 interface FormSubmission {
   id: number;
   employeeId: number;
   templateId: string;
   templateName: string;
+  submissionId?: string; // DocuSeal submission ID
   status: 'pending' | 'sent' | 'viewed' | 'completed' | 'expired' | 'declined';
   submittedAt: string | null;
   completedAt: string | null;
@@ -113,6 +115,12 @@ interface DocusealTemplate {
   enabled: boolean;
   requiredForOnboarding: boolean;
   category?: string;
+  fields?: any; // Template field definitions (can be array, object, or JSON string)
+  signerRoles?: any; // Required signer roles
+  documentCount?: number;
+  lastSyncedAt?: string;
+  sortOrder?: number;
+  tags?: string[];
 }
 
 interface FormsManagerProps {
@@ -134,7 +142,131 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
   const [sendFormDialogOpen, setSendFormDialogOpen] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [sendingForm, setSendingForm] = useState(false);
-  const [activeTab, setActiveTab] = useState("sign");
+  const [activeTab, setActiveTab] = useState("send");
+  const [signingUrl, setSigningUrl] = useState<string | null>(null);
+  const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [signerEmail, setSignerEmail] = useState<string>("");
+  const [formValues, setFormValues] = useState<Record<string, any>>({});
+  const [viewContext, setViewContext] = useState<{ submission: FormSubmission; signerEmail: string; templateName?: string; } | null>(null);
+  const [isDocusealLoaded, setIsDocusealLoaded] = useState(false);
+  const [templateFields, setTemplateFields] = useState<any[]>([]);
+  const formValuesAppliedRef = useRef<boolean>(false);
+  const valuesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Helper function to extract template fields (matching backend logic)
+  const extractTemplateFields = (template: DocusealTemplate | undefined): any[] => {
+    if (!template || !template.fields) return [];
+
+    const fields = template.fields;
+    let templateFields: any[] = [];
+    if (Array.isArray(fields)) {
+      templateFields = fields;
+    } else if (typeof fields === 'object') {
+      templateFields = (fields as any).fields || (fields as any).template_fields || [];
+    } else if (typeof fields === 'string') {
+      try {
+        const parsed = JSON.parse(fields);
+        templateFields = Array.isArray(parsed) ? parsed : (parsed.fields || parsed.template_fields || []);
+      } catch (e) {
+        // Not JSON string
+      }
+    }
+    return templateFields;
+  };
+
+  // Helper function to map employee data to form values (matching backend logic)
+  const mapEmployeeToFormValues = (template: DocusealTemplate | undefined): Record<string, any> => {
+    if (!employee || !template) return {};
+
+    const formValues: Record<string, any> = {};
+    const templateFields = extractTemplateFields(template);
+    const fieldNames = templateFields.map((f: any) => f.name || '').filter((n: string) => n);
+
+    // EmpName - Employee Name
+    if (fieldNames.includes('EmpName') && (employee.firstName || employee.lastName)) {
+      formValues.EmpName = `${employee.firstName || ''} ${employee.lastName || ''}`.trim();
+    }
+
+    // EmpMedicaid ID - Note: field name has a space
+    if (fieldNames.includes('EmpMedicaid ID') && ((employee as any).medicaidNumber || (employee as any).medicaidId || (employee as any).medicaidID)) {
+      formValues['EmpMedicaid ID'] = (employee as any).medicaidNumber || (employee as any).medicaidId || (employee as any).medicaidID;
+    }
+
+    // EmpNPI - Employee NPI
+    if (fieldNames.includes('EmpNPI') && ((employee as any).npiNumber || (employee as any).npi || (employee as any).NPI)) {
+      formValues.EmpNPI = (employee as any).npiNumber || (employee as any).npi || (employee as any).NPI;
+    }
+
+    // EmpAddress - Employee Address
+    if (fieldNames.includes('EmpAddress')) {
+      const addressParts = [(employee as any).homeAddress1, (employee as any).homeAddress2].filter(Boolean);
+      if (addressParts.length > 0) {
+        formValues.EmpAddress = addressParts.join(', ');
+      }
+    }
+
+    // EmpCityStateZip - City, State, ZIP
+    if (fieldNames.includes('EmpCityStateZip')) {
+      const cityStateZipParts = [
+        (employee as any).homeCity,
+        (employee as any).homeState,
+        (employee as any).homeZip
+      ].filter(Boolean);
+      if (cityStateZipParts.length > 0) {
+        formValues.EmpCityStateZip = cityStateZipParts.join(', ');
+      }
+    }
+
+    // EmpSignDate - Set to current date in MM/DD/YYYY format
+    if (fieldNames.includes('EmpSignDate')) {
+      const today = new Date();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      const year = today.getFullYear();
+      formValues.EmpSignDate = `${month}/${day}/${year}`;
+    }
+
+    // CompName - Company Name
+    if (fieldNames.includes('CompName') && ((employee as any).companyName || (employee as any).company)) {
+      formValues.CompName = (employee as any).companyName || (employee as any).company;
+    }
+
+    // CompOHID - Company OHID
+    if (fieldNames.includes('CompOHID') && ((employee as any).companyOHID || (employee as any).compOHID)) {
+      formValues.CompOHID = (employee as any).companyOHID || (employee as any).compOHID;
+    }
+
+    // CompanyNameAddr - Company Name and Address
+    if (fieldNames.includes('CompanyNameAddr')) {
+      const companyParts = [
+        (employee as any).companyName || (employee as any).company,
+        (employee as any).companyAddress
+      ].filter(Boolean);
+      if (companyParts.length > 0) {
+        formValues.CompanyNameAddr = companyParts.join(', ');
+      }
+    }
+
+    // Map "Full Name" field (from the API response structure you provided)
+    const fullNameField = templateFields.find((f: any) =>
+      f.name && (f.name === 'Full Name' || f.name.toLowerCase() === 'full name')
+    );
+    if (fullNameField && (employee.firstName || employee.lastName)) {
+      formValues[fullNameField.name] = `${employee.firstName || ''} ${employee.lastName || ''}`.trim();
+    }
+
+    // Map date field (from the API response structure you provided)
+    const dateField = templateFields.find((f: any) => f.type === 'date' && !f.name);
+    if (dateField) {
+      const today = new Date();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      const year = today.getFullYear();
+      formValues['date'] = `${month}/${day}/${year}`;
+    }
+
+    return formValues;
+  };
 
   // Fetch employee data to get userId for context detection
   const { data: employee } = useQuery<Employee>({
@@ -152,10 +284,10 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
   const isOwnProfile = !!(
     (employee?.userId && currentUser?.id && employee.userId === currentUser.id) ||
     (currentUserEmployee && currentUserEmployee.id === employeeId) ||
-    (employee?.workEmail && currentUser?.username && 
-     employee.workEmail.toLowerCase() === currentUser.username.toLowerCase())
+    (employee?.workEmail && currentUser?.username &&
+      employee.workEmail.toLowerCase() === currentUser.username.toLowerCase())
   );
-  
+
   const hasManagementRole = currentUser?.role === 'admin' || currentUser?.role === 'hr';
   const showEmployeeView = isOwnProfile || (!hasManagementRole);
   const isManagementView = hasManagementRole && !isOwnProfile;
@@ -181,22 +313,87 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
   });
 
   // Fetch form submissions for send forms tab
-  const { data: submissions = [], isLoading: submissionsLoading } = useQuery<FormSubmission[]>({
+  const {
+    data: submissions = [],
+    isLoading: submissionsLoading,
+    refetch: refetchSubmissions
+  } = useQuery<FormSubmission[]>({
     queryKey: [`/api/forms/submissions?employeeId=${employeeId}`],
     enabled: hasManagementRole,
   });
 
-  // Fetch available templates
+  // Helper function to update submission cache optimistically
+  const updateSubmissionCache = (submissionId: number | string, updates: Partial<FormSubmission>) => {
+    // Update submissions cache
+    queryClient.setQueryData([`/api/forms/submissions?employeeId=${employeeId}`], (prev: any) => {
+      const previous: any[] = Array.isArray(prev) ? prev : [];
+      const idx = previous.findIndex(s => String(s.id) === String(submissionId));
+      if (idx < 0) return previous;
+      const current = previous[idx];
+      const next: any = { ...current, ...updates };
+      const clone = previous.slice();
+      clone[idx] = next;
+      return clone;
+    });
+
+    // Also update signing queue cache if submissionId matches
+    // First, find the submission to get its DocuSeal submissionId
+    queryClient.setQueryData([`/api/forms/submissions?employeeId=${employeeId}`], (prev: any) => {
+      const previous: any[] = Array.isArray(prev) ? prev : [];
+      const submission = previous.find(s => String(s.id) === String(submissionId));
+      if (submission && (submission as any).submissionId) {
+        const docuSealSubmissionId = (submission as any).submissionId;
+
+        // Update signing queue with DocuSeal submission ID
+        queryClient.setQueryData([`/api/forms/signing-queue`], (prevQueue: any) => {
+          const previousQueue: any[] = Array.isArray(prevQueue) ? prevQueue : [];
+          const updated = previousQueue.map((item: SigningQueueItem) => {
+            if (String(item.submissionId) === String(docuSealSubmissionId)) {
+              return {
+                ...item,
+                status: 'completed' as const,
+                signers: item.signers?.map((signer) => {
+                  if (signer.status !== 'completed') {
+                    return {
+                      ...signer,
+                      status: 'completed' as const,
+                      completedAt: new Date().toISOString()
+                    };
+                  }
+                  return signer;
+                })
+              };
+            }
+            return item;
+          });
+          return updated;
+        });
+      }
+      return previous;
+    });
+  };
+
+  // Helper function to update status from server
+  const updateStatusFromServer = async (submissionId: number | string) => {
+    try {
+      await apiRequest("POST", `/api/forms/submission/${submissionId}/update-status`);
+      refetchSubmissions();
+    } catch (error) {
+      console.error("Failed to update submission status:", error);
+    }
+  };
+
+  // Fetch available templates (always enabled to get template fields for prefilling)
   const { data: templates = [], isLoading: templatesLoading } = useQuery<DocusealTemplate[]>({
     queryKey: ["/api/admin/docuseal-templates"],
-    enabled: sendFormDialogOpen && hasManagementRole,
+    enabled: hasManagementRole,
   });
 
   // Sign Now mutation
   const signNowMutation = useMutation({
     mutationFn: async ({ submissionId, signerEmail }: { submissionId: string; signerEmail: string }) => {
       const response = await apiRequest(
-        "GET", 
+        "GET",
         `/api/forms/submissions/${submissionId}/sign?signer=${encodeURIComponent(signerEmail)}`
       );
       return response.json();
@@ -265,7 +462,7 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
       // Parse error response and show appropriate message
       let errorMessage = "There was an error sending the form. Please try again.";
       let actionMessage = "";
-      
+
       if (error.errorType === 'TEMPLATE_NOT_FOUND') {
         errorMessage = "The selected form template could not be found.";
         actionMessage = "Please select a different template or contact your administrator to sync templates.";
@@ -282,7 +479,7 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
+
       toast({
         title: "Failed to Send Form",
         description: (
@@ -295,7 +492,7 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
         ) as any,
         variant: "destructive",
       });
-      
+
       // Reset form state to allow closing the dialog
       setSendingForm(false);
       setSelectedTemplateId("");
@@ -393,7 +590,7 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
       });
       return;
     }
-    
+
     setSendingForm(true);
     try {
       await sendFormMutation.mutateAsync(selectedTemplateId);
@@ -418,10 +615,42 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
 
   const handleViewForm = async (submission: FormSubmission) => {
     try {
-      const response = await apiRequest("GET", `/api/forms/submissions/${submission.id}/sign`);
+      // Get signer email from employee or submission
+      const email = employee?.workEmail || '';
+      if (!email) {
+        toast({
+          title: "Email Required",
+          description: "Unable to determine signer email. Please check employee information.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const response = await apiRequest("GET", `/api/forms/submissions/${submission.id}/sign?signer=${encodeURIComponent(email)}`);
       const data = await response.json();
       if (data.signingUrl) {
-        window.open(data.signingUrl, '_blank');
+        setSigningUrl(data.signingUrl);
+        setSignerEmail(email);
+        setViewContext({ submission, signerEmail: email, templateName: submission.templateName });
+        setIsDocusealLoaded(false);
+
+        // Find the template to get its fields
+        const template = templates.find(t =>
+          t.templateId === submission.templateId ||
+          String(t.id) === String(submission.templateId)
+        );
+
+        // Map employee data to form values using template fields (matching backend logic)
+        const mappedValues = mapEmployeeToFormValues(template);
+        setFormValues(mappedValues);
+        formValuesAppliedRef.current = false;
+
+        // Store template fields for reference
+        if (template) {
+          setTemplateFields(extractTemplateFields(template));
+        }
+
+        setViewModalOpen(true);
       }
     } catch (error: any) {
       toast({
@@ -444,8 +673,8 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
         <div className="text-center py-12">
           <ClipboardSignature className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
           <p className="text-muted-foreground mb-4">
-            {showEmployeeView 
-              ? "No documents require your signature at this time" 
+            {showEmployeeView
+              ? "No documents require your signature at this time"
               : "No forms are pending signatures"}
           </p>
         </div>
@@ -483,75 +712,75 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
                       if (showEmployeeView && !signer.isCurrentUser) {
                         return null;
                       }
-                      
+
                       return (
                         <div key={signer.email} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <User className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">{signer.name}</span>
-                            {signer.isCurrentUser && (
-                              <Badge variant="secondary" className="text-xs">You</Badge>
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <User className="h-4 w-4 text-muted-foreground" />
+                              <span className="font-medium">{signer.name}</span>
+                              {signer.isCurrentUser && (
+                                <Badge variant="secondary" className="text-xs">You</Badge>
+                              )}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {signer.email}
+                            </div>
+                            {signer.sentAt && (
+                              <div className="text-xs text-muted-foreground">
+                                Email sent on {formatDate(signer.sentAt)}
+                              </div>
                             )}
                           </div>
-                          <div className="text-sm text-muted-foreground">
-                            {signer.email}
-                          </div>
-                          {signer.sentAt && (
-                            <div className="text-xs text-muted-foreground">
-                              Email sent on {formatDate(signer.sentAt)}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {signer.status === 'completed' ? (
-                            <Badge className="bg-green-100 text-green-800 border-green-200">
-                              <CheckCircle className="w-3 h-3 mr-1" />
-                              Signed
-                            </Badge>
-                          ) : (
-                            <>
-                              <Button
-                                size="sm"
-                                onClick={() => signNowMutation.mutate({
-                                  submissionId: item.submissionId,
-                                  signerEmail: signer.email,
-                                })}
-                                disabled={signNowMutation.isPending}
-                                data-testid={`button-sign-now-${item.submissionId}-${signer.email}`}
-                              >
-                                {signNowMutation.isPending ? (
-                                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                                ) : (
-                                  <PenTool className="h-4 w-4 mr-2" />
-                                )}
-                                Sign Now
-                              </Button>
-                              {!showEmployeeView && (
+                          <div className="flex items-center gap-2">
+                            {signer.status === 'completed' ? (
+                              <Badge className="bg-green-100 text-green-800 border-green-200">
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                                Signed
+                              </Badge>
+                            ) : (
+                              <>
                                 <Button
-                                  variant="outline"
                                   size="sm"
-                                  onClick={() => sendReminderMutation.mutate({
+                                  onClick={() => signNowMutation.mutate({
                                     submissionId: item.submissionId,
                                     signerEmail: signer.email,
                                   })}
-                                  disabled={sendReminderMutation.isPending}
-                                  data-testid={`button-send-reminder-${item.submissionId}-${signer.email}`}
+                                  disabled={signNowMutation.isPending}
+                                  data-testid={`button-sign-now-${item.submissionId}-${signer.email}`}
                                 >
-                                  {sendReminderMutation.isPending ? (
+                                  {signNowMutation.isPending ? (
                                     <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                                   ) : (
-                                    <Mail className="h-4 w-4 mr-2" />
+                                    <PenTool className="h-4 w-4 mr-2" />
                                   )}
-                                  Send Reminder
+                                  Sign Now
                                 </Button>
-                              )}
-                            </>
-                          )}
+                                {!showEmployeeView && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => sendReminderMutation.mutate({
+                                      submissionId: item.submissionId,
+                                      signerEmail: signer.email,
+                                    })}
+                                    disabled={sendReminderMutation.isPending}
+                                    data-testid={`button-send-reminder-${item.submissionId}-${signer.email}`}
+                                  >
+                                    {sendReminderMutation.isPending ? (
+                                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                    ) : (
+                                      <Mail className="h-4 w-4 mr-2" />
+                                    )}
+                                    Send Reminder
+                                  </Button>
+                                )}
+                              </>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  }).filter(Boolean)
+                      );
+                    }).filter(Boolean)
                   ) : (
                     <div className="text-sm text-muted-foreground py-2">
                       No signers information available
@@ -626,13 +855,12 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
                   <TableCell>{formatDate(submission.completedAt)}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      <Badge 
-                        variant={submission.metadata?.employeeSigned || submission.submissionData?.employeeSigned ? "default" : "outline"} 
-                        className={`text-xs ${
-                          submission.metadata?.employeeSigned || submission.submissionData?.employeeSigned 
-                            ? "bg-green-100 text-green-800 border-green-200" 
-                            : ""
-                        }`}
+                      <Badge
+                        variant={submission.metadata?.employeeSigned || submission.submissionData?.employeeSigned ? "default" : "outline"}
+                        className={`text-xs ${submission.metadata?.employeeSigned || submission.submissionData?.employeeSigned
+                          ? "bg-green-100 text-green-800 border-green-200"
+                          : ""
+                          }`}
                       >
                         {(submission.metadata?.employeeSigned || submission.submissionData?.employeeSigned) ? (
                           <>
@@ -640,19 +868,18 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
                             Employee
                           </>
                         ) : (
-                          <>Employee</>  
+                          <>Employee</>
                         )}
                       </Badge>
-                      
+
                       {(submission.metadata?.requiresHrSignature || submission.submissionData?.requiresHrSignature) && (
                         <>
-                          <Badge 
-                            variant={(submission.metadata?.hrSigned || submission.submissionData?.hrSigned) ? "default" : "outline"} 
-                            className={`text-xs ${
-                              (submission.metadata?.hrSigned || submission.submissionData?.hrSigned)
-                                ? "bg-green-100 text-green-800 border-green-200" 
-                                : ""
-                            }`}
+                          <Badge
+                            variant={(submission.metadata?.hrSigned || submission.submissionData?.hrSigned) ? "default" : "outline"}
+                            className={`text-xs ${(submission.metadata?.hrSigned || submission.submissionData?.hrSigned)
+                              ? "bg-green-100 text-green-800 border-green-200"
+                              : ""
+                              }`}
                           >
                             {(submission.metadata?.hrSigned || submission.submissionData?.hrSigned) ? (
                               <>
@@ -660,13 +887,13 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
                                 HR
                               </>
                             ) : (
-                              <>HR</>  
+                              <>HR</>
                             )}
                           </Badge>
-                          {!(submission.metadata?.hrSigned || submission.submissionData?.hrSigned) && 
-                           (submission.metadata?.employeeSigned || submission.submissionData?.employeeSigned) && (
-                            <AlertCircle className="h-3 w-3 text-amber-500" />
-                          )}
+                          {!(submission.metadata?.hrSigned || submission.submissionData?.hrSigned) &&
+                            (submission.metadata?.employeeSigned || submission.submissionData?.employeeSigned) && (
+                              <AlertCircle className="h-3 w-3 text-amber-500" />
+                            )}
                         </>
                       )}
                     </div>
@@ -702,7 +929,7 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
                                 onClick={() => handleViewForm(submission)}
                                 data-testid={`button-view-${submission.id}`}
                               >
-                                <Eye className="h-4 w-4" />
+                                <PenTool className="h-4 w-4" />
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>
@@ -743,6 +970,162 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
           </Table>
         </div>
       )}
+      <Dialog open={viewModalOpen} onOpenChange={(open) => {
+        setViewModalOpen(open);
+        if (!open) {
+          setSigningUrl(null);
+          setSignerEmail("");
+          setFormValues({});
+          setTemplateFields([]);
+          setIsDocusealLoaded(false);
+          formValuesAppliedRef.current = false;
+          if (valuesTimeoutRef.current) {
+            clearTimeout(valuesTimeoutRef.current);
+            valuesTimeoutRef.current = null;
+          }
+        }
+      }}>
+        <DialogContent data-testid="view-dialog"
+          className="max-w-[70vw] w-[70vw] h-[90vh] overflow-y-auto">
+          <DialogHeader className="px-6 pt-6 pb-2">
+            <DialogTitle>{viewContext?.templateName || "View Document"}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 w-full h-full px-6 pb-6">
+            {signingUrl && signerEmail ? (
+              <DocusealForm
+                key={`${signingUrl}-${JSON.stringify(formValues)}`}
+                src={signingUrl}
+                email={signerEmail}
+                values={formValues}
+                rememberSignature={true}
+                onLoad={(loadData) => {
+                  console.log("DocuSeal form loaded:", loadData);
+                  console.log("Form fields from DocuSeal API:", loadData.fields);
+                  console.log("Current form values being sent:", formValues);
+                  console.log("Template fields from our API:", templateFields);
+                  setIsDocusealLoaded(true);
+
+                  // If form values weren't set yet, try to get them from the template
+                  if (Object.keys(formValues).length === 0 && viewContext?.submission) {
+                    const template = templates.find(t =>
+                      t.templateId === viewContext.submission.templateId ||
+                      String(t.id) === String(viewContext.submission.templateId)
+                    );
+
+                    if (template) {
+                      const mappedValues = mapEmployeeToFormValues(template);
+                      if (Object.keys(mappedValues).length > 0) {
+                        console.log("Mapped form values from template fields:", mappedValues);
+                        setFormValues(mappedValues);
+                        formValuesAppliedRef.current = true;
+                      }
+                    }
+                  }
+
+                  // Also try to map based on loadData.fields as a fallback
+                  if (loadData.fields && Array.isArray(loadData.fields) && Object.keys(formValues).length === 0) {
+                    const mappedValues: Record<string, any> = {};
+
+                    loadData.fields.forEach((field: any) => {
+                      const fieldName = field.name || '';
+                      const fieldType = field.type || '';
+
+                      // Map "Full Name" field
+                      if (fieldName && (fieldName === 'Full Name' || fieldName.toLowerCase() === 'full name')) {
+                        if (employee?.firstName || employee?.lastName) {
+                          mappedValues[fieldName] = `${employee.firstName || ''} ${employee.lastName || ''}`.trim();
+                        }
+                      }
+
+                      // Map date field
+                      if (fieldType === 'date' && !fieldName) {
+                        const today = new Date();
+                        const month = String(today.getMonth() + 1).padStart(2, '0');
+                        const day = String(today.getDate()).padStart(2, '0');
+                        const year = today.getFullYear();
+                        mappedValues['date'] = `${month}/${day}/${year}`;
+                      }
+                    });
+
+                    if (Object.keys(mappedValues).length > 0) {
+                      console.log("Mapped form values from DocuSeal fields (fallback):", mappedValues);
+                      setFormValues(mappedValues);
+                      formValuesAppliedRef.current = true;
+                    }
+                  }
+
+                  // Final fallback: try setting values after a delay if still no mappings found
+                  if (Object.keys(formValues).length === 0 && !formValuesAppliedRef.current) {
+                    if (valuesTimeoutRef.current) {
+                      clearTimeout(valuesTimeoutRef.current);
+                    }
+                    valuesTimeoutRef.current = setTimeout(() => {
+                      const template = templates.find(t =>
+                        viewContext?.submission && (
+                          t.templateId === viewContext.submission.templateId ||
+                          String(t.id) === String(viewContext.submission.templateId)
+                        )
+                      );
+                      if (template) {
+                        const mappedValues = mapEmployeeToFormValues(template);
+                        if (Object.keys(mappedValues).length > 0) {
+                          setFormValues(mappedValues);
+                          formValuesAppliedRef.current = true;
+                        }
+                      }
+                    }, 2000);
+                  }
+                }}
+                onComplete={(data) => {
+                  console.log("Form completed:", data);
+
+                  // Update submission status to completed optimistically
+                  if (viewContext?.submission?.id) {
+                    updateSubmissionCache(viewContext.submission.id, {
+                      status: 'completed',
+                      completedAt: new Date().toISOString()
+                    });
+                    // Update status from server to ensure consistency
+                    updateStatusFromServer(viewContext.submission.id);
+                  }
+
+                  toast({
+                    title: "Form Completed",
+                    description: "The form has been signed successfully.",
+                  });
+
+                  // Invalidate queries to refresh data
+                  queryClient.invalidateQueries({ queryKey: [`/api/forms/submissions?employeeId=${employeeId}`] });
+                  queryClient.invalidateQueries({ queryKey: [`/api/forms/signing-queue`] });
+
+                  // Refetch submissions to get latest status
+                  refetchSubmissions();
+
+                  // Close modal and reset state
+                  setViewModalOpen(false);
+                  setSigningUrl(null);
+                  setSignerEmail("");
+                  setFormValues({});
+                  setTemplateFields([]);
+                  setIsDocusealLoaded(false);
+                  formValuesAppliedRef.current = false;
+                  if (valuesTimeoutRef.current) {
+                    clearTimeout(valuesTimeoutRef.current);
+                    valuesTimeoutRef.current = null;
+                  }
+                }}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                  <RefreshCw className="h-8 w-8 mx-auto mb-2 animate-spin text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Loading form...</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={sendFormDialogOpen} onOpenChange={setSendFormDialogOpen}>
         <DialogContent className="sm:max-w-md">
@@ -870,11 +1253,11 @@ export function FormsManager({ employeeId }: FormsManagerProps) {
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           {tabsList}
-          
+
           <TabsContent value="sign" className="mt-4">
             <SignFormsTab />
           </TabsContent>
-          
+
           {hasManagementRole && (
             <TabsContent value="send" className="mt-4">
               <SendFormsTab />

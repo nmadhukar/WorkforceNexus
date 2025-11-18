@@ -514,30 +514,59 @@ export class DocuSealService {
     if (!this.initialized) {
       await this.initialize();
     }
-
+  
     if (!this.apiKey) {
       throw new Error("DocuSeal API key not configured");
     }
-
+  
     try {
-      const response = await fetch(`${this.baseUrl}/submissions/${submissionId}/documents`, {
-        method: 'GET',
-        headers: {
-          'X-Auth-Token': this.apiKey
+      // STEP 1: Get the document list (JSON, not PDF)
+      const listResponse = await fetch(
+        `${this.baseUrl}/submissions/${submissionId}/documents`,
+        {
+          method: "GET",
+          headers: {
+            "X-Auth-Token": this.apiKey,
+          },
         }
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to download documents: ${response.status} ${response.statusText}`);
+      );
+      if (!listResponse.ok) {
+        throw new Error(
+          `Failed to fetch document list: ${listResponse.status} ${listResponse.statusText}`
+        );
       }
-
-      const buffer = await response.arrayBuffer();
-      return Buffer.from(buffer);
+      const docs = await listResponse.json();
+      if (!docs?.documents || docs?.documents?.length === 0) {
+        throw new Error("No documents found for this submission.");
+      }
+      // STEP 2: Pick the first document's download URL
+      const downloadUrl = docs?.documents[0]?.url;
+      if (!downloadUrl) {
+        throw new Error("Document does not have a download URL.");
+      }
+      // STEP 3: Download the actual PDF
+      const pdfResponse = await fetch(downloadUrl, {
+        method: "GET",
+        headers: {
+          "X-Auth-Token": this.apiKey,
+        },
+      });
+  
+      if (!pdfResponse.ok) {
+        throw new Error(
+          `Failed to download PDF: ${pdfResponse.status} ${pdfResponse.statusText}`
+        );
+      }
+  
+      const buffer = Buffer.from(await pdfResponse.arrayBuffer());
+      return buffer;
+  
     } catch (error) {
       console.error(`Failed to download documents for submission ${submissionId}:`, error);
       throw error;
     }
   }
+  
 
   /**
    * Update submission status in database based on DocuSeal API

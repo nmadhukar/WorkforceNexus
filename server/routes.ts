@@ -5868,6 +5868,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   /**
+   * POST /api/forms/submissions/:id/resend
+   * Resend form submission email to employee
+   */
+  app.post('/api/forms/submissions/:id/resend',
+    requireAuth,
+    requireRole(['admin', 'hr']),
+    async (req: AuditRequest, res: Response) => {
+      try {
+        const submissionId = parseInt(req.params.id);
+        const submission = await storage.getFormSubmission(submissionId);
+        
+        if (!submission) {
+          return res.status(404).json({ error: 'Form submission not found' });
+        }
+        
+        // Don't allow resending completed forms
+        if (submission.status === 'completed') {
+          return res.status(400).json({ 
+            error: 'Cannot resend a completed form' 
+          });
+        }
+        
+        const { docuSealService } = await import('./services/docusealService');
+        await docuSealService.initialize();
+        
+        // Use sendReminder to resend the email notification
+        // This will send the email to all pending signers or a specific signer
+        const result = await docuSealService.sendReminder(submission.submissionId, submission.recipientEmail);
+        
+        if (!result.success) {
+          return res.status(400).json({ 
+            error: result.message || 'Failed to resend form email' 
+          });
+        }
+        
+        // Update submission status to 'sent' if it was in a different state
+        if (submission.status !== 'sent' && submission.status !== 'viewed') {
+          await storage.updateFormSubmission(submissionId, {
+            status: 'sent',
+            sentAt: new Date()
+          });
+        } else {
+          // Just update the sentAt timestamp
+          await storage.updateFormSubmission(submissionId, {
+            sentAt: new Date()
+          });
+        }
+        
+        await logAudit(req, submissionId, submission.employeeId, { 
+          action: 'form_resent',
+          submissionId: submission.submissionId 
+        });
+        
+        res.json({ 
+          message: 'Form email resent successfully',
+          submission: {
+            id: submission.id,
+            status: submission.status === 'sent' ? submission.status : 'sent'
+          }
+        });
+      } catch (error: any) {
+        console.error('Error resending form:', error);
+        const statusCode = error.statusCode || 500;
+        const message = error.message || 'Failed to resend form';
+        res.status(statusCode).json({ error: message });
+      }
+    }
+  );
+
+  /**
    * GET /api/forms/submission/:id/download
    * Download completed form documents
    */
