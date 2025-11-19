@@ -2305,7 +2305,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             laptopSetup: 'no',
             emailSetup: 'no',
             emrSetup: 'no',
-            phoneSetup: 'no'
+            phoneSetup: 'no',
+            urineDrugScreenInitiatedAt: null,
+            bciFbiCheckInitiatedAt: null
           });
         }
         
@@ -2375,6 +2377,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           emailSetup: req.body.emailSetup || 'no',
           emrSetup: req.body.emrSetup || 'no',
           phoneSetup: req.body.phoneSetup || 'no',
+          // Optional initiated dates for background checks (accept ISO date or timestamp strings)
+          urineDrugScreenInitiatedAt: req.body.urineDrugScreenInitiatedAt
+            ? new Date(req.body.urineDrugScreenInitiatedAt)
+            : null,
+          bciFbiCheckInitiatedAt: req.body.bciFbiCheckInitiatedAt
+            ? new Date(req.body.bciFbiCheckInitiatedAt)
+            : null,
           createdBy: req.user?.id,
           updatedBy: req.user?.id
         };
@@ -11619,8 +11628,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     auditMiddleware('required_document_types'),
     async (req: AuditRequest, res: Response) => {
       try {
-        const documentTypeData = sanitizeDateFields(req.body);
-        const documentType = await storage.createRequiredDocumentType(documentTypeData);
+        // Sanitize and pick only allowed fields to avoid passing timestamps/extra props
+        const payload = sanitizeDateFields(req.body);
+        const { createdAt, updatedAt, ...updatedPayload } = payload;
+
+        const documentType = await storage.createRequiredDocumentType(updatedPayload);
         await logAudit(req, documentType.id, null, documentType);
         res.status(201).json(documentType);
       } catch (error) {
@@ -11644,9 +11656,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req: AuditRequest, res: Response) => {
       try {
         const id = parseInt(req.params.id);
-        const documentTypeData = sanitizeDateFields(req.body);
-        const oldDocumentType = await storage.getRequiredDocumentTypes().then(types => types.find(t => t.id === id));
-        const documentType = await storage.updateRequiredDocumentType(id, documentTypeData);
+        // Sanitize input and restrict to updatable fields only
+        const payload = sanitizeDateFields(req.body);
+        const { createdAt, updatedAt, ...updatedPayload } = payload;
+
+        if (Object.keys(updatedPayload).length === 0) {
+          return res.status(400).json({ error: 'No valid fields provided for update' });
+        }
+
+        const oldDocumentType = await storage
+          .getRequiredDocumentTypes()
+          .then(types => types.find(t => t.id === id));
+
+        if (!oldDocumentType) {
+          return res.status(404).json({ error: 'Required document type not found' });
+        }
+        const documentType = await storage.updateRequiredDocumentType(id, updatedPayload);
         await logAudit(req, id, oldDocumentType, documentType);
         res.json(documentType);
       } catch (error) {

@@ -34,6 +34,9 @@ const routeConfig: Record<string, { label: string; parent?: string }> = {
   "/settings": { label: "Settings", parent: "/" },
   "/settings/api-keys": { label: "API Keys", parent: "/settings" },
   "/settings/users": { label: "User Management", parent: "/settings" },
+  "/settings/template-management": { label: "Template Management", parent: "/settings" },
+  "/settings/audits-management": { label: "Audit Trail", parent: "/settings" },
+
 };
 
 function generateBreadcrumbs(pathname: string, employeeName?: string): BreadcrumbItem[] {

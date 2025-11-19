@@ -1633,6 +1633,9 @@ export const employeeApprovalChecklists = pgTable("employee_approval_checklists"
   samGovExclusion: varchar("sam_gov_exclusion", { length: 3 }).default("no").notNull(), // yes | no
   urineDrugScreen: varchar("urine_drug_screen", { length: 3 }).default("no").notNull(), // yes | no
   bciFbiCheck: varchar("bci_fbi_check", { length: 3 }).default("no").notNull(), // yes | no
+  // Initiated dates for background checks (date-only semantics)
+  urineDrugScreenInitiatedAt: timestamp("urine_drug_screen_initiated_at"), // When urine drug screen was initiated
+  bciFbiCheckInitiatedAt: timestamp("bci_fbi_check_initiated_at"), // When BCI/FBI check was initiated
   
   // Equipment & System Setup
   laptopSetup: varchar("laptop_setup", { length: 3 }).default("no").notNull(), // yes | no
@@ -1810,7 +1813,10 @@ export const insertEmployeeApprovalChecklistSchema = createInsertSchema(employee
   laptopSetup: z.enum(["yes", "no"]).default("no"),
   emailSetup: z.enum(["yes", "no"]).default("no"),
   emrSetup: z.enum(["yes", "no"]).default("no"),
-  phoneSetup: z.enum(["yes", "no"]).default("no")
+  phoneSetup: z.enum(["yes", "no"]).default("no"),
+  // Initiated dates are optional and stored as timestamps; UI uses date-only strings
+  urineDrugScreenInitiatedAt: z.coerce.date().optional().nullable(),
+  bciFbiCheckInitiatedAt: z.coerce.date().optional().nullable()
 });
 
 // Types for employee approval checklists
