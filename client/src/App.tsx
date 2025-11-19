@@ -31,6 +31,8 @@ import TasksList from "@/pages/tasks/tasks-list";
 import TaskForm from "@/pages/tasks/task-form";
 import TasksDashboard from "@/pages/tasks/tasks-dashboard";
 import { DateValidationTest } from "./test-date-validation";
+import AuditsManagement from "./pages/settings/audits-management";
+import TemplateManagement from "./pages/settings/template-management";
 
 function Router() {
   return (
@@ -59,6 +61,8 @@ function Router() {
       <ProtectedRoute path="/settings" component={Settings} />
       <ProtectedRoute path="/settings/api-keys" component={ApiKeysPage} />
       <ProtectedRoute path="/settings/users" component={UsersManagement} />
+      <ProtectedRoute path="/settings/audits-management" component={AuditsManagement} />
+      <ProtectedRoute path="/settings/template-management" component={TemplateManagement} />
       <ProtectedRoute path="/test-date-validation" component={DateValidationTest} />
       <Route path="/auth" component={AuthPage} />
       <Route path="/reset-password" component={ResetPasswordPage} />

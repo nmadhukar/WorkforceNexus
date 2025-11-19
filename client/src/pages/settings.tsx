@@ -720,9 +720,9 @@ export default function Settings() {
           <p className="text-muted-foreground">Manage system configuration and user accounts</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* User Management Navigation */}
-          {isAdmin && (
+        <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
+          {/* {isAdmin && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -744,7 +744,7 @@ export default function Settings() {
                 </div>
               </CardContent>
             </Card>
-          )}
+          )} */}
 
           {/* System Configuration */}
           <Card>
@@ -839,7 +839,7 @@ export default function Settings() {
         </div>
 
         {/* Required Documents Configuration - Admin Only */}
-        {isAdmin && (
+        {/* {isAdmin && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
@@ -953,7 +953,7 @@ export default function Settings() {
               )}
             </CardContent>
           </Card>
-        )}
+        )} */}
 
         {/* Document Type Dialog */}
         <Dialog open={documentTypeDialogOpen} onOpenChange={(open) => {
@@ -2006,7 +2006,7 @@ export default function Settings() {
         )}
 
         {/* Audit Trail */}
-        {(isAdmin || user?.role === 'hr') && (
+        {/* {(isAdmin || user?.role === 'hr') && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
@@ -2020,7 +2020,7 @@ export default function Settings() {
             <Audits />
           </CardContent>
         </Card>
-        )}
+        )} */}
         {/* SES Configuration Dialog */}
         <Dialog open={sesConfigDialogOpen} onOpenChange={setSesConfigDialogOpen}>
           <DialogContent className="max-w-md">

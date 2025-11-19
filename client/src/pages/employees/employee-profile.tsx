@@ -166,6 +166,9 @@ export default function EmployeeProfile() {
   
 
   // Radio button selections (default to 'no')
+  // For urineDrugScreen / bciFbiCheck:
+  //   - "No"  => Initiated (requires initiated date)
+  //   - "Yes" => Completed (requires uploaded document)
   const [approvalSelections, setApprovalSelections] = useState<Record<string, 'yes' | 'no'>>({
     cpiTraining: 'no',
     cprTraining: 'no',
@@ -191,6 +194,12 @@ export default function EmployeeProfile() {
     samGovExclusion: null,
     urineDrugScreen: null,
     bciFbiCheck: null,
+  });
+
+  // Initiated dates for background checks (date-only, YYYY-MM-DD)
+  const [initiatedDates, setInitiatedDates] = useState<Record<string, string>>({
+    urineDrugScreen: "",
+    bciFbiCheck: "",
   });
 
   // Track which existing documents have been dismissed (to allow re-upload)
@@ -238,8 +247,30 @@ export default function EmployeeProfile() {
         emrSetup: existingChecklist.emrSetup || 'no',
         phoneSetup: existingChecklist.phoneSetup || 'no',
       });
+
+      // Normalize initiated dates from API (timestamps) to YYYY-MM-DD for the date input
+      setInitiatedDates(prev => ({
+        ...prev,
+        urineDrugScreen: existingChecklist.urineDrugScreenInitiatedAt
+          ? new Date(existingChecklist.urineDrugScreenInitiatedAt).toISOString().split("T")[0]
+          : prev.urineDrugScreen,
+        bciFbiCheck: existingChecklist.bciFbiCheckInitiatedAt
+          ? new Date(existingChecklist.bciFbiCheckInitiatedAt).toISOString().split("T")[0]
+          : prev.bciFbiCheck,
+      }));
     }
   }, [existingChecklist, showApprovalModal]);
+
+  // When opening the modal for a new checklist, default initiated dates to today if empty
+  useEffect(() => {
+    if (showApprovalModal && !existingChecklist) {
+      const today = new Date().toISOString().split("T")[0];
+      setInitiatedDates(prev => ({
+        urineDrugScreen: prev.urineDrugScreen || today,
+        bciFbiCheck: prev.bciFbiCheck || today,
+      }));
+    }
+  }, [showApprovalModal, existingChecklist]);
 
   // Reset dismissed documents when modal opens/closes and refetch documents
   useEffect(() => {
@@ -472,6 +503,21 @@ export default function EmployeeProfile() {
         [key]: null
       }));
     }
+
+    // For background checks, when switching to "Initiated" (no), ensure we have a default date
+    if ((key === 'urineDrugScreen' || key === 'bciFbiCheck') && value === 'no') {
+      setInitiatedDates(prev => ({
+        ...prev,
+        [key]: prev[key] || new Date().toISOString().split("T")[0],
+      }));
+    }
+  };
+
+  const handleInitiatedDateChange = (key: string, value: string) => {
+    setInitiatedDates(prev => ({
+      ...prev,
+      [key]: value,
+    }));
   };
 
   /**
@@ -522,14 +568,27 @@ export default function EmployeeProfile() {
   const areAllRequiredBackgroundChecksComplete = () => {
     const mandatoryFields = ['federalExclusions', 'stateExclusions', 'samGovExclusion', 'urineDrugScreen', 'bciFbiCheck'];
     
-    // ALL 5 must be 'yes' AND have documents uploaded
+    // For exclusions (federal/state/SAM): must be 'yes' AND have documents uploaded.
+    // For urineDrugScreen / bciFbiCheck:
+    //   - EITHER 'yes' with document (Completed)
+    //   - OR 'no' with an Initiated date recorded (Initiated)
     for (const field of mandatoryFields) {
       const selection = approvalSelections[field];
       const hasNewDocument = !!uploadedDocuments[field];
       const hasPrevDocument = hasExistingApprovalDoc(field) && !dismissedExistingDocs.has(field);
-      
-      if (selection !== 'yes' || !(hasNewDocument || hasPrevDocument)) {
-        return false;
+
+      if (field === 'urineDrugScreen' || field === 'bciFbiCheck') {
+        const initiated = initiatedDates[field];
+        const hasCompletedWithDoc = selection === 'yes' && (hasNewDocument || hasPrevDocument);
+        const hasInitiatedWithDate = selection === 'no' && !!initiated;
+
+        if (!hasCompletedWithDoc && !hasInitiatedWithDate) {
+          return false;
+        }
+      } else {
+        if (selection !== 'yes' || !(hasNewDocument || hasPrevDocument)) {
+          return false;
+        }
       }
     }
     
@@ -631,6 +690,19 @@ export default function EmployeeProfile() {
    * Handles the approval process with documents
    */
   const handleApprovalSubmit = async () => {
+    // Validate initiated dates for background checks when they are in "Initiated" state
+    const initiatedKeys: Array<keyof typeof initiatedDates> = ['urineDrugScreen', 'bciFbiCheck'];
+    for (const key of initiatedKeys) {
+      if (approvalSelections[key] === 'no' && !initiatedDates[key]) {
+        toast({
+          title: "Missing Initiated Date",
+          description: "Please select an initiated date for all background checks marked as Initiated.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     // Validate that any field marked "yes" has a document
     if (!areAllSelectedDocumentsValid()) {
       toast({
@@ -655,7 +727,11 @@ export default function EmployeeProfile() {
     
     // Save checklist data to database
     try {
-      await apiRequest("POST", `/api/employees/${employeeId}/approval-checklist`, approvalSelections);
+      await apiRequest("POST", `/api/employees/${employeeId}/approval-checklist`, {
+        ...approvalSelections,
+        urineDrugScreenInitiatedAt: initiatedDates.urineDrugScreen || null,
+        bciFbiCheckInitiatedAt: initiatedDates.bciFbiCheck || null,
+      });
       
       // Invalidate queries to refresh data (checklist and documents)
       queryClient.invalidateQueries({ queryKey: ["/api/employees", employeeId, "approval-checklist"] });
@@ -706,7 +782,9 @@ export default function EmployeeProfile() {
   ) => {
     const Icon = icon;
     const selection = approvalSelections[key];
+    const initiatedDate = initiatedDates[key];
     const file = uploadedDocuments[key];
+    const isInitiatedCompletionField = key === 'urineDrugScreen' || key === 'bciFbiCheck';
 
     return (
       <Card key={key} className="border hover:border-primary/50 transition-colors">
@@ -733,18 +811,18 @@ export default function EmployeeProfile() {
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="yes" id={`${key}-yes`} />
                 <Label htmlFor={`${key}-yes`} className="cursor-pointer font-normal">
-                  Yes
+                  {isInitiatedCompletionField ? 'Completed' : 'Yes'}
                 </Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="no" id={`${key}-no`} />
                 <Label htmlFor={`${key}-no`} className="cursor-pointer font-normal">
-                  No
+                  {isInitiatedCompletionField ? 'Initiated' : 'No'}
                 </Label>
               </div>
             </RadioGroup>
 
-            {/* File Upload (only shown if Yes is selected and field needs upload) */}
+            {/* File Upload (only shown if "Completed" is selected and field needs upload) */}
             {needsUpload && selection === 'yes' && (
               <div className="ml-8 mt-2">
                 {file ? (
@@ -816,6 +894,21 @@ export default function EmployeeProfile() {
                 )}
               </div>
             )}
+
+            {isInitiatedCompletionField && selection === 'no' && (
+              <div className="ml-8 mt-2 space-y-1">
+                <Label className="text-xs text-muted-foreground">
+                  Initiated Date <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  type="date"
+                  className="w-full"
+                  value={initiatedDate || ""}
+                  onChange={(e) => handleInitiatedDateChange(key, e.target.value)}
+                />
+              </div>
+            )}
+
           </div>
         </CardContent>
       </Card>
@@ -1506,12 +1599,19 @@ export default function EmployeeProfile() {
                                   { key: 'federalExclusions', label: 'Federal Exclusions', icon: AlertTriangle, category: 'Required Checks', required: true },
                                   { key: 'stateExclusions', label: 'State Exclusions', icon: AlertTriangle, category: 'Required Checks', required: true },
                                   { key: 'samGovExclusion', label: 'SAM.gov Exclusion', icon: FileCheck, category: 'Required Checks', required: true },
-                                  { key: 'urineDrugScreen', label: 'Urine Drug Screen - Initiated or Completed', icon: Stethoscope, category: 'Required Checks', required: true },
-                                  { key: 'bciFbiCheck', label: 'BCI/FBI Check - Initiated or Completed', icon: Shield, category: 'Required Checks', required: true },
+                                  { key: 'urineDrugScreen', label: 'Urine Drug Screen', icon: Stethoscope, category: 'Required Checks', required: true },
+                                  { key: 'bciFbiCheck', label: 'BCI/FBI Check', icon: Shield, category: 'Required Checks', required: true },
                                 ].map(({ key, label, icon: Icon, category, required }) => {
                                   const status = checklistData[key] || 'no';
                                   const doc = getChecklistTabDoc(key);
                                   const isImageDoc = doc?.mimeType?.startsWith('image/') || false;
+                                  const isInitiatedField = key === 'urineDrugScreen' || key === 'bciFbiCheck';
+                                  const initiatedAt =
+                                    key === 'urineDrugScreen'
+                                      ? checklistData.urineDrugScreenInitiatedAt
+                                      : key === 'bciFbiCheck'
+                                      ? checklistData.bciFbiCheckInitiatedAt
+                                      : null;
                                   
                                   return (
                                     <TableRow key={key} className={required ? "bg-red-50/30" : ""}>
@@ -1530,12 +1630,27 @@ export default function EmployeeProfile() {
                                         </Badge>
                                       </TableCell> */}
                                       <TableCell className="text-center">
-                                        <Badge 
-                                          variant={status === 'yes' ? 'default' : 'secondary'} 
-                                          className={`text-xs ${status === 'yes' ? 'bg-green-100 text-green-800 border-green-200' : ''}`}
-                                        >
-                                          {status === 'yes' ? 'Yes' : 'No'}
-                                        </Badge>
+                                        <div className="flex flex-col items-center gap-1">
+                                          <Badge 
+                                            variant={status === 'yes' ? 'default' : 'secondary'} 
+                                            className={`text-xs ${status === 'yes' ? 'bg-green-100 text-green-800 border-green-200' : ''}`}
+                                          >
+                                            {isInitiatedField
+                                              ? status === 'yes'
+                                                ? 'Completed'
+                                                : initiatedAt
+                                                ? 'Initiated'
+                                                : 'No'
+                                              : status === 'yes'
+                                              ? 'Yes'
+                                              : 'No'}
+                                          </Badge>
+                                          {isInitiatedField && initiatedAt && (
+                                            <h5 className="text-xs font-normal">
+                                              Initiated: {formatDate(initiatedAt)}
+                                            </h5>
+                                          )}
+                                        </div>
                                       </TableCell>
                                       <TableCell className="text-center">
                                         {doc ? (
@@ -1664,8 +1779,8 @@ export default function EmployeeProfile() {
                   {renderApprovalField('federalExclusions', 'Federal Exclusions', AlertTriangle, true, true, 4)}
                   {renderApprovalField('stateExclusions', 'State Exclusions', AlertTriangle, true, true, 5)}
                   {renderApprovalField('samGovExclusion', 'SAM.gov Exclusion', FileCheck, true, true, 6)}
-                  {renderApprovalField('urineDrugScreen', 'Urine Drug Screen - Initiated or Completed', Stethoscope, true, true, 7)}
-                  {renderApprovalField('bciFbiCheck', 'BCI/FBI Check - Initiated or Completed', Shield, true, true, 8)}
+                  {renderApprovalField('urineDrugScreen', 'Urine Drug Screen', Stethoscope, true, true, 7)}
+                  {renderApprovalField('bciFbiCheck', 'BCI/FBI Check', Shield, true, true, 8)}
                 </div>
 
                 <Separator />

@@ -20,7 +20,11 @@ import {
   User,
   CheckSquare,
   ListTodo,
-  Plus
+  Plus,
+  Monitor,
+  History,
+  MonitorCog,
+  FileClock
 } from "lucide-react";
 
 // Define all navigation items with their required roles
@@ -71,7 +75,33 @@ const allNavigationItems = [
     path: "/settings", 
     label: "Settings", 
     icon: Settings, 
-    roles: ["admin", "hr"] 
+    roles: ["admin", "hr"],
+    submenu: [
+      { 
+        path: "/settings", 
+        label: "Config Settings", 
+        icon: MonitorCog, 
+        roles: ["admin", "hr"] 
+      },
+      { 
+        path: "/settings/users", 
+        label: "User Management", 
+        icon: Users, 
+        roles: ["admin", "hr"] 
+      },
+      { 
+        path: "/settings/template-management", 
+        label: "Template Management", 
+        icon: FileText, 
+        roles: ["admin", "hr"] 
+      },
+      { 
+        path: "/settings/audits-management", 
+        label: "Audit Trail", 
+        icon: FileClock, 
+        roles: ["admin", "hr"] 
+      },
+    ]
   },
   { 
     path: "/compliance", 
