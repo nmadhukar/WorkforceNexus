@@ -99,6 +99,20 @@ export default function TaskForm() {
     }
   });
 
+  // Fetch users for dropdowns
+  const { data: users = [] } = useQuery<User[]>({
+    queryKey: ["/api/admin/users"],
+    queryFn: async () => {
+      const response = await fetch("/api/admin/users?role=employee", {
+        credentials: "include"
+      });
+      if (!response.ok) throw new Error("Failed to fetch users");
+      const data = await response.json();
+      // Handle paginated response
+      return data.users || data;
+    }
+  });
+
   // Fetch locations for dropdown
   const { data: locations = [] } = useQuery<Location[]>({
     queryKey: ["/api/locations"],
@@ -312,9 +326,9 @@ export default function TaskForm() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {employees.map((employee) => (
-                            <SelectItem key={employee.id} value={employee.id.toString()}>
-                              {employee.firstName} {employee.lastName}
+                          {users.map((user) => (
+                            <SelectItem key={user.id} value={user.id.toString()}>
+                              {user.username}
                             </SelectItem>
                           ))}
                         </SelectContent>
